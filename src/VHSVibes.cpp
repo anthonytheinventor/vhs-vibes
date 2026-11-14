@@ -1,0 +1,1575 @@
+// VHS Vibes - a VHS tape degradation effect for the MPC, by anthonytheinventor
+//
+// SPDX-License-Identifier: MIT
+//
+// Inspired by the idea of James Peck's "VHS Audio Degradation Suite" for Reaktor (the
+// order of the stages and what each one is for). All code here is original; nothing is
+// taken from the Reaktor ensemble and no samples are used: every noise is synthesised.
+//
+// Signal path (stereo, in place):
+//
+//   in -> [noise, if Noise Pos = Pre]
+//      -> CHORUS      short modulated delay, L/R out of phase for width
+//      -> MIC         three-band EQ curve of a cheap microphone ("re-recorded through a mic")
+//      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
+//      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage)
+//      -> WEAR        slew limiter: the signal cannot change faster than a set rate
+//      -> COMP        one-knob compressor with make-up gain
+//      -> 2-BAND SAT  crossover at Split; lows and highs get their own level and soft clip
+//      -> HI CUT      4-pole lowpass
+//      -> WOBBLE 1    pitch wobble (Warp + Flutter): a delay line whose length follows the
+//                     integrated tape-speed error
+//      -> [noise, if Noise Pos = Post]
+//      -> WOBBLE 2    a second pitch wobble (Wow + Flutter 2), as if the tape was copied again,
+//                     followed by its own low cut and high cut
+//      -> DRIFT       (deck) the sound slowly comes and goes: quieter and duller, then back
+//      -> TRACKING    (deck) the Hi-Fi track loses lock: a burst of static, a moment on the dull
+//                     mono backup track, another burst, back again
+//      -> HEAD BUZZ   besides its steady rasp (a noise), Head Buzz also holds the signal for a
+//                     few samples at every head switch, which makes a buzz that rides on bright
+//                     sounds and vanishes on bass
+//      -> DROPOUTS    short random level dips
+//      -> MONO -> MIX (dry / wet) -> OUTPUT
+//
+// Breathing (deck) makes the hiss rise and fall with the signal.
+//
+// What comes from real VCR data (manuals, servicing books): heads switch once per video field
+// (59.94 Hz) and the join is audible as a buzz on high notes; a Hi-Fi deck that loses its
+// carrier makes static and falls back to the mono linear track; camcorder level controls duck
+// fast, hold for seconds and creep back up; Hi-Fi noise reduction "breathes". The times and
+// depths are not documented anywhere I could find and are set by ear. Tape speed needs no
+// control of its own: SP is roughly Hi Cut 10 kHz / Lo Cut 50 Hz, EP roughly 6 kHz / 100 Hz
+// with about 3 dB more hiss.
+//
+// Mix blends the untouched input back in. The dry signal is delayed by the resting length
+// of the two wobble delays so that it lines up with the tape path; with the wobbles off the
+// blend is clean, with them on dry and wet drift against each other and it sounds like a
+// chorus. At 100 % (the default) the dry path is not computed.
+//
+// Timing: the wobble delays hold the sound back by their resting length (a few ms on most
+// presets). That length is reported to the host as the plugin's latency, half a second after
+// it stops changing, so a host that compensates keeps the track in time.
+//
+// CPU notes for the MPC (32-bit ARM): everything per sample is plain arithmetic. Sines,
+// square roots and all "which way is the knob going" work happen every 16 samples
+// (controlTick); exp/pow/biquad coefficients are computed only when a parameter moved
+// (readParams). Left and right travel through the chain together as one two-float vector
+// (the Stereo type below), which the compiler turns into NEON instructions on the MPC, so
+// the two channels cost little more than one. A stage whose amount is zero is skipped, a
+// wobble stage with no wobble reads its delay without interpolating, and a knob move only
+// recomputes the values of its own group (see groupOf()).
+
+#include "mpc_plugin.h"
+#include "dsp/math.h"
+#include "dsp/biquad.h"
+#include "dsp/noise.h"
+
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <initializer_list>
+#include <thread>
+#include <utility>
+#include <vector>
+
+using namespace mpc::dsp;
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Parameters. The order is permanent (saved projects and the skin use the index):
+// only ever append new ones at the end.
+// ---------------------------------------------------------------------------
+enum ParamIndex
+{
+    kOutput = 0,   // dB    output level. Index 0 is nudged by the MPC on load: harmless here.
+    // preamp / tape
+    kDrive,        // %     preamp soft clip amount
+    kTone,         // -100..100  tilt: negative = darker, positive = brighter
+    kWear,         // %     slew limiter amount (tape age / generation loss)
+    kComp,         // %     compressor amount (threshold down, make-up up)
+    kHiCut,        // Hz    4-pole lowpass
+    // 2-band saturator
+    kSatOn,        // bool
+    kLows,         // dB    low band level into its clipper
+    kLoSat,        // %     low band clip amount
+    kSplit,        // Hz    crossover
+    kHighs,        // dB    high band level into its clipper
+    kHiSat,        // %     high band clip amount
+    // wobble 1 (tracking / speed instability)
+    kWarp,         // %     slow pitch wobble depth
+    kRpm,          // rpm   slow wobble rate (one lurch per reel turn)
+    kShape,        // %     0 = smooth sine, 100 = lumpy, uneven lurch
+    kFlutter,      // %     fast pitch wobble depth
+    kFlutRate,     // Hz    fast wobble rate
+    // noise
+    kHum,          // %     60 Hz mains hum
+    kBuzz,         // %     120 Hz buzz
+    kHeadBuzz,     // %     59.94 Hz head-switching rasp
+    kHiss,         // %     tape hiss
+    kCrackle,      // %     random clicks
+    kNoise,        // %     master noise level (50 % = nominal)
+    kNoisePos,     // choice Post / Pre
+    // wobble 2 (the re-recorded copy)
+    kWow,          // %
+    kWowRate,      // Hz
+    kFlutter2,     // %
+    kFlut2Rate,    // Hz
+    kLoCut,        // Hz
+    kHiCut2,       // Hz
+    // chorus
+    kChorusOn,     // bool
+    kChoMix,       // %
+    kChoSpeed,     // Hz
+    kChoDelay,     // ms
+    kChoWidth,     // %
+    // mic
+    kMicOn,        // bool
+    kMicType,      // choice
+    kMicGain,      // dB
+    // output
+    kMono,         // bool
+    kDropouts,     // %
+    // section switches (added in 1.1)
+    kWobbleOn,     // bool  both wobble stages on / off
+    kNoiseOn,      // bool  all noise on / off
+    // Read-only "meters" for the screen. The plugin writes them, nobody should set them:
+    kVisReel,      // 0..1  reel rotation, one tooth-to-tooth step per cycle, in kReelFrames steps
+    kVisLevel,     // 0..1  output level, in kLevelFrames steps
+    // deck (added in 1.2)
+    kDeckOn,       // bool   the whole deck section on / off
+    kAgc,          // %      automatic level control: ducks fast, holds, creeps back up over seconds
+    kDrift,        // %      the sound slowly comes and goes (the track wandering off the head)
+    kTracking,     // %      Hi-Fi track losing lock: static, then a moment on the dull mono track
+    kBreathing,    // %      hiss follows the signal
+    kMix,          // %      dry / wet, 100 = all effect
+    kAnimate,      // bool   moving reels / grid / sun on the screen (added in 1.3). Not part of
+                   //        the programs: choosing a program leaves it alone. Keep it last.
+    kNumParams
+};
+
+// The two meters are not settings.
+inline bool isSetting(int i) { return i != kVisReel && i != kVisLevel; }
+constexpr int kReelFrames  = 24;           // frames in the skin's reel / grid film strips
+constexpr int kLevelFrames = 16;           // frames in the skin's sun film strips
+constexpr float kReelStepsPerSec = 3.6f;   // 0.6 turns per second, six teeth per turn
+
+constexpr int   kCtrl      = 16;          // control-rate interval in samples (must be a power of two)
+constexpr float kCtrlInv   = 1.0f / (float)kCtrl;
+constexpr float kSmooth    = 0.05f;       // per-tick smoothing of control values (~7 ms)
+constexpr int   kTapeDelaySamples   = 8192;   // per wobble stage (186 ms at 44.1 kHz)
+constexpr int   kChorusDelaySamples = 2048;
+constexpr float kMaxExcursionSec    = 0.045f; // largest wobble swing we allow, in seconds of delay
+#ifndef VHS_VIBES_SWING_ROOM            // (the test bench overrides these two to compare against 1.2)
+#define VHS_VIBES_SWING_ROOM 2.2f
+#endif
+constexpr float kSwingRoom          = VHS_VIBES_SWING_ROOM;   // resting delay = this many times the slow wobble's own swing
+constexpr bool  kReportLatency      = true;   // tell the host how late the output is (see notifierMain)
+
+// Which values a parameter feeds. A knob move only recomputes its own group in readParams().
+enum Group : uint32_t
+{
+    gRamps = 1u << 0, gPreamp = 1u << 1, gWear = 1u << 2, gComp = 1u << 3, gSat = 1u << 4, gHiCut = 1u << 5,
+    gWobble = 1u << 6, gCuts = 1u << 7, gNoise = 1u << 8, gChorus = 1u << 9, gMic = 1u << 10, gDeck = 1u << 11,
+    gAll = 0xffffffffu
+};
+inline uint32_t groupOf(int param)
+{
+    switch (param)
+    {
+        case kOutput: case kMono: case kMix: case kSatOn: case kChorusOn: case kChoMix: case kMicOn:
+        case kDropouts: case kAnimate:                                      return gRamps;
+        case kDrive: case kTone:                                            return gPreamp;
+        case kWear:                                                         return gWear;
+        case kComp:                                                         return gComp;
+        case kLows: case kLoSat: case kSplit: case kHighs: case kHiSat:     return gSat;
+        case kHiCut:                                                        return gHiCut;
+        case kWarp: case kRpm: case kShape: case kFlutter: case kFlutRate:
+        case kWow: case kWowRate: case kFlutter2: case kFlut2Rate: case kWobbleOn: return gWobble;
+        case kLoCut: case kHiCut2:                                          return gCuts;
+        case kHum: case kBuzz: case kHeadBuzz: case kHiss: case kCrackle:
+        case kNoise: case kNoisePos: case kNoiseOn:                         return gNoise;
+        case kChoSpeed: case kChoDelay: case kChoWidth:                     return gChorus;
+        case kMicType: case kMicGain:                                       return gMic;
+        case kDeckOn: case kAgc: case kDrift: case kTracking: case kBreathing: return gDeck;
+        default:                                                            return 0;   // the two meters
+    }
+}
+
+// Parabolic sine for a phase in [0,1). Cheap; its slight harmonic content suits mains hum.
+inline float psin(float p)
+{
+    const float x = 1.0f - 2.0f * p;
+    return 4.0f * x * (1.0f - std::fabs(x));
+}
+
+// Sine for a phase in turns (any value >= 0): parabola plus one correction step,
+// within 0.1 % of sin(). Used for every LFO so the control tick needs no libm calls.
+inline float lfoSin(float turns)
+{
+    turns -= (float)(int)turns;
+    const float y = psin(turns);
+    return 0.225f * (y * std::fabs(y) - y) + y;
+}
+
+// Signals around this peak level keep their loudness when a clipper or the compressor
+// is turned up; quieter material comes up, louder material is held down.
+constexpr float kRefLevel = 0.4f;   // -8 dBFS
+
+// ---------------------------------------------------------------------------
+// Stereo: left and right in one two-float vector. +, -, * work on both channels at once
+// (a plain float on one side applies to both). On the MPC these become NEON instructions,
+// on a PC SSE; no hand-written intrinsics are needed and the same code builds everywhere.
+// x[0] is left, x[1] is right.
+// ---------------------------------------------------------------------------
+typedef float Stereo __attribute__((vector_size(8)));
+
+inline Stereo stereo(float l, float r) { const Stereo v = {l, r}; return v; }
+inline Stereo splat(float x) { const Stereo v = {x, x}; return v; }
+// min / max as compare-and-select: one or two instructions, where fmin() / fmax() would be
+// library calls on the 32-bit MPCs (their NaN rules have no matching instruction there).
+inline Stereo vmin(Stereo a, Stereo b) { return a < b ? a : b; }
+inline Stereo vmax(Stereo a, Stereo b) { return a > b ? a : b; }
+inline Stereo vabs(Stereo a) { return __builtin_elementwise_abs(a); }
+inline float  maxf(float a, float b) { return a > b ? a : b; }
+inline float  minf(float a, float b) { return a < b ? a : b; }
+
+// The cubic soft clipper of dsp/math.h, for both channels.
+inline Stereo softClip(Stereo x)
+{
+    x = vmax(vmin(x, splat(1.5f)), splat(-1.5f));
+    return x - (4.0f / 27.0f) * x * x * x;
+}
+// Soft clipper with a clean blend: mix 0 = untouched, 1 = softClip(x * g) * makeup.
+// (softClip is a cubic: no divide, which matters on the 32-bit MPCs.)
+inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
+{
+    return x + (softClip(x * g) * makeup - x) * mix;
+}
+
+// A biquad filter (same maths as dsp/biquad.h) running both channels at once.
+struct PairBiquad
+{
+    float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
+    Stereo z1 = {0.0f, 0.0f}, z2 = {0.0f, 0.0f};
+    void setCoeffs(const BiquadCoeffs& c) { b0 = c.b0; b1 = c.b1; b2 = c.b2; a1 = c.a1; a2 = c.a2; }
+    void reset() { z1 = splat(0.0f); z2 = splat(0.0f); }
+    Stereo process(Stereo x)
+    {
+        const Stereo y = b0 * x + z1;
+        z1 = b1 * x - a1 * y + z2;
+        z2 = b2 * x - a2 * y;
+        return y;
+    }
+};
+
+// One-pole lowpass coefficient for a cutoff in Hz (one exp: per block only).
+inline float lpCoeff(float hz, float sr)
+{
+    const float a = 1.0f - std::exp(-kTwoPi * hz / sr);
+    return clamp(a, 0.0f, 1.0f);
+}
+
+// A value that moves in a straight line to its target over one control interval.
+struct Ramp
+{
+    float v = 0.0f, inc = 0.0f;
+    void  to(float target) { inc = (target - v) * kCtrlInv; }
+    void  snap(float value) { v = value; inc = 0.0f; }
+    float next() { v += inc; return v; }
+};
+
+// Delay line with 4-point Hermite interpolation (cleaner highs than linear when the
+// delay time is always moving). Allocates in prepare() only.
+class TapeDelay
+{
+public:
+    void prepare(int maxSamples)
+    {
+        int size = 64;
+        while (size < maxSamples + 8) size <<= 1;
+        buf_.assign((size_t)size, 0.0f);
+        mask_ = size - 1;
+        w_ = 0;
+    }
+    void reset()
+    {
+        for (float& s : buf_) s = 0.0f;
+        w_ = 0;
+    }
+    void write(float x)
+    {
+        buf_[(size_t)w_] = x;
+        w_ = (w_ + 1) & mask_;
+    }
+    // Call after write(). d is the delay in samples, 1 <= d <= maxSamples.
+    float read(float d) const
+    {
+        const int   di = (int)d;
+        const float f  = d - (float)di;
+        const int   i0 = (w_ - 1 - di) & mask_;
+        const float xm = buf_[(size_t)((i0 + 1) & mask_)];
+        const float x0 = buf_[(size_t)i0];
+        const float x1 = buf_[(size_t)((i0 - 1) & mask_)];
+        const float x2 = buf_[(size_t)((i0 - 2) & mask_)];
+        const float c1 = 0.5f * (x1 - xm);
+        const float c2 = xm - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
+        const float c3 = 0.5f * (x2 - xm) + 1.5f * (x0 - x1);
+        return ((c3 * f + c2) * f + c1) * f + x0;
+    }
+private:
+    std::vector<float> buf_;
+    int mask_ = 0, w_ = 0;
+};
+
+// The same delay for a stereo pair that shares one delay time (the wobble stages): left and
+// right are stored side by side, so each of the four samples the interpolation needs is one
+// two-float load.
+class PairDelay
+{
+public:
+    void prepare(int maxSamples)
+    {
+        int size = 64;
+        while (size < maxSamples + 8) size <<= 1;
+        buf_.assign((size_t)size * 2, 0.0f);
+        mask_ = size - 1;
+        w_ = 0;
+    }
+    void reset()
+    {
+        for (float& s : buf_) s = 0.0f;
+        w_ = 0;
+    }
+    void write(Stereo x)
+    {
+        std::memcpy(&buf_[(size_t)w_ * 2], &x, sizeof(x));
+        w_ = (w_ + 1) & mask_;
+    }
+    // Call after write(). d is the delay in samples, 1 <= d <= maxSamples.
+    Stereo read(float d) const
+    {
+        const int   di = (int)d;
+        const float f  = d - (float)di;
+        const int   i0 = (w_ - 1 - di) & mask_;
+        const Stereo xm = at((i0 + 1) & mask_);
+        const Stereo x0 = at(i0);
+        const Stereo x1 = at((i0 - 1) & mask_);
+        const Stereo x2 = at((i0 - 2) & mask_);
+        const Stereo c1 = 0.5f * (x1 - xm);
+        const Stereo c2 = xm - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
+        const Stereo c3 = 0.5f * (x2 - xm) + 1.5f * (x0 - x1);
+        return ((c3 * f + c2) * f + c1) * f + x0;
+    }
+    // The same for a whole number of samples: one load, no interpolation.
+    Stereo tap(int d) const { return at((w_ - 1 - d) & mask_); }
+private:
+    Stereo at(int i) const { Stereo v; std::memcpy(&v, &buf_[(size_t)i * 2], sizeof(v)); return v; }
+    std::vector<float> buf_;
+    int mask_ = 0, w_ = 0;
+};
+
+// The tape transport: turns "how wrong is the tape speed right now" into a delay time.
+// Speed error = slow wobble (a shaped sine plus slow random drift) + fast wobble (a sine
+// plus random jitter). The delay is the leaky integral of that error, so the pitch
+// deviation you hear is the error itself, whatever the rates are.
+struct TapeSpeed
+{
+    Xorshift32 rng;
+    float ph1 = 0.0f, ph2 = 0.0f;
+    float n1a = 0.0f, n1b = 0.0f, n2a = 0.0f, n2b = 0.0f;
+    float x = 0.0f;           // integrated speed error, in samples
+    float base = 6.0f;        // resting delay, large enough for the swing
+    float delay = 6.0f;       // delay used right now (advanced every sample by inc)
+    float inc = 0.0f;
+    float err = 0.0f;         // current relative speed error (for the reel animation)
+    float baseTarget = 6.0f;  // the resting delay the current settings need
+    bool  still = false;      // no wobble and settled: the delay is a whole number of samples
+                              // and is not moving, so the reader needs no interpolation
+
+    // Values that only change when a knob moves; update() refreshes them.
+    float inDev1 = -1.0f, inRate1 = -1.0f, inDev2 = -1.0f, inRate2 = -1.0f, inSr = 0.0f;
+    float dev1 = 0.0f, dev2 = 0.0f, ph1Inc = 0.0f, ph2Inc = 0.0f;
+    float k1 = 0.001f, k2 = 0.001f, n1Scale = 0.0f, n2Scale = 0.0f, leak = 0.0f;
+
+    // d1 / d2 = peak relative speed error of the slow / fast wobble (0.01 = 1 %), rates in Hz.
+    // Cheap when nothing changed (five compares); otherwise it does the divides and square roots
+    // that tick() used to do every time.
+    void update(float sr, float d1, float rate1, float d2, float rate2)
+    {
+        if (d1 == inDev1 && rate1 == inRate1 && d2 == inDev2 && rate2 == inRate2 && sr == inSr) return;
+        inDev1 = d1; inRate1 = rate1; inDev2 = d2; inRate2 = rate2; inSr = sr;
+        const float dt = (float)kCtrl / sr;
+        // Keep the swing inside the delay line: very slow rates get less depth.
+        dev1 = minf(d1, kMaxExcursionSec * kTwoPi * rate1 * (1.0f / kSwingRoom));
+        dev2 = d2;
+        ph1Inc = rate1 * dt;
+        ph2Inc = rate2 * dt;
+        k1 = clamp(kTwoPi * rate1 * dt, 0.0005f, 0.5f);
+        k2 = clamp(kTwoPi * rate2 * 1.5f * dt, 0.0005f, 0.6f);
+        n1Scale = std::sqrt(12.0f / k1);   // brings the smoothed noise to roughly unit RMS
+        n2Scale = std::sqrt(12.0f / k2);
+        leak = kTwoPi * clamp(0.25f * rate1, 0.02f, 0.5f) * dt;
+        const float swing = (dev1 * kSwingRoom / (kTwoPi * rate1) + dev2 * 1.6f / (kTwoPi * rate2)) * sr;
+        baseTarget = clamp(swing + 6.0f, 6.0f, (float)kTapeDelaySamples * 0.45f);
+    }
+
+    // Start at rest for the current settings (call update() first).
+    void reset(uint32_t seed)
+    {
+        rng.reseed(seed);
+        ph1 = ph2 = 0.0f;
+        n1a = n1b = n2a = n2b = 0.0f;
+        x = 0.0f; base = baseTarget; delay = baseTarget; inc = 0.0f; err = 0.0f;
+        still = false;
+    }
+
+    // Called every kCtrl samples.
+    void tick(float shape)
+    {
+        if (dev1 <= 0.0f && dev2 <= 0.0f)
+        {
+            // No wobble asked for. Let what is left die away (about a quarter of a second),
+            // then sit on a whole sample so the reader can skip the interpolation.
+            err = 0.0f;
+            if (still) return;
+            x *= 0.9985f;
+            if (std::fabs(x) < 0.01f) x = 0.0f;
+            base += 0.003f * (baseTarget - base);
+            if (std::fabs(baseTarget - base) < 0.01f) base = baseTarget;
+            x = clamp(x, -(base - 3.0f), (float)kTapeDelaySamples - 8.0f - base);
+            const float target = base + x;
+            if (x == 0.0f && base == baseTarget && std::fabs(target - delay) < 0.01f)
+            {
+                delay = target; inc = 0.0f; still = true;   // baseTarget is 6 here: a whole sample
+            }
+            else inc = (target - delay) * kCtrlInv;
+            return;
+        }
+        still = false;
+
+        ph1 += ph1Inc; if (ph1 >= 1.0f) ph1 -= 1.0f;
+        ph2 += ph2Inc; if (ph2 >= 1.0f) ph2 -= 1.0f;
+
+        float slow = lfoSin(ph1);
+        if (shape > 0.0f) slow += shape * (0.5f * lfoSin(2.0f * ph1 + 0.11f) + 0.25f * lfoSin(3.0f * ph1 + 0.30f));
+
+        // Two-pole smoothed noise, scaled to roughly unit RMS.
+        n1a += k1 * (rng.nextBipolar() - n1a);
+        n1b += k1 * (n1a - n1b);
+        const float drift = clamp(n1b * n1Scale, -2.5f, 2.5f);
+
+        n2a += k2 * (rng.nextBipolar() - n2a);
+        n2b += k2 * (n2a - n2b);
+        const float jitter = clamp(n2b * n2Scale, -2.5f, 2.5f);
+
+        const float fast = 0.75f * lfoSin(ph2) + 0.5f * jitter;
+        err = dev1 * (slow + 0.25f * drift) + dev2 * fast;
+
+        // Leaky integrator: without the leak the random part would wander off.
+        x += err * (float)kCtrl - leak * x;
+        base += 0.003f * (baseTarget - base);
+        x = clamp(x, -(base - 3.0f), (float)kTapeDelaySamples - 8.0f - base);
+        inc = (base + x - delay) * kCtrlInv;
+    }
+};
+
+// Control values that are smoothed once per control tick and then held for 16 samples.
+enum CtlIndex
+{
+    cTiltLo, cTiltHi, cDrvG, cDrvMk, cDrvMix,
+    cSlew, cThresh, cMakeup,
+    cLowsG, cLoG, cLoMk, cLoMix,
+    cHighsG, cHiG, cHiMk, cHiMix,
+    cHum, cBuzz, cHead, cHiss, cCrackle,
+    cMicGain,
+    cWobbleOn,
+    cAgc, cDrift, cBreath,
+    kNumCtl
+};
+
+// Values that are additionally ramped every sample (anything that would click).
+enum RampIndex { rOut, rMono, rChorus, rMic, rSat, rMix, kNumRamp };
+
+struct MicCurve { float hpHz, peakHz, peakQ, peakDb, lpHz; };
+const MicCurve kMicCurves[4] = {
+    { 180.0f, 3200.0f, 1.0f, 5.0f,  7500.0f },   // Camcorder
+    {  90.0f, 5000.0f, 0.9f, 4.0f, 12000.0f },   // Dynamic
+    { 350.0f, 1800.0f, 1.2f, 6.0f,  3400.0f },   // Phone
+    { 120.0f,  900.0f, 0.8f, 4.0f,  6000.0f },   // Boombox
+};
+
+} // namespace
+
+class VHSVibes : public mpc::Plugin
+{
+public:
+    VHSVibes() : mpc::Plugin(makeInfo())
+    {
+        using namespace mpc;
+        addParam(floatParam ("out",       "Output",     -24.0f, 12.0f, 0.0f, "dB", 1));
+
+        addParam(floatParam ("drive",     "Drive",        0.0f, 100.0f, 25.0f, "%", 0));
+        addParam(floatParam ("tone",      "Tone",      -100.0f, 100.0f,  0.0f, "",  0));
+        addParam(floatParam ("wear",      "Wear",         0.0f, 100.0f, 20.0f, "%", 0));
+        addParam(floatParam ("comp",      "Comp",         0.0f, 100.0f, 40.0f, "%", 0));
+        addParam(logParam   ("hicut",     "Hi Cut",    1000.0f, 18000.0f, 9000.0f, "Hz", 0));
+
+        addParam(boolParam  ("sat_on",    "Saturator",  true));
+        addParam(floatParam ("lows",      "Lows",       -12.0f, 12.0f,  0.0f, "dB", 1));
+        addParam(floatParam ("losat",     "Lo Sat",       0.0f, 100.0f, 20.0f, "%", 0));
+        addParam(logParam   ("split",     "Split",      200.0f, 8000.0f, 2500.0f, "Hz", 0));
+        addParam(floatParam ("highs",     "Highs",      -24.0f, 12.0f, -3.0f, "dB", 1));
+        addParam(floatParam ("hisat",     "Hi Sat",       0.0f, 100.0f, 35.0f, "%", 0));
+
+        addParam(floatParam ("warp",      "Warp",         0.0f, 100.0f, 35.0f, "%", 0));
+        addParam(logParam   ("rpm",       "RPM",          6.0f, 300.0f, 33.0f, "rpm", 0));
+        addParam(floatParam ("shape",     "Shape",        0.0f, 100.0f, 30.0f, "%", 0));
+        addParam(floatParam ("flutter",   "Flutter",      0.0f, 100.0f, 30.0f, "%", 0));
+        addParam(logParam   ("flut_hz",   "Flut Rate",    2.0f, 30.0f,  9.0f, "Hz", 1));
+
+        addParam(floatParam ("hum",       "Hum",          0.0f, 100.0f, 15.0f, "%", 0));
+        addParam(floatParam ("buzz",      "Buzz",         0.0f, 100.0f,  0.0f, "%", 0));
+        addParam(floatParam ("headbuzz",  "Head Buzz",    0.0f, 100.0f, 10.0f, "%", 0));
+        addParam(floatParam ("hiss",      "Hiss",         0.0f, 100.0f, 35.0f, "%", 0));
+        addParam(floatParam ("crackle",   "Crackle",      0.0f, 100.0f, 15.0f, "%", 0));
+        addParam(floatParam ("noise",     "Noise",        0.0f, 100.0f, 50.0f, "%", 0));
+        addParam(choiceParam("noise_pos", "Noise Pos",  {"Post", "Pre"}, 0));
+
+        addParam(floatParam ("wow",       "Wow",          0.0f, 100.0f, 25.0f, "%", 0));
+        addParam(logParam   ("wow_hz",    "Wow Rate",     0.1f, 4.0f,   0.8f, "Hz", 2));
+        addParam(floatParam ("flutter2",  "Flutter 2",    0.0f, 100.0f, 20.0f, "%", 0));
+        addParam(logParam   ("flut2_hz",  "Flut2 Rate",   3.0f, 40.0f, 14.0f, "Hz", 1));
+        addParam(logParam   ("locut",     "Lo Cut",      20.0f, 1000.0f, 60.0f, "Hz", 0));
+        addParam(logParam   ("hicut2",    "Hi Cut 2",  1000.0f, 18000.0f, 11000.0f, "Hz", 0));
+
+        addParam(boolParam  ("cho_on",    "Chorus",     false));
+        addParam(floatParam ("cho_mix",   "Cho Mix",      0.0f, 100.0f, 40.0f, "%", 0));
+        addParam(logParam   ("cho_hz",    "Cho Speed",    0.05f, 5.0f,  0.6f, "Hz", 2));
+        addParam(logParam   ("cho_ms",    "Cho Delay",    1.0f, 30.0f, 12.0f, "ms", 1));
+        addParam(floatParam ("cho_width", "Cho Width",    0.0f, 100.0f, 70.0f, "%", 0));
+
+        addParam(boolParam  ("mic_on",    "Mic",        false));
+        addParam(choiceParam("mic_type",  "Mic Type",   {"Camcorder", "Dynamic", "Phone", "Boombox"}, 0));
+        addParam(floatParam ("mic_gain",  "Mic Gain",   -12.0f, 12.0f, 0.0f, "dB", 1));
+
+        addParam(boolParam  ("mono",      "Mono",       false));
+        addParam(floatParam ("dropouts",  "Dropouts",     0.0f, 100.0f, 0.0f, "%", 0));
+
+        addParam(boolParam  ("wobble_on", "Wobble On",  true));
+        addParam(boolParam  ("noise_on",  "Noise On",   true));
+
+        // Meters for the screen: not automatable, so the MPC never records them.
+        Param reel  = floatParam("vis_reel",  "Reel",  0.0f, 1.0f, 0.0f, "", 2);
+        Param level = floatParam("vis_level", "Level", 0.0f, 1.0f, 0.0f, "", 2);
+        reel.automatable = false;
+        level.automatable = false;
+        addParam(reel);
+        addParam(level);
+
+        addParam(boolParam  ("deck_on",    "Deck On",    true));
+        addParam(floatParam ("agc",        "AGC",          0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam ("drift",      "Drift",        0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam ("tracking",   "Tracking",     0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam ("breathing",  "Breathing",    0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam ("mix",        "Mix",          0.0f, 100.0f, 100.0f, "%", 0));
+        addParam(boolParam  ("animate",    "Animation",  true));
+
+        if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
+
+        // The MPC shows only the value text, never the unit, so the unit is written into the
+        // text by formatValue() below. Remember each unit and clear the separate label so no
+        // host shows it twice.
+        for (int i = 0; i < numParams() && i < kNumParams; ++i)
+        {
+            const std::string& u = params_[(size_t)i].unit;
+            units_[i] = u == "%" ? 1 : u == "dB" ? 2 : u == "Hz" ? 3 : u == "ms" ? 4 : u == "rpm" ? 5 : 0;
+            params_[(size_t)i].unit.clear();
+        }
+
+        addPrograms();
+
+        // See notifierMain(): tells the host about program changes, the meters and the latency.
+        notifier_ = std::thread(&VHSVibes::notifierMain, this);
+    }
+
+    ~VHSVibes() override
+    {
+        quit_.store(true);
+        if (notifier_.joinable()) notifier_.join();
+    }
+
+    // Allocates the delay lines. Never called while process() runs.
+    void prepare(double sampleRate, int /*maxBlockSize*/) override
+    {
+        sr_ = (float)sampleRate;
+        wf1Delay_.prepare(kTapeDelaySamples);
+        wf2Delay_.prepare(kTapeDelaySamples);
+        dryDelay_.prepare(kTapeDelaySamples);
+        choDelay_[0].prepare(kChorusDelaySamples);
+        choDelay_[1].prepare(kChorusDelaySamples);
+        envAttack_  = 1.0f - std::exp(-1.0f / (0.003f * sr_));
+        envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * sr_));
+        tiltCoeff_  = lpCoeff(800.0f, sr_);
+        humInc_  = 60.0f / sr_;
+        buzzInc_ = 120.0f / sr_;
+        headInc_ = 59.94f / sr_;
+        hsInc_   = 59.94f / sr_;
+        agcHoldTicks_ = (int)(1.5f * sr_ * kCtrlInv);
+        agcRelease_   = 1.0f / (2.5f * sr_ * kCtrlInv);
+        edgeCoeff_    = lpCoeff(1200.0f, sr_);
+        fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
+        fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
+        reset();
+    }
+
+    // Clears every memory and jumps all smoothed values to the current settings.
+    void reset() override
+    {
+        if (sr_ <= 0.0f) return;
+        wf1Delay_.reset(); wf2Delay_.reset(); choDelay_[0].reset(); choDelay_[1].reset();
+        dryDelay_.reset();
+        micHp_.reset(); micPk_.reset(); micLp_.reset();
+        lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
+        tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = splat(0.0f);
+        env_ = 0.0f; compGain_ = 1.0f; compTarget_ = 1.0f;
+        humPh_ = buzzPh_ = headPh_ = 0.0f;
+        buzzLp_ = headLp_ = headHp_ = 0.0f;
+        choPhase_ = 0.0f;
+        dropGain_ = 1.0f; dropTarget_ = 1.0f; dropTicks_ = 0;
+        ctrlCount_ = 0;
+        inPeak_ = outPeak_ = inEnv_ = outEnv_ = 0.0f;
+        fbLp_.reset();
+        fbHp_ = edgeLp_ = hsHeld_ = splat(0.0f);
+        agcEnv_ = kRefLevel; agcGain_ = agcTarget_ = 1.0f; agcHold_ = 0; agcAmt_ = 0.0f; agcActive_ = false;
+        edgeN1_ = edgeN2_ = edgeMuffle_ = 0.0f; edgeGain_ = 1.0f; edgeActive_ = false;
+        hsPhase_ = 0.0f; hsLeft_ = 0; hsFrac_ = 0.0f; hsOn_ = false;
+        fbState_ = 0; fbTicks_ = 0; staticAmp_ = 0.0f; fbMono_ = 0.0f;
+
+        for (int i = 0; i < kNumParams; ++i) lastNorm_[i] = getNormalised(i);
+        readParams(gAll);
+        linAmt_ = linTarget_ = 0.0f;
+        hissDyn_ = 1.0f;
+        for (int i = 0; i < kNumCtl; ++i) cur_[i] = tgt_[i];
+        for (int i = 0; i < kNumRamp; ++i) { rampS_[i] = rampT_[i]; ramp_[i].snap(rampT_[i]); }
+
+        // Every delay starts at the resting length its settings need, so nothing glides (and
+        // bends the pitch) after a program change.
+        const float wob = tgt_[cWobbleOn];
+        wf1_.update(sr_, dev1Slow_ * wob, rate1Slow_, dev1Fast_ * wob, rate1Fast_);
+        wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
+        wf1_.reset(0x1234abcdu);
+        wf2_.reset(0x0badf00du);
+        dryD_.snap(wf1_.base + wf2_.base);
+        dryActive_ = rampT_[rMix] < 1.0f;
+        choBase_ = choDelayTarget_;
+        choD_[0].snap(choBase_); choD_[1].snap(choBase_);
+        choActive_ = rampT_[rChorus] > 0.0f;
+
+        // The delays were just emptied. Keep the output shut until the sound has come through
+        // them (their resting length), then fade in over about 20 ms instead of letting it cut in.
+#ifndef VHS_VIBES_NO_FADE_IN
+        rampS_[rOut] = 0.0f;
+        ramp_[rOut].snap(0.0f);
+        fadeHold_ = (int)((wf1_.base + wf2_.base) * kCtrlInv) + 1;
+#else
+        fadeHold_ = 0;
+#endif
+
+        // reset() runs when the host starts the plugin and after every program change and
+        // state load: from now on the notifier thread may talk to the host, and it should send
+        // the new values. (Only flags here; this can be the audio thread.)
+        started_.store(true);
+        pushPending_.store(true, std::memory_order_relaxed);
+    }
+
+    void process(mpc::ProcessContext& ctx) override
+    {
+        // Once per block: recompute the values of whichever groups had a parameter move.
+        uint32_t dirty = 0;
+        for (int i = 0; i < kNumParams; ++i)
+        {
+            const float v = getNormalised(i);
+            if (v != lastNorm_[i]) { lastNorm_[i] = v; dirty |= groupOf(i); }
+        }
+        if (dirty) readParams(dirty);
+        playing_ = ctx.transport.valid && ctx.transport.playing;
+
+        const float* inL = (ctx.inputs != nullptr && ctx.numInputs > 0) ? ctx.inputs[0] : nullptr;
+        const float* inR = (ctx.inputs != nullptr && ctx.numInputs > 1) ? ctx.inputs[1] : inL;
+        float* outL = ctx.outputs[0];
+        float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
+
+        for (int i = 0; i < ctx.numFrames; ++i)
+        {
+            const bool tick = ctrlCount_ == 0;
+            if (tick) controlTick();
+            ctrlCount_ = (ctrlCount_ + 1) & (kCtrl - 1);
+
+            // Read this frame's input before anything is written (in-place buffers).
+            const float l = inL != nullptr ? inL[i] : 0.0f;
+            const float r = inR != nullptr ? inR[i] : l;
+            if (tick) inPeak_ = std::fabs(l) + std::fabs(r);   // the meters look at one sample in 16
+            Stereo x = stereo(l, r);
+            float dryLen = 0.0f;
+            if (dryActive_) { dryDelay_.write(x); dryLen = dryD_.next(); }   // kept for Mix below 100 %
+
+            const float outGain = ramp_[rOut].next();
+            const float mix     = ramp_[rMix].next();
+            const float monoMix = ramp_[rMono].next();
+            const float choMix  = ramp_[rChorus].next();
+            const float micMix  = ramp_[rMic].next();
+            const float satMix  = ramp_[rSat].next();
+
+            // ----- noise generators (each one only while its own level is up) ------
+            Stereo noise = splat(0.0f);
+            if (noiseActive_)
+            {
+                float mono = 0.0f;
+                if (humOn_)
+                {
+                    humPh_ += humInc_; if (humPh_ >= 1.0f) humPh_ -= 1.0f;
+                    mono = psin(humPh_) * cur_[cHum];
+                }
+                if (buzzOn_)
+                {
+                    buzzPh_ += buzzInc_; if (buzzPh_ >= 1.0f) buzzPh_ -= 1.0f;
+                    buzzLp_ += 0.22f * ((2.0f * buzzPh_ - 1.0f) - buzzLp_);
+                    mono += buzzLp_ * cur_[cBuzz];
+                }
+                if (headOn_)
+                {
+                    // Head switching: one tick per video field, the two heads slightly unequal.
+                    headPh_ += headInc_;
+                    float pulse = 0.0f;
+                    if (headPh_ >= 1.0f) { headPh_ -= 1.0f; headFlip_ = !headFlip_; pulse = headFlip_ ? 4.0f : -2.8f; }
+                    headLp_ += 0.30f * (pulse - headLp_);
+                    headHp_ += 0.05f * (headLp_ - headHp_);
+                    mono += (headLp_ - headHp_) * cur_[cHead];
+                }
+                noise = splat(mono);
+                if (hissOn_)
+                {
+                    // hiss: different in left and right
+                    const Stereo white = stereo(hissRng_[0].nextBipolar(), hissRng_[1].nextBipolar());
+                    hissLp_ += 0.1f * (white - hissLp_);
+                    noise += (white - hissLp_) * (cur_[cHiss] * hissDyn_);
+                }
+                if (crackleOn_)
+                {
+                    // crackle: a click now and then, mostly on one side
+                    Stereo imp = splat(0.0f);
+                    const uint32_t u = crackleRng_.next();
+                    if (u < crackleThresh_)
+                    {
+                        float a = crackleRng_.nextBipolar();
+                        a = a * a * a * 2.5f;
+                        imp = (u & 1u) ? stereo(a, a * 0.4f) : stereo(a * 0.4f, a);
+                    }
+                    click_ += 0.4f * (imp - click_);
+                    noise += click_ * cur_[cCrackle];
+                }
+            }
+            if (noisePre_) x += noise;
+
+            // ----- chorus (each side has its own delay time) -----------------
+            if (choActive_)
+            {
+                choDelay_[0].write(x[0]); choDelay_[1].write(x[1]);
+                const float dL = choD_[0].next(), dR = choD_[1].next();
+                if (choMix > 0.0f)
+                {
+                    const Stereo wet = stereo(choDelay_[0].read(dL), choDelay_[1].read(dR));
+                    x += (wet - x) * (0.5f * choMix);
+                }
+            }
+
+            // ----- mic emulation ---------------------------------------------
+            if (micMix > 0.0f)
+            {
+                const Stereo m = micLp_.process(micPk_.process(micHp_.process(x))) * cur_[cMicGain];
+                x += (m - x) * micMix;
+            }
+
+            // ----- deck: automatic level control -----------------------------
+            // A new peak pulls the gain down at once; controlTick() holds it there and then
+            // lets it creep back up.
+            if (agcActive_)
+            {
+                const Stereo a = vabs(x);
+                const float pk = maxf(a[0], a[1]);
+                if (pk > agcEnv_)
+                {
+                    agcEnv_ = pk;
+                    agcHold_ = agcHoldTicks_;
+                    agcTarget_ = 1.0f + agcAmt_ * (clamp(kRefLevel / pk, 0.25f, 5.0f) - 1.0f);
+                }
+                agcGain_ += (agcTarget_ < agcGain_ ? 0.25f : 0.002f) * (agcTarget_ - agcGain_);
+                x *= agcGain_;
+            }
+
+            // ----- preamp: tilt tone, then soft clip (each only when it does something) -----
+            if (tiltOn_)
+            {
+                tiltLp_ += tiltCoeff_ * (x - tiltLp_);
+                x = tiltLp_ * cur_[cTiltLo] + (x - tiltLp_) * cur_[cTiltHi];
+            }
+            if (driveOn_) x = driveSat(x, cur_[cDrvG], cur_[cDrvMk], cur_[cDrvMix]);
+
+            // ----- wear: slew limiter ----------------------------------------
+            if (slewOn_)
+            {
+                const Stereo step = splat(cur_[cSlew]);
+                slew_ += vmax(vmin(x - slew_, step), -step);
+                x = slew_;
+            }
+
+            // ----- compressor (gain target is set in controlTick) ------------
+            const Stereo mag = vabs(x);
+            const float peak = maxf(mag[0], mag[1]);
+            env_ += (peak > env_ ? envAttack_ : envRelease_) * (peak - env_);
+            compGain_ += 0.02f * (compTarget_ - compGain_);
+            x *= compGain_ * cur_[cMakeup];
+
+            // ----- 2-band saturator ------------------------------------------
+            if (satMix > 0.0f)
+            {
+                splitLp_ += splitCoeff_ * (x - splitLp_);
+                Stereo lo = splitLp_ * cur_[cLowsG];
+                Stereo hi = (x - splitLp_) * cur_[cHighsG];
+                if (loSatOn_) lo = driveSat(lo, cur_[cLoG], cur_[cLoMk], cur_[cLoMix]);
+                if (hiSatOn_) hi = driveSat(hi, cur_[cHiG], cur_[cHiMk], cur_[cHiMix]);
+                x += (lo + hi - x) * satMix;
+            }
+
+            // ----- 4-pole high cut -------------------------------------------
+            x = lpfB_.process(lpfA_.process(x));
+
+            // ----- wobble 1 --------------------------------------------------
+            // With no wobble the delay sits on a whole sample: one load instead of the
+            // four-point interpolation.
+            wf1Delay_.write(x);
+            if (wf1_.still) x = wf1Delay_.tap((int)wf1_.delay);
+            else { wf1_.delay += wf1_.inc; x = wf1Delay_.read(wf1_.delay); }
+
+            if (!noisePre_) x += noise;
+
+            // ----- wobble 2 and its filters ----------------------------------
+            wf2Delay_.write(x);
+            if (wf2_.still) x = wf2Delay_.tap((int)wf2_.delay);
+            else { wf2_.delay += wf2_.inc; x = wf2Delay_.read(wf2_.delay); }
+
+            loCutLp_ += loCutCoeff_ * (x - loCutLp_);
+            x -= loCutLp_;
+            x = hiCut2_.process(x);
+
+            // ----- deck: drift -----------------------------------------------
+            // The sound slowly comes and goes: quieter and duller, then back (controlTick moves
+            // edgeMuffle_ and edgeGain_).
+            if (edgeActive_)
+            {
+                edgeLp_ += edgeCoeff_ * (x - edgeLp_);
+                x = (x + (edgeLp_ - x) * edgeMuffle_) * edgeGain_;
+            }
+
+            // ----- deck: tracking, the backup track --------------------------
+            // linAmt_ jumps to 1 while a mistracking Hi-Fi deck falls back to its linear track,
+            // which is dull and thin (and mono, see fbMono_ below).
+            if (linAmt_ > 0.0f || linTarget_ > 0.0f)
+            {
+                linAmt_ += 0.01f * (linTarget_ - linAmt_);
+                Stereo y = fbLp_.process(x);
+                fbHp_ += fbHpCoeff_ * (y - fbHp_);
+                y -= fbHp_;
+                x += (y - x) * linAmt_;
+            }
+
+            // ----- head switching (the part of Head Buzz that rides on the music) -----
+            // Once per video field the next head takes over and the signal is held for a few
+            // samples. The step that leaves is as big as the music is fast, so the buzz rides
+            // on bright sounds and vanishes on bass, as on a real deck.
+            if (hsOn_)
+            {
+                hsPhase_ += hsInc_;
+                if (hsPhase_ >= 1.0f)
+                {
+                    hsPhase_ -= 1.0f;
+                    hsFlip_ = !hsFlip_;
+                    const float len = hsLen_[hsFlip_ ? 1 : 0];     // in samples, e.g. 2.4
+                    hsLeft_ = (int)len + 1;
+                    hsFrac_ = len - (float)(int)len;               // weight of the last, partial sample
+                }
+                if (hsLeft_ > 0)
+                {
+                    x += (hsHeld_ - x) * (hsLeft_ == 1 ? hsFrac_ : 1.0f);
+                    --hsLeft_;
+                }
+                else hsHeld_ = x;
+            }
+            // static while the Hi-Fi carrier drops out
+            if (staticAmp_ > 0.0f)
+                x += stereo(staticRng_.nextBipolar(), staticRng_.nextBipolar()) * staticAmp_;
+
+            // ----- dropouts, mono, mix, output -------------------------------
+            dropGain_ += 0.012f * (dropTarget_ - dropGain_);
+            const float monoAmt = maxf(monoMix, fbMono_);
+            if (monoAmt > 0.0f) x += (splat(0.5f * (x[0] + x[1])) - x) * monoAmt;
+            if (mix < 1.0f && dryActive_)
+            {
+                // dry / wet: the dry signal waits as long as the tape path does at rest
+                x *= dropGain_;
+                const Stereo dry = dryDelay_.read(dryLen);
+                x = (dry + (x - dry) * mix) * outGain;
+            }
+            else x *= dropGain_ * outGain;
+
+            outL[i] = x[0];
+            if (outR != nullptr) outR[i] = x[1];
+            if (tick) { const Stereo outMag = vabs(x); outPeak_ = 0.5f * (outMag[0] + outMag[1]); }
+        }
+
+        // Hand the meter values to the notifier thread.
+        visReel_.store(reelPhase_, std::memory_order_relaxed);
+        visLevel_.store(outEnv_, std::memory_order_relaxed);
+    }
+
+    // Value text with its unit, at most 8 characters: "25 %", "+3.0 dB", "9.0 kHz", "33 rpm".
+    bool formatValue(int index, float v, std::string& out) override
+    {
+        if (index < 0 || index >= kNumParams || !isSetting(index) || param(index).kind != mpc::Param::Kind::Float) return false;
+        if (units_[index] == 0 && index != kTone) return false;
+        char buf[32];
+        switch (units_[index])
+        {
+            case 1: std::snprintf(buf, sizeof(buf), "%.0f %%", (double)v); break;
+            case 2:
+                if (std::fabs(v) < 0.05f) std::snprintf(buf, sizeof(buf), "0.0 dB");
+                else std::snprintf(buf, sizeof(buf), "%+.1f dB", (double)v);
+                break;
+            case 3:
+                if (v >= 1000.0f)     std::snprintf(buf, sizeof(buf), "%.1f kHz", (double)v * 0.001);
+                else if (v >= 100.0f) std::snprintf(buf, sizeof(buf), "%.0f Hz", (double)v);
+                else if (v >= 10.0f)  std::snprintf(buf, sizeof(buf), "%.1f Hz", (double)v);
+                else                  std::snprintf(buf, sizeof(buf), "%.2f Hz", (double)v);
+                break;
+            case 4: std::snprintf(buf, sizeof(buf), "%.1f ms", (double)v); break;
+            case 5: std::snprintf(buf, sizeof(buf), "%.0f rpm", (double)v); break;
+            default:   // Tone: a signed amount, no unit
+                if (std::fabs(v) < 0.5f) std::snprintf(buf, sizeof(buf), "0");
+                else std::snprintf(buf, sizeof(buf), "%+.0f", (double)v);
+                break;
+        }
+        out = buf;
+        return true;
+    }
+
+private:
+    static mpc::PluginInfo makeInfo()
+    {
+        mpc::PluginInfo info;
+        info.name         = "VHS Vibes";
+        info.vendor       = "anthonytheinventor";   // must match plugin.json "manufacturer"
+        info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
+        info.version      = 1300;           // 1.3.0.0
+        info.isInstrument = false;
+        info.numInputs    = 2;
+        info.numOutputs   = 2;
+        info.tailSamples  = 2 * kTapeDelaySamples;   // the two wobble delays ring out
+        return info;
+    }
+
+    static constexpr char kUid[5] = "AYlM";
+
+    // ----- parameters -> targets and filter coefficients ------------------------
+    // Called with the groups whose parameters moved (gAll from reset()). All the pow / exp / sin
+    // / cos work of the plugin is in here, so a group that did not change costs nothing.
+    void readParams(uint32_t groups)
+    {
+        const float sr = sr_;
+        auto pct = [this](int i) { return get(i) * 0.01f; };
+
+        if (groups & gRamps)
+        {
+            rampT_[rOut]    = dbToGain(get(kOutput));
+            rampT_[rMono]   = getBool(kMono) ? 1.0f : 0.0f;
+            rampT_[rChorus] = getBool(kChorusOn) ? pct(kChoMix) : 0.0f;
+            rampT_[rMic]    = getBool(kMicOn) ? 1.0f : 0.0f;
+            rampT_[rSat]    = getBool(kSatOn) ? 1.0f : 0.0f;
+            rampT_[rMix]    = pct(kMix);
+            dropAmount_     = pct(kDropouts);
+            animate_.store(getBool(kAnimate), std::memory_order_relaxed);
+        }
+        if (groups & gPreamp)
+        {
+            const float tiltDb = pct(kTone) * 6.0f;
+            tgt_[cTiltLo] = dbToGain(-tiltDb);
+            tgt_[cTiltHi] = dbToGain(tiltDb);
+            setDrive(pct(kDrive), 15.0f, cDrvG, cDrvMk, cDrvMix);
+        }
+        if (groups & gWear)
+        {
+            // allowed change per sample, from "anything goes" (2.0, the stage is skipped) down to very dull
+            tgt_[cSlew] = 2.0f * std::pow(0.006f, pct(kWear));
+        }
+        if (groups & gComp)
+        {
+            // threshold 0 .. -36 dB at 4:1; make-up undoes the gain reduction a reference-level
+            // signal gets, so turning Comp up brings quiet material (and noise) up
+            const float thr = std::pow(10.0f, -1.8f * pct(kComp));
+            tgt_[cThresh] = thr;
+            tgt_[cMakeup] = thr < kRefLevel ? std::pow(kRefLevel / thr, 0.75f) : 1.0f;
+        }
+        if (groups & gSat)
+        {
+            tgt_[cLowsG]  = dbToGain(get(kLows));
+            tgt_[cHighsG] = dbToGain(get(kHighs));
+            setDrive(pct(kLoSat), 9.0f, cLoG, cLoMk, cLoMix);
+            setDrive(pct(kHiSat), 9.0f, cHiG, cHiMk, cHiMix);
+            splitCoeff_ = lpCoeff(get(kSplit), sr);
+        }
+        if (groups & gHiCut)
+        {
+            // 4-pole Butterworth high cut = two biquads with these Qs
+            const float hiCut = get(kHiCut);
+            lpfA_.setCoeffs(BiquadCoeffs::lowpass(sr, hiCut, 0.5412f));
+            lpfB_.setCoeffs(BiquadCoeffs::lowpass(sr, hiCut, 1.3066f));
+        }
+        if (groups & gWobble)
+        {
+            // depths are peak pitch error (squared for fine control at the low end)
+            dev1Slow_ = 0.05f  * sq(pct(kWarp));
+            rate1Slow_ = get(kRpm) * (1.0f / 60.0f);
+            shape1_   = pct(kShape);
+            dev1Fast_ = 0.012f * sq(pct(kFlutter));
+            rate1Fast_ = get(kFlutRate);
+            dev2Slow_ = 0.03f  * sq(pct(kWow));
+            rate2Slow_ = get(kWowRate);
+            dev2Fast_ = 0.010f * sq(pct(kFlutter2));
+            rate2Fast_ = get(kFlut2Rate);
+            tgt_[cWobbleOn] = getBool(kWobbleOn) ? 1.0f : 0.0f;
+        }
+        if (groups & gCuts)
+        {
+            loCutCoeff_ = lpCoeff(get(kLoCut), sr);
+            hiCut2_.setCoeffs(BiquadCoeffs::lowpass(sr, get(kHiCut2), 0.7071f));
+        }
+        if (groups & gNoise)
+        {
+            // master is nominal (x1) at 50 %, +12 dB at 100 %
+            const float master = getBool(kNoiseOn) ? 4.0f * sq(pct(kNoise)) : 0.0f;
+            tgt_[cHum]     = sq(pct(kHum))      * 0.12f * master;
+            tgt_[cBuzz]    = sq(pct(kBuzz))     * 0.10f * master;
+            tgt_[cHead]    = sq(pct(kHeadBuzz)) * 0.50f * master;
+            tgt_[cHiss]    = sq(pct(kHiss))     * 0.10f * master;
+            tgt_[cCrackle] = sq(pct(kCrackle))  * 0.60f * master;
+            const float clicksPerSec = 2.0f + 60.0f * pct(kCrackle);
+            crackleThresh_ = (uint32_t)(clicksPerSec / sr * 4294967296.0f);
+            noisePre_ = getInt(kNoisePos) == 1;
+
+            // head switching: how long the signal is held at each switch, in samples. It follows
+            // the Head Buzz knob and the noise master like the rasp does.
+            const float headHold = getBool(kNoiseOn) ? pct(kHeadBuzz) * minf(2.0f * pct(kNoise), 1.0f) : 0.0f;
+            hsLen_[0] = headHold * 6.0f;
+            hsLen_[1] = headHold * 3.75f;   // the two heads are not quite alike
+        }
+        if (groups & gChorus)
+        {
+            choSpeed_ = get(kChoSpeed);
+            choDelayTarget_ = clamp(get(kChoDelay) * 0.001f * sr, 4.0f, (float)kChorusDelaySamples - 8.0f);
+            choWidth_ = pct(kChoWidth);
+        }
+        if (groups & gMic)
+        {
+            const MicCurve& mc = kMicCurves[clamp(getInt(kMicType), 0, 3)];
+            micHp_.setCoeffs(BiquadCoeffs::highpass(sr, mc.hpHz, 0.7071f));
+            micPk_.setCoeffs(BiquadCoeffs::peak(sr, mc.peakHz, mc.peakQ, mc.peakDb));
+            micLp_.setCoeffs(BiquadCoeffs::lowpass(sr, mc.lpHz, 0.7071f));
+            tgt_[cMicGain] = dbToGain(get(kMicGain));
+        }
+        if (groups & gDeck)
+        {
+            const bool deck = getBool(kDeckOn);
+            tgt_[cAgc]    = deck ? pct(kAgc) : 0.0f;
+            tgt_[cDrift]  = deck ? pct(kDrift) : 0.0f;
+            tgt_[cBreath] = deck ? pct(kBreathing) : 0.0f;
+            trackErr_     = deck ? pct(kTracking) : 0.0f;
+        }
+    }
+
+    // amount 0..1 -> clipper gain, make-up and clean/driven blend.
+    void setDrive(float amount, float maxExtraGain, int gIdx, int mkIdx, int mixIdx)
+    {
+        const float g = 1.0f + maxExtraGain * amount * amount;
+        tgt_[gIdx]   = g;
+        tgt_[mkIdx]  = kRefLevel / softClip(g * kRefLevel);
+        tgt_[mixIdx] = clamp(amount * 6.0f, 0.0f, 1.0f);
+    }
+
+    // ----- every 16 samples: smoothing, modulation, compressor gain -----------
+    void controlTick()
+    {
+        // Smoothed control values land exactly on their targets, so "is this stage doing
+        // anything" below is a plain compare.
+        for (int i = 0; i < kNumCtl; ++i)
+        {
+            const float d = tgt_[i] - cur_[i];
+            cur_[i] = std::fabs(d) < 1.0e-5f ? tgt_[i] : cur_[i] + kSmooth * d;
+        }
+        for (int i = 0; i < kNumRamp; ++i)
+        {
+            rampS_[i] += kSmooth * (rampT_[i] - rampS_[i]);
+            if (std::fabs(rampT_[i] - rampS_[i]) < 1.0e-4f) rampS_[i] = rampT_[i];   // lands exactly on 0 / 1
+            if (ramp_[i].v == rampS_[i]) ramp_[i].inc = 0.0f; else ramp_[i].to(rampS_[i]);
+        }
+        // A ramp that has arrived must sit exactly on its target so "== 0" skips work.
+        for (int i = 0; i < kNumRamp; ++i)
+            if (rampS_[i] == rampT_[i] && std::fabs(ramp_[i].v - rampT_[i]) < 1.0e-4f) ramp_[i].snap(rampT_[i]);
+
+        // just after a reset: the output stays shut until the emptied delays have filled
+        if (fadeHold_ > 0) { --fadeHold_; rampS_[rOut] = 0.0f; ramp_[rOut].snap(0.0f); }
+
+        // Which stages have anything to do for the next 16 samples.
+        humOn_     = cur_[cHum] > 0.0f     || tgt_[cHum] > 0.0f;
+        buzzOn_    = cur_[cBuzz] > 0.0f    || tgt_[cBuzz] > 0.0f;
+        headOn_    = cur_[cHead] > 0.0f    || tgt_[cHead] > 0.0f;
+        hissOn_    = cur_[cHiss] > 0.0f    || tgt_[cHiss] > 0.0f;
+        crackleOn_ = cur_[cCrackle] > 0.0f || tgt_[cCrackle] > 0.0f;
+        noiseActive_ = humOn_ || buzzOn_ || headOn_ || hissOn_ || crackleOn_;
+        tiltOn_    = cur_[cTiltLo] != 1.0f || cur_[cTiltHi] != 1.0f;
+        driveOn_   = cur_[cDrvMix] > 0.0f;
+        slewOn_    = cur_[cSlew] < 2.0f;
+        loSatOn_   = cur_[cLoMix] > 0.0f;
+        hiSatOn_   = cur_[cHiMix] > 0.0f;
+
+        // compressor: 4:1 above the threshold. (t ^ 0.75 with two square roots)
+        const float thr = cur_[cThresh];
+        if (env_ > thr) { const float s = std::sqrt(thr / env_); compTarget_ = s * std::sqrt(s); }
+        else compTarget_ = 1.0f;
+
+        // wobble: the switch fades both stages in and out
+        const float wob = cur_[cWobbleOn];
+        wf1_.update(sr_, dev1Slow_ * wob, rate1Slow_, dev1Fast_ * wob, rate1Fast_);
+        wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
+        wf1_.tick(shape1_);
+        wf2_.tick(0.0f);
+        wantLatency_.store((int)(wf1_.baseTarget + wf2_.baseTarget + 0.5f), std::memory_order_relaxed);
+
+        // Mix: the dry copy is only kept while Mix is below 100 %. When it is switched in, it
+        // starts empty rather than with whatever was left in it.
+        const bool dryWant = rampT_[rMix] < 1.0f || ramp_[rMix].v < 1.0f;
+        if (dryWant && !dryActive_) { dryDelay_.reset(); dryD_.snap(wf1_.base + wf2_.base); }
+        dryActive_ = dryWant;
+        if (dryActive_) dryD_.to(wf1_.base + wf2_.base);
+
+        // ----- what the screen shows -------------------------------------------
+        // The reels turn while sound comes in or the song plays, coast to a stop about two
+        // seconds after, and lurch with the wobble (the speed error is exaggerated 8 times
+        // so it can be seen). The level follows the output with a slow fall.
+        if (animate_.load(std::memory_order_relaxed))
+        {
+            inEnv_  += (inPeak_  > inEnv_  ? 0.5f : 0.0008f) * (inPeak_  - inEnv_);
+            outEnv_ += (outPeak_ > outEnv_ ? 0.5f : 0.0020f) * (outPeak_ - outEnv_);
+            spin_ += 0.0015f * (((inEnv_ > 0.003f || playing_) ? 1.0f : 0.0f) - spin_);
+            const float speed = clamp(1.0f + 8.0f * (wf1_.err + wf2_.err), 0.15f, 2.5f);
+            reelPhase_ += kReelStepsPerSec * speed * spin_ * (float)kCtrl / sr_;
+            if (reelPhase_ >= 1.0f) reelPhase_ -= 1.0f;
+        }
+
+        // chorus: only while it is on. Switched on, it starts with empty delays at the right length.
+        const bool choWant = rampT_[rChorus] > 0.0f || ramp_[rChorus].v > 0.0f;
+        if (choWant && !choActive_)
+        {
+            choDelay_[0].reset(); choDelay_[1].reset();
+            choBase_ = choDelayTarget_;
+            choD_[0].snap(choBase_); choD_[1].snap(choBase_);
+        }
+        choActive_ = choWant;
+        if (choActive_)
+        {
+            // L and R LFOs up to half a cycle apart
+            choPhase_ += choSpeed_ * (float)kCtrl / sr_;
+            if (choPhase_ >= 1.0f) choPhase_ -= 1.0f;
+            choBase_ += kSmooth * (choDelayTarget_ - choBase_);
+            const float depth = minf(0.4f * choBase_, 0.004f * sr_);
+            choD_[0].to(choBase_ + depth * lfoSin(choPhase_));
+            choD_[1].to(choBase_ + depth * lfoSin(choPhase_ + 0.5f * choWidth_));
+        }
+
+        // dropouts: now and then the level dips for a few milliseconds
+        if (dropTicks_ > 0) { if (--dropTicks_ == 0) dropTarget_ = 1.0f; }
+        else if (dropAmount_ > 0.0f)
+        {
+            const float perTick = 8.0f * dropAmount_ * dropAmount_ * (float)kCtrl / sr_;
+            if (dropRng_.nextFloat() < perTick)
+            {
+                const float ms = 4.0f + 70.0f * dropRng_.nextFloat() * dropRng_.nextFloat();
+                dropTicks_  = 1 + (int)(ms * 0.001f * sr_ * kCtrlInv);
+                dropTarget_ = 1.0f - dropAmount_ * (0.4f + 0.6f * dropRng_.nextFloat());
+            }
+        }
+        else dropTarget_ = 1.0f;
+
+        // ----- deck ------------------------------------------------------------
+        // AGC: after the last peak the gain holds for a second and a half, then creeps back
+        // up over a few seconds and brings the background up with it.
+        agcAmt_ = cur_[cAgc];
+        agcActive_ = agcAmt_ > 0.0f || tgt_[cAgc] > 0.0f || std::fabs(agcGain_ - 1.0f) > 1.0e-3f;
+        if (agcActive_)
+        {
+            if (agcHold_ > 0) --agcHold_;
+            else agcEnv_ = maxf(agcEnv_ - agcRelease_ * agcEnv_, 1.0e-4f);
+            agcTarget_ = 1.0f + agcAmt_ * (clamp(kRefLevel / agcEnv_, 0.25f, 5.0f) - 1.0f);
+        }
+        else { agcGain_ = agcTarget_ = 1.0f; agcEnv_ = kRefLevel; }
+
+        // Tracking: now and then the Hi-Fi carrier drops. A burst of static, the deck falls
+        // back to the dull mono linear track for a moment, another short burst, Hi-Fi again.
+        if (fbTicks_ > 0)
+        {
+            if (--fbTicks_ == 0)
+            {
+                if (fbState_ == 1)      { fbState_ = 2; fbTicks_ = fbLinearTicks_; staticAmp_ = 0.0f; }
+                else if (fbState_ == 2) { fbState_ = 3; fbTicks_ = 1 + (int)(0.004f * sr_ * kCtrlInv); staticAmp_ = fbStatic_ * 0.6f; }
+                else                    { fbState_ = 0; staticAmp_ = 0.0f; }
+            }
+        }
+        else if (trackErr_ > 0.0f)
+        {
+            const float perTick = 4.0f * trackErr_ * trackErr_ * (float)kCtrl / sr_;
+            if (fbRng_.nextFloat() < perTick)
+            {
+                fbState_ = 1;
+                fbTicks_ = 1 + (int)((0.003f + 0.02f * fbRng_.nextFloat()) * sr_ * kCtrlInv);
+                fbStatic_ = 0.08f + 0.35f * trackErr_ * fbRng_.nextFloat();
+                staticAmp_ = fbStatic_;
+                fbLinearTicks_ = 1 + (int)((0.12f + 0.8f * fbRng_.nextFloat() * fbRng_.nextFloat()) * sr_ * kCtrlInv);
+            }
+        }
+        const bool fallback = fbState_ == 2;
+        linTarget_ = fallback ? 1.0f : 0.0f;
+        if (!fallback && linAmt_ != 0.0f && linAmt_ < 1.0e-4f)
+        {
+            // Back on the Hi-Fi track: switch the backup-track stage off and empty its filters,
+            // so the next fall-back starts clean.
+            linAmt_ = 0.0f;
+            fbLp_.reset();
+            fbHp_ = splat(0.0f);
+        }
+        fbMono_ += 0.25f * ((fallback ? 1.0f : 0.0f) - fbMono_);
+        if (fbMono_ < 1.0e-4f) fbMono_ = 0.0f;
+        hsOn_ = hsLen_[0] > 0.0f && !fallback;   // no Hi-Fi heads in play on the linear track
+        if (!hsOn_) hsLeft_ = 0;                 // an interrupted hold must not carry on later
+
+        // Breathing lets the hiss rise and fall with the signal, the way a mistracking
+        // noise-reduction compander does. On the backup track the hiss is twice as loud.
+        hissDyn_ = (fallback ? 2.0f : 1.0f) * (1.0f + cur_[cBreath] * 6.0f * minf(env_, 1.0f));
+
+        // Drift: the audio track on the tape's edge wanders off the head. A slow random
+        // movement, on the head most of the time with a deeper excursion now and then.
+        const float edge = cur_[cDrift];
+        edgeActive_ = edge > 0.0f;
+        if (edgeActive_)
+        {
+            edgeN1_ += 0.0028f * (edgeRng_.nextBipolar() - edgeN1_);
+            edgeN2_ += 0.0028f * (edgeN1_ - edgeN2_);
+            float m = clamp(0.4f + 0.5f * edgeN2_ * 65.0f, 0.0f, 1.0f);   // 65 brings the drift to about unit size
+            m *= m;
+            edgeMuffle_ += 0.05f * (edge * m - edgeMuffle_);
+            edgeGain_   += 0.05f * ((1.0f - 0.65f * edge * m) - edgeGain_);
+        }
+    }
+
+    // ----- telling the host what changed inside the plugin -----------------------
+    // The MPC does not read values back by itself. Three things change from the inside:
+    // choosing a built-in program (all the knobs), the meters that drive the reels and the
+    // sun, and how late the output is. The host has to be told, and those calls must not come
+    // from the audio thread, so this small thread makes them, 20 times a second at most and
+    // only when something changed. It says nothing until the host has started the plugin.
+    void notifierMain()
+    {
+        int lastReel = -1, lastLevel = -1;
+        int latCandidate = 0, latStable = 0, latReported = 0;
+        while (!quit_.load())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            if (!started_.load()) continue;
+
+            if (pushPending_.exchange(false))
+            {
+                for (int i = 0; i < numParams() && !quit_.load(); ++i) notifyHostParameterChanged(i);
+                lastReel = lastLevel = -1;
+            }
+
+            if (animate_.load(std::memory_order_relaxed))
+            {
+                const int reel = clamp((int)(visReel_.load(std::memory_order_relaxed) * (float)kReelFrames), 0, kReelFrames - 1);
+                if (reel != lastReel)
+                {
+                    lastReel = reel;
+                    setNormalised(kVisReel, (float)reel / (float)(kReelFrames - 1));
+                    notifyHostParameterChanged(kVisReel);
+                }
+                // -42 dBFS .. 0 dBFS across the frames
+                const float env = visLevel_.load(std::memory_order_relaxed);
+                const float db = 20.0f * std::log10(env > 1.0e-6f ? env : 1.0e-6f);
+                const int level = clamp((int)((db + 42.0f) * (1.0f / 42.0f) * (float)(kLevelFrames - 1) + 0.5f), 0, kLevelFrames - 1);
+                if (level != lastLevel)
+                {
+                    lastLevel = level;
+                    setNormalised(kVisLevel, (float)level / (float)(kLevelFrames - 1));
+                    notifyHostParameterChanged(kVisLevel);
+                }
+            }
+
+            // Latency: the output is late by the resting length of the two wobble delays. Tell
+            // the host once that length has been steady for half a second and is more than
+            // 32 samples (0.7 ms) away from what it was told last, so turning a knob does not
+            // send a stream of updates.
+            if (kReportLatency)
+            {
+                const int want = wantLatency_.load(std::memory_order_relaxed);
+                if (std::abs(want - latCandidate) > 8) { latCandidate = want; latStable = 0; }
+                else if (latStable < 10) ++latStable;
+                if (latStable >= 10 && std::abs(latCandidate - latReported) > 32)
+                {
+                    latReported = latCandidate;
+                    setLatency(latCandidate);
+                }
+            }
+        }
+    }
+
+    // ----- built-in programs ---------------------------------------------------
+    void addPrograms()
+    {
+        // Every parameter except the last one (Animation): a program does not touch it.
+        std::vector<float> defaults;
+        for (int i = 0; i < kAnimate; ++i) defaults.push_back(param(i).def);
+        auto program = [&](const char* name, std::initializer_list<std::pair<int, float>> changes)
+        {
+            std::vector<float> v = defaults;
+            for (const std::pair<int, float>& c : changes) v[(size_t)c.first] = c.second;
+            addProgram(name, v);
+        };
+
+        program("Home Recording", { {kAgc, 25}, {kDrift, 10} });
+        // A new rental tape: clean, a trace of breathing, loses lock once in a long while.
+        program("Fresh Rental", {
+            {kDrive, 15}, {kWear, 8}, {kComp, 15}, {kHiCut, 12000}, {kHiSat, 20},
+            {kWarp, 15}, {kFlutter, 15}, {kWow, 10}, {kFlutter2, 10}, {kHiCut2, 14000},
+            {kHum, 5}, {kHeadBuzz, 5}, {kHiss, 20}, {kCrackle, 5},
+            {kTracking, 6}, {kBreathing, 15} });
+        program("3rd Gen Copy", {
+            {kDrive, 45}, {kWear, 45}, {kComp, 45}, {kHiCut, 6000}, {kHighs, -8}, {kHiSat, 60}, {kLoSat, 35},
+            {kWarp, 50}, {kFlutter, 45}, {kWow, 45}, {kFlutter2, 40}, {kLoCut, 100}, {kHiCut2, 7000},
+            {kHum, 25}, {kHeadBuzz, 25}, {kHiss, 55}, {kCrackle, 30},
+            {kAgc, 40}, {kDrift, 35} });
+        program("Vaporwave Mall", {
+            {kDrive, 30}, {kComp, 35}, {kHiCut, 7000}, {kWarp, 60}, {kRpm, 20}, {kShape, 50}, {kFlutter, 20},
+            {kWow, 40}, {kWowRate, 0.4f}, {kHiss, 25}, {kCrackle, 10},
+            {kChorusOn, 1}, {kChoMix, 55}, {kChoSpeed, 0.35f}, {kChoDelay, 18}, {kChoWidth, 90},
+            {kDrift, 20} });
+        // The camcorder's level control does the squashing here.
+        program("Camcorder 89", {
+            {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
+            {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
+            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 2},
+            {kAgc, 80}, {kDrift, 10} });
+        // A tape that will not track: buzz on the music, static, drops to the backup track.
+        program("Tracking Error", {
+            {kWarp, 70}, {kRpm, 90}, {kShape, 80}, {kFlutter, 60}, {kFlutRate, 16}, {kWow, 30},
+            {kHeadBuzz, 60}, {kHiss, 40}, {kCrackle, 40}, {kDropouts, 60},
+            {kTracking, 85}, {kBreathing, 30} });
+        program("Late Night TV", {
+            {kDrive, 40}, {kWear, 35}, {kComp, 50}, {kHiCut, 5000}, {kWarp, 25}, {kLoCut, 180},
+            {kHum, 40}, {kBuzz, 25}, {kHiss, 45}, {kMono, 1},
+            {kAgc, 30}, {kDrift, 15} });
+        program("Clean Widener", {
+            {kDrive, 0}, {kWear, 0}, {kComp, 0}, {kHiCut, 18000}, {kSatOn, 0},
+            {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000}, {kNoise, 0},
+            {kChorusOn, 1}, {kChoMix, 50}, {kChoSpeed, 0.5f}, {kChoDelay, 10}, {kChoWidth, 100},
+            {kDeckOn, 0} });
+
+        // A worn-out 80s corporate training tape: mono, narrow, a level control that pumps the
+        // hiss up in every pause, slow warble, head buzz, sound that comes and goes, the odd dropout.
+        program("Training Video", {
+            {kDrive, 40}, {kTone, -15}, {kWear, 40}, {kComp, 35}, {kHiCut, 4500},
+            {kHighs, -6}, {kHiSat, 55}, {kLoSat, 30}, {kSplit, 2000},
+            {kWarp, 45}, {kRpm, 34}, {kShape, 60}, {kFlutter, 35}, {kFlutRate, 7},
+            {kWow, 40}, {kWowRate, 0.5f}, {kFlutter2, 30}, {kFlut2Rate, 12}, {kLoCut, 150}, {kHiCut2, 6000},
+            {kHum, 30}, {kBuzz, 15}, {kHeadBuzz, 35}, {kHiss, 50}, {kCrackle, 20}, {kNoise, 40}, {kNoisePos, 1},
+            {kMono, 1}, {kDropouts, 25},
+            {kAgc, 75}, {kDrift, 40} });
+        // The machine ate the tape.
+        program("Chewed Tape", {
+            {kDrive, 35}, {kWear, 50}, {kComp, 45}, {kHiCut, 5500},
+            {kWarp, 90}, {kRpm, 45}, {kShape, 100}, {kFlutter, 70}, {kFlutRate, 5},
+            {kWow, 60}, {kWowRate, 1.5f}, {kFlutter2, 45}, {kFlut2Rate, 9}, {kHiCut2, 7000},
+            {kHiss, 40}, {kCrackle, 50}, {kHeadBuzz, 20}, {kDropouts, 80},
+            {kAgc, 20}, {kDrift, 85} });
+        // A message left on a micro-cassette answering machine.
+        program("Answer Machine", {
+            {kDrive, 50}, {kWear, 30}, {kComp, 60}, {kHiCut, 3500}, {kHiSat, 50},
+            {kWarp, 25}, {kRpm, 60}, {kFlutter, 40}, {kFlutRate, 11}, {kWow, 20}, {kLoCut, 300}, {kHiCut2, 4000},
+            {kHum, 20}, {kHeadBuzz, 0}, {kHiss, 45}, {kCrackle, 10}, {kNoise, 40},
+            {kMicOn, 1}, {kMicType, 2}, {kMicGain, 3}, {kMono, 1},
+            {kAgc, 60} });
+        // Wide, slow and hazy, with hardly any noise.
+        program("Dream Sequence", {
+            {kDrive, 15}, {kTone, 10}, {kWear, 10}, {kComp, 30}, {kHiCut, 11000}, {kHiSat, 25},
+            {kWarp, 55}, {kRpm, 33}, {kShape, 20}, {kFlutter, 10}, {kWow, 55}, {kWowRate, 0.25f}, {kFlutter2, 10},
+            {kHum, 0}, {kHeadBuzz, 0}, {kHiss, 15}, {kCrackle, 5}, {kNoise, 35},
+            {kChorusOn, 1}, {kChoMix, 70}, {kChoSpeed, 0.2f}, {kChoDelay, 22}, {kChoWidth, 100},
+            {kDrift, 15} });
+        // Just a little tape: gentle clipping and the faintest wobble, no noise.
+        program("Subtle Glue", {
+            {kDrive, 20}, {kWear, 5}, {kComp, 35}, {kHiCut, 15000}, {kLoSat, 15}, {kHighs, -1}, {kHiSat, 20},
+            {kWarp, 10}, {kFlutter, 10}, {kWow, 8}, {kFlutter2, 8}, {kLoCut, 30}, {kHiCut2, 16000},
+            {kNoiseOn, 0} });
+
+        // Added in 1.2, built around the deck section.
+        // A good tape in a deck that cannot quite follow it.
+        program("Bad Tracking", {
+            {kDrive, 20}, {kComp, 25}, {kHiCut, 14000}, {kWarp, 10}, {kFlutter, 10}, {kWow, 5}, {kFlutter2, 5},
+            {kHiCut2, 15000}, {kHum, 5}, {kHeadBuzz, 45}, {kHiss, 20}, {kCrackle, 10}, {kDropouts, 15},
+            {kTracking, 65}, {kBreathing, 25} });
+        // Recorded at the slowest speed to fit six hours on the tape: about 100 Hz to 6 kHz,
+        // more hiss and more wobble.
+        program("Six Hour Tape", {
+            {kDrive, 30}, {kWear, 30}, {kComp, 40}, {kHiCut, 6000},
+            {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
+            {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
+            {kAgc, 35}, {kDrift, 25} });
+        // A camcorder at the back of the hall: the level control rides everything.
+        program("Wedding Video", {
+            {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
+            {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
+            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 1},
+            {kAgc, 90}, {kDrift, 20} });
+        // The best VHS could do, the Hi-Fi track on a good day: wide, steady, quiet, breathing a little.
+        program("Hi-Fi Master", {
+            {kDrive, 15}, {kWear, 0}, {kComp, 25}, {kHiCut, 17000}, {kLoSat, 15}, {kHighs, 0}, {kHiSat, 15},
+            {kWarp, 5}, {kFlutter, 5}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
+            {kHum, 0}, {kHeadBuzz, 8}, {kHiss, 12}, {kCrackle, 0},
+            {kBreathing, 35} });
+        // The top edge of the tape is creased: the sound comes and goes.
+        program("Edge Damage", {
+            {kDrive, 25}, {kHiCut, 8000}, {kWarp, 30}, {kShape, 60}, {kFlutter, 30},
+            {kHiss, 40}, {kCrackle, 25}, {kDropouts, 30},
+            {kAgc, 15}, {kDrift, 95} });
+        // Taped from the crowd on a boombox and copied a few times.
+        program("Bootleg Concert", {
+            {kDrive, 60}, {kWear, 25}, {kComp, 50}, {kHiCut, 7000}, {kLoSat, 45}, {kHiSat, 50},
+            {kWarp, 30}, {kFlutter, 35}, {kHum, 15}, {kHiss, 50}, {kNoise, 35}, {kNoisePos, 1},
+            {kMicOn, 1}, {kMicType, 3}, {kMicGain, 2}, {kMono, 1},
+            {kAgc, 65}, {kDrift, 30} });
+        // Local cable studio: hum, buzz and a level control doing its best.
+        program("Public Access", {
+            {kDrive, 35}, {kComp, 40}, {kHiCut, 7000}, {kWarp, 20}, {kFlutter, 20}, {kLoCut, 120},
+            {kHum, 50}, {kBuzz, 35}, {kHeadBuzz, 25}, {kHiss, 40}, {kMono, 1},
+            {kAgc, 50}, {kDrift, 10} });
+
+        // Everything neutral: the sound passes through unchanged. A blank tape to start from.
+        // (Always the last program.)
+        program("Init", {
+            {kDrive, 0}, {kTone, 0}, {kWear, 0}, {kComp, 0}, {kHiCut, 18000},
+            {kSatOn, 0}, {kLows, 0}, {kLoSat, 0}, {kHighs, 0}, {kHiSat, 0},
+            {kWarp, 0}, {kShape, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
+            {kHum, 0}, {kBuzz, 0}, {kHeadBuzz, 0}, {kHiss, 0}, {kCrackle, 0}, {kDropouts, 0},
+            {kDeckOn, 0} });
+    }
+
+    // ----- state ------------------------------------------------------------------
+    std::thread notifier_;
+    std::atomic<bool> quit_{false}, pushPending_{false};
+    std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
+    std::atomic<bool> animate_{true};                     // the Animation switch
+    std::atomic<float> visReel_{0.0f}, visLevel_{0.0f};   // audio thread -> notifier thread
+    std::atomic<int> wantLatency_{12};                    // resting delay of the tape path, in samples
+
+    // which stages have work to do (set in controlTick)
+    bool  humOn_ = false, buzzOn_ = false, headOn_ = false, hissOn_ = false, crackleOn_ = false;
+    bool  tiltOn_ = false, driveOn_ = false, slewOn_ = false, loSatOn_ = false, hiSatOn_ = false;
+    bool  choActive_ = false, dryActive_ = false;
+    int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
+
+    // what the screen shows (audio thread)
+    bool  playing_ = false;
+    float inPeak_ = 0, outPeak_ = 0, inEnv_ = 0, outEnv_ = 0, spin_ = 0, reelPhase_ = 0;
+
+    float sr_ = 0.0f;
+    int   ctrlCount_ = 0;
+    float lastNorm_[kNumParams] = {};   // parameter values readParams() last saw
+    int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 rpm (see formatValue)
+
+    float tgt_[kNumCtl] = {}, cur_[kNumCtl] = {};
+    float rampT_[kNumRamp] = {}, rampS_[kNumRamp] = {};
+    Ramp  ramp_[kNumRamp];
+
+    // chorus
+    TapeDelay choDelay_[2];
+    Ramp  choD_[2];
+    float choPhase_ = 0.0f, choSpeed_ = 0.6f, choWidth_ = 0.7f;
+    float choDelayTarget_ = 500.0f, choBase_ = 500.0f;
+
+    // mic
+    PairBiquad micHp_, micPk_, micLp_;
+
+    // preamp, wear, compressor
+    Stereo tiltLp_ = {0.0f, 0.0f}, slew_ = {0.0f, 0.0f};
+    float tiltCoeff_ = 0.1f;
+    float env_ = 0.0f, envAttack_ = 0.01f, envRelease_ = 0.0002f;
+    float compGain_ = 1.0f, compTarget_ = 1.0f;
+
+    // saturator and filters
+    Stereo splitLp_ = {0.0f, 0.0f}, loCutLp_ = {0.0f, 0.0f};
+    float splitCoeff_ = 0.3f, loCutCoeff_ = 0.01f;
+    PairBiquad lpfA_, lpfB_, hiCut2_;
+
+    // wobble
+    PairDelay wf1Delay_, wf2Delay_;
+    PairDelay dryDelay_;                 // the untouched input, for Mix
+    Ramp  dryD_;                         // its delay: the resting length of the two wobble delays
+    TapeSpeed wf1_, wf2_;
+    float dev1Slow_ = 0, rate1Slow_ = 0.55f, shape1_ = 0, dev1Fast_ = 0, rate1Fast_ = 9;
+    float dev2Slow_ = 0, rate2Slow_ = 0.8f,  dev2Fast_ = 0, rate2Fast_ = 14;
+
+    // noise
+    bool  noiseActive_ = true, noisePre_ = false, headFlip_ = false;
+    float humPh_ = 0, buzzPh_ = 0, headPh_ = 0, humInc_ = 0, buzzInc_ = 0, headInc_ = 0;
+    float buzzLp_ = 0, headLp_ = 0, headHp_ = 0;
+    Stereo hissLp_ = {0.0f, 0.0f}, click_ = {0.0f, 0.0f};
+    Xorshift32 hissRng_[2] = { Xorshift32(0x51f15eedu), Xorshift32(0x0c0ffee1u) };
+    Xorshift32 crackleRng_{0x7a9e5eedu};
+    uint32_t crackleThresh_ = 0;
+
+    // deck
+    PairBiquad fbLp_;
+    Stereo fbHp_ = {0.0f, 0.0f}, edgeLp_ = {0.0f, 0.0f}, hsHeld_ = {0.0f, 0.0f};
+    float fbHpCoeff_ = 0.01f, edgeCoeff_ = 0.15f;
+    float linAmt_ = 0, linTarget_ = 0;                        // how much of the backup track is heard
+    float hissDyn_ = 1.0f;
+    bool  agcActive_ = false;
+    float agcAmt_ = 0, agcEnv_ = kRefLevel, agcGain_ = 1.0f, agcTarget_ = 1.0f, agcRelease_ = 0.0001f;
+    int   agcHold_ = 0, agcHoldTicks_ = 4000;
+    bool  edgeActive_ = false;
+    float edgeN1_ = 0, edgeN2_ = 0, edgeMuffle_ = 0, edgeGain_ = 1.0f;
+    Xorshift32 edgeRng_{0xed9e5eedu};
+    float trackErr_ = 0;                                      // Tracking amount, 0..1
+    float hsLen_[2] = {0, 0}, hsFrac_ = 0, hsPhase_ = 0, hsInc_ = 0;
+    int   hsLeft_ = 0;
+    bool  hsFlip_ = false, hsOn_ = false;
+    int   fbState_ = 0, fbTicks_ = 0, fbLinearTicks_ = 0;     // 0 idle, 1 static, 2 on the linear track, 3 static
+    float fbStatic_ = 0, staticAmp_ = 0, fbMono_ = 0;
+    Xorshift32 fbRng_{0x7ac61e55u}, staticRng_{0x57a71c00u};
+
+    // dropouts
+    Xorshift32 dropRng_{0xd20b0075u};
+    float dropAmount_ = 0, dropGain_ = 1.0f, dropTarget_ = 1.0f;
+    int   dropTicks_ = 0;
+};
+
+// This macro creates the exported VSTPluginMain entry point. Keep it last.
+MPC_PLUGIN_ENTRY(VHSVibes)

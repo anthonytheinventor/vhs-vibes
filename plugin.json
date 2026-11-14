@@ -1,0 +1,17 @@
+{
+  "name": "VHS Vibes",
+  "manufacturer": "anthonytheinventor",
+  "version": "1.3.0",
+  "format": "vst2",
+  "kind": "effect",
+  "uid": "AYlM",
+  "numInputs": 2,
+  "numOutputs": 2,
+  "category": "Effect",
+  "file32": "VST/vhs-vibes-arm32.so",
+  "file64": "VST/vhs-vibes-arm64.so",
+  "description": "VHS Vibes: a VHS tape degradation effect (pitch wobble, saturation, generation loss, hum, hiss and crackle) for the MPC.",
+  "author": "anthonytheinventor",
+  "url": "",
+  "license": "MIT"
+}

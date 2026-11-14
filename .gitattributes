@@ -1,0 +1,3 @@
+# Keep Unix line endings everywhere: the build and the tests run under Linux / WSL.
+* text=auto eol=lf
+*.png binary

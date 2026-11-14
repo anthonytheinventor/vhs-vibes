@@ -1,0 +1,72 @@
+{
+  "kit": { "theme": "violet", "accent": "ffff2e97" },
+  "pages": [
+    {
+      "name": "TAPE",
+      "controls": [
+        { "param": "Drive",     "widget": "knob" },
+        { "param": "Tone",      "widget": "knob", "polarity": "bipolar" },
+        { "param": "Wear",      "widget": "knob" },
+        { "param": "Comp",      "widget": "knob" },
+        { "param": "Hi Cut",    "widget": "knob" },
+        { "param": "Dropouts",  "widget": "knob" },
+        { "param": "Mono",      "widget": "switch" },
+        { "param": "Output",    "widget": "fader" },
+        { "param": "Saturator", "widget": "switch" },
+        { "param": "Split",     "widget": "knob" },
+        { "param": "Lows",      "widget": "knob", "polarity": "bipolar" },
+        { "param": "Lo Sat",    "widget": "knob" },
+        { "param": "Highs",     "widget": "knob", "polarity": "bipolar" },
+        { "param": "Hi Sat",    "widget": "knob" }
+      ]
+    },
+    {
+      "name": "WOBBLE",
+      "controls": [
+        { "param": "Warp",       "widget": "knob" },
+        { "param": "RPM",        "widget": "knob" },
+        { "param": "Shape",      "widget": "knob" },
+        "empty",
+        { "param": "Flutter",    "widget": "knob" },
+        { "param": "Flut Rate",  "widget": "knob" },
+        "empty",
+        "empty",
+        { "param": "Wow",        "widget": "knob" },
+        { "param": "Wow Rate",   "widget": "knob" },
+        { "param": "Flutter 2",  "widget": "knob" },
+        { "param": "Flut2 Rate", "widget": "knob" },
+        { "param": "Lo Cut",     "widget": "knob" },
+        { "param": "Hi Cut 2",   "widget": "knob" }
+      ]
+    },
+    {
+      "name": "NOISE",
+      "controls": [
+        { "param": "Hum",       "widget": "fader" },
+        { "param": "Buzz",      "widget": "fader" },
+        { "param": "Head Buzz", "widget": "fader" },
+        { "param": "Hiss",      "widget": "fader" },
+        { "param": "Crackle",   "widget": "fader" },
+        { "param": "Noise",     "widget": "fader" },
+        { "param": "Noise Pos", "widget": "switch" }
+      ]
+    },
+    {
+      "name": "INPUT",
+      "controls": [
+        { "param": "Chorus",    "widget": "switch" },
+        { "param": "Cho Mix",   "widget": "fader" },
+        { "param": "Cho Speed", "widget": "knob" },
+        { "param": "Cho Delay", "widget": "knob" },
+        { "param": "Cho Width", "widget": "knob" },
+        "empty",
+        "empty",
+        "empty",
+        { "param": "Mic",       "widget": "switch" },
+        { "param": "Mic Type",  "widget": "switch" },
+        { "param": "Mic Gain",  "widget": "knob", "polarity": "bipolar" }
+      ]
+    }
+  ],
+  "style": { "background": "ff1a0b2e", "accent": "ffff2e97", "text": "ffffffff", "muted": "ff7fdbff" }
+}
