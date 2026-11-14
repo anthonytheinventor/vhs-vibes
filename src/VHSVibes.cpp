@@ -703,6 +703,8 @@ public:
     // is resumed and has been reset. Any thread.
     void goQuiet() { suspended_.store(true); started_.store(false); }
     void resume()  { suspended_.store(false); resetPending_.store(true); }
+    // The host is about to write a whole program or state (true) or has finished (false).
+    void loading(bool on) { loading_.store(on); }
 
     // A program is about to be chosen: it takes over the Animation and HQ switches as they
     // stand, so they do not move. (The host's thread, the same one that then loads the program.)
@@ -884,15 +886,21 @@ public:
         else if (resetWanted_.load(std::memory_order_relaxed) && resetWanted_.exchange(false))
             fadeOut_ = kFadeTicks;       // a program change or state load: fade out, then reset
 
-        // Once per block: recompute the values of whichever groups had a parameter move.
-        uint32_t dirty = 0;
-        for (int i = 0; i < kNumParams; ++i)
+        // Once per block: recompute the values of whichever groups had a parameter move. Not
+        // while the host is writing a program or a state, nor while the output fades out for
+        // the reset that follows: the old sound keeps its old settings until then, and the
+        // reset reads every parameter.
+        if (fadeOut_ == 0 && !loading_.load(std::memory_order_relaxed))
         {
-            const float v = getNormalised(i);
-            if (v != lastNorm_[i]) { lastNorm_[i] = v; dirty |= groupOf(i); }
+            uint32_t dirty = 0;
+            for (int i = 0; i < kNumParams; ++i)
+            {
+                const float v = getNormalised(i);
+                if (v != lastNorm_[i]) { lastNorm_[i] = v; dirty |= groupOf(i); }
+            }
+            if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
+            if (dirty) readParams(dirty);
         }
-        if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
-        if (dirty) readParams(dirty);
         playing_ = ctx.transport.valid && ctx.transport.playing;
 
         const float* inL = (ctx.inputs != nullptr && ctx.numInputs > 0) ? ctx.inputs[0] : nullptr;
@@ -1808,6 +1816,7 @@ private:
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
     std::atomic<bool> resetPending_{false};               // a reset is due at the start of the next block
     std::atomic<bool> resetWanted_{false};                // the host asked for one: fade out first, then reset
+    std::atomic<bool> loading_{false};                    // the host is writing a program or a state right now
     std::atomic<bool> suspended_{false};                  // the host has suspended us
     std::atomic<float> srWanted_{0.0f};                   // the sample rate the host announced
     std::atomic<bool> tellHost_{false};                   // the host asked for the pending reset: send it the values after
@@ -1916,23 +1925,32 @@ private:
     int   dropTicks_ = 0;
 };
 
-// The framework's dispatcher with three additions:
+// The framework's dispatcher with four additions:
 //  - Choosing a program leaves the Animation and HQ switches as they were. The framework sets
 //    every value a program lists, and the parameters added after Animation have to be in that
 //    list, so the program is first told the present position of the two switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
 //    their resting values before any state is loaded, so such a state sounds as it was saved
 //    whatever this instance was doing before; a newer state then sets them.
+//  - While a program or a state is being written, the audio thread takes in none of the new
+//    values: they arrive with the reset, after the old sound has faded out.
 //  - When the host suspends the plugin, the notifier thread stops calling the host.
 static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstIntPtr value, void* ptr, float opt)
 {
     VHSVibes* p = static_cast<VHSVibes*>(static_cast<mpc::Plugin*>(e->object));
     if (p == nullptr) return 0;
     if (opcode == effMainsChanged) { if (value != 0) p->resume(); else p->goQuiet(); }
-    else if (opcode == effSetProgram) p->holdSwitches((int)value);
-    else if (opcode == effSetChunk && ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
+    if (opcode != effSetProgram && opcode != effSetChunk) return mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
+
+    // A program or a state: many values at once, then a reset. The audio thread takes none of
+    // them in until all are written and the reset has been asked for.
+    p->loading(true);
+    if (opcode == effSetProgram) p->holdSwitches((int)value);
+    else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
         for (int i = kScrape; i < kNumParams; ++i) p->set(i, p->param(i).def);
-    return mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
+    const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
+    p->loading(false);
+    return result;
 }
 
 // The exported entry point: MPC_PLUGIN_ENTRY of the framework, plus the dispatcher above. Keep it last.

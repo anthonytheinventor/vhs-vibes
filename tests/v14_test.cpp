@@ -505,6 +505,19 @@ int main()
             check(largestStep(out) < 1.3f * largestStep(tail), "a program change fades out and in: no step much beyond the new program's own");
             check(rms(out, out.size() - 4410) > 0.1, "and the new program is playing a moment later");
         }
+        {
+            // a change between two programs that differ in almost every knob: the new settings
+            // must not land on the old sound before it has faded out
+            Fx fx; fx.e->dispatcher(fx.e, effSetProgram, 0, 2, nullptr, 0.0f);   // 3rd Gen Copy
+            fx.set(kNoiseOn, 0); fx.set(kWobbleOn, 0);
+            std::vector<float> out; fx.play(1.0f, 0.5f, nullptr, 300.0f); fx.play(0.1f, 0.5f, &out, 300.0f);
+            const float own = largestStep(out);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, 20, nullptr, 0.0f);          // Init
+            fx.play(0.5f, 0.5f, &out, 300.0f);
+            const std::vector<float> tail(out.end() - 4410, out.end());
+            std::printf("   3rd Gen Copy -> Init while playing: largest step %.3f (3rd Gen Copy steps %.3f, Init %.3f)\n", largestStep(out), own, largestStep(tail));
+            check(largestStep(out) < 1.3f * std::fmax(own, largestStep(tail)), "a change between very different programs does not click either");
+        }
         // quietest 2 ms of a signal, against its usual level (dB)
         auto lowest = [](const std::vector<float>& v, double usual)
         {
