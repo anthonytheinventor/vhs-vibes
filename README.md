@@ -232,31 +232,6 @@ Builds four small programs and runs them on the computer: `host_test` (what the 
 the host and when), `mix_test`, `deck_test` and `levels_test` (measurements of each stage to
 read through). The first two end in PASS or FAIL.
 
-## 🔍 ＦＩＮＥ　ＰＲＩＮＴ
-
-- Built for 32-bit and 64-bit MPCs; passes the SDK host simulator (the one warning, sound
-  with silent input, is the noise section doing its job).
-- Tested on an MPC One+, every version from 1.0 to 1.3.
-- A plugin runs inside the MPC software. A faulty one can freeze or crash the MPC, and
-  third-party plugins are not supported by inMusic / Akai. Save your project first.
-- What comes from real VCR data: heads switch every video field (59.94 Hz); a Hi-Fi deck
-  that loses its carrier makes static and falls back to the mono linear track; camcorder
-  level controls duck fast, hold for seconds and creep back; Hi-Fi noise reduction breathes.
-  The times and depths of those effects are not documented anywhere I could find and are
-  set by ear.
-- CPU: about 0.2 % of one core on a desktop PC for the default program. The 32-bit MPCs are
-  much slower; no figure for them is recorded here. Stages whose amount
-  is zero are skipped, so clean settings cost less: Init takes about a third of Home Recording.
-- Latency: the two wobble stages hold the sound back by their resting length: 12 samples
-  with the wobbles off, about 5 ms on Home Recording, more with slow, deep wobble. The plugin
-  reports that length to the host half a second after it stops changing.
-- After a program change the output is shut for the length of the delays and then fades in
-  over about 20 ms, so presets switch without a click or a pitch slide.
-- The sample rate is not assumed, but only 44.1 kHz has been tested.
-
-**Credits.** The order of the stages follows the idea of James Peck's "VHS Audio Degradation
-Suite" for Reaktor. That ensemble is not used, copied or required: all code here is original.
-
-**Licence.** MIT, see [LICENSE](LICENSE).
+<p align="center"><sub>MIT licence, see <a href="LICENSE">LICENSE</a>. Stage order after the idea of James Peck's "VHS Audio Degradation Suite" for Reaktor; all code here is original.</sub></p>
 
 <p align="center"><i>ｂｅ　ｋｉｎｄ　・　ｒｅｗｉｎｄ</i></p>
