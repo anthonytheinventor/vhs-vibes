@@ -10,6 +10,8 @@ static int g_hostCalls = 0;
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float)
 {
     if (opcode == audioMasterVersion) return 2400;
+    // the helper thread only ever makes these two calls (the audio thread asks for the time)
+    if (opcode != audioMasterAutomate && opcode != audioMasterIOChanged) return 0;
     std::lock_guard<std::mutex> l(g_m);
     ++g_hostCalls;
     return 0;
@@ -103,6 +105,29 @@ static double residualDb(const std::vector<float>& v, double hz)
     return db(std::sqrt(res / (sig > 1e-30 ? sig : 1e-30)));
 }
 
+// A saved state as an older version wrote it: this version's state without the parameters
+// added in 1.4. (Format: "MPCP", version, count, then per parameter: id length, id, two floats.)
+static std::vector<uint8_t> stateBefore14(AEffect* e)
+{
+    void* data = nullptr;
+    const size_t size = (size_t)e->dispatcher(e, effGetChunk, 0, 0, &data, 0.0f);
+    const uint8_t* d = static_cast<const uint8_t*>(data);
+    std::vector<uint8_t> out(d, d + 12);
+    const uint32_t n = (uint32_t)d[8] | (uint32_t)d[9] << 8 | (uint32_t)d[10] << 16 | (uint32_t)d[11] << 24;
+    uint32_t kept = 0;
+    size_t pos = 12;
+    for (uint32_t k = 0; k < n; ++k)
+    {
+        const size_t len = 1 + (size_t)d[pos] + 8;
+        const std::string id(reinterpret_cast<const char*>(d) + pos + 1, d[pos]);
+        if (id != "scrape" && id != "whistle" && id != "hq") { out.insert(out.end(), d + pos, d + pos + len); ++kept; }
+        pos += len;
+    }
+    out.insert(out.end(), d + pos, d + size);
+    for (int i = 0; i < 4; ++i) out[8 + (size_t)i] = (uint8_t)(kept >> (8 * i));
+    return out;
+}
+
 int main()
 {
     int fails = 0;
@@ -129,10 +154,26 @@ int main()
         pitchRange(after, 1000, lo, hi);
         std::printf("   Warp jumps 0 -> 90 %% at 45 rpm:       %+6.0f .. %+5.0f cents in the next 1 s (1.3: -287)\n", lo, hi);
         check(lo > -100 && hi < 100, "Warp 0 -> 90 % stays within 100 cents while the delay grows");
-        std::vector<float> steady; fx.play(8.0f, 0.25f, nullptr); fx.play(4.0f, 0.25f, &steady);
+        std::vector<float> steady; fx.play(8.0f, 0.25f, nullptr); fx.play(8.0f, 0.25f, &steady);
         pitchRange(steady, 1000, lo, hi);
         std::printf("   Warp 90 %%, settled:                   %+6.0f .. %+5.0f cents\n", lo, hi);
-        check(hi - lo > 80, "and the full wobble is there once it has settled");
+        // the same settings chosen before the start, where nothing has to glide
+        Fx ref; ref.set(kRpm, 45.0f); ref.set(kWarp, 90);
+        ref.e->dispatcher(ref.e, effMainsChanged, 0, 0, nullptr, 0.0f); ref.e->dispatcher(ref.e, effMainsChanged, 0, 1, nullptr, 0.0f);
+        std::vector<float> refOut; ref.play(8.0f, 0.25f, nullptr); ref.play(8.0f, 0.25f, &refOut);
+        double rlo, rhi; pitchRange(refOut, 1000, rlo, rhi);
+        std::printf("   Warp 90 %% from the start:             %+6.0f .. %+5.0f cents\n", rlo, rhi);
+        check(std::fabs((hi - lo) - (rhi - rlo)) < 0.25 * (rhi - rlo), "once settled the wobble is as deep as when it was set from the start");
+    }
+    {
+        // the longest glide there is: the slowest, deepest second wobble switched in at once
+        Fx fx; fx.set(kWowRate, 0.1f);
+        fx.play(1.0f, 0.25f, nullptr);
+        fx.set(kWow, 100);
+        std::vector<float> glide; fx.play(8.0f, 0.25f, &glide);
+        pitchRange(glide, 1000, lo, hi);
+        std::printf("   Wow 0 -> 100 %% at 0.1 Hz, the next 8 s: %+6.0f .. %+5.0f cents\n", lo, hi);
+        check(lo > -90 && hi < 90, "the whole glide stays within 90 cents (the wobble itself is 52)");
     }
     {
         Fx fx; fx.set(kChorusOn, 1); fx.set(kChoMix, 100); fx.set(kChoDelay, 30.0f); fx.set(kChoSpeed, 0.05f);
@@ -156,11 +197,12 @@ int main()
         check(pk < 2.0, "the hit stays below 2.0 (the clip is at 1.5; the filters after it overshoot a little)");
     }
     {
-        Fx fx;   // Init: nothing may clip, whatever comes in
-        std::vector<float> out; fx.play(0.5f, 3.0f, nullptr); fx.play(0.2f, 3.0f, &out);
+        // The clip belongs to the AGC and the make-up gain only: Init has neither.
+        Fx fx; fx.set(kComp, 0);
+        std::vector<float> out; fx.play(0.5f, 0.9f, nullptr); fx.play(0.2f, 0.9f, &out);
         double pk = 0; for (float v : out) pk = std::fmax(pk, std::fabs((double)v));
-        std::printf("   Init with a tone of peak 3.0: output peak %.2f\n", pk);
-        check(pk > 2.9, "Init passes a signal far over full scale untouched");
+        std::printf("   Init with a tone of peak 0.90: output peak %.3f\n", pk);
+        check(std::fabs(pk - 0.9) < 0.005, "Init passes a tone just under full scale untouched");
     }
 
     std::printf("3. Mix and Chorus switched in while playing: no dip\n");
@@ -175,14 +217,14 @@ int main()
         check(pk > 0.235, "Mix turned down: the level holds");
     }
     {
-        Fx fx; fx.set(kChoMix, 100); fx.set(kChoDelay, 30.0f);
+        Fx fx; fx.set(kChoMix, 100); fx.set(kChoDelay, 30.0f); fx.set(kChoSpeed, 0.05f); fx.set(kChoWidth, 0);
         fx.play(2.0f, 0.25f, nullptr, 100.0f);
         fx.set(kChorusOn, 1);
         std::vector<float> after; fx.play(0.1f, 0.25f, &after, 100.0f);
         double pk = 1e9;
         for (size_t i = 0; i + 441 <= after.size(); i += 441) { double p = 0; for (size_t k = i; k < i + 441; ++k) p = std::fmax(p, std::fabs((double)after[k])); pk = std::fmin(pk, p); }
         std::printf("   Chorus on (30 ms):  lowest cycle peak in the next 100 ms %.3f of 0.250\n", pk);
-        check(pk > 0.2, "Chorus switched on: no drop to half while its delay fills (the chorus itself moves the level a little)");
+        check(pk > 0.24, "Chorus switched on: the level holds while its delay fills");
     }
 
     std::printf("4. Dropouts take the highs first (Dropouts 100 %%, 60 s)\n");
@@ -253,18 +295,31 @@ int main()
     }
 
     std::printf("8. A NaN from the host does not stay\n");
+    for (int program : {4, 8, 20, 22})   // Camcorder 89 and Training Video (mic, Wear, tone), Init, Tube TV
     {
-        Fx fx; fx.set(kHiCut, 9000); fx.set(kWarp, 30);
-        fx.play(0.5f, 0.25f, nullptr);
+        Fx fx; fx.e->dispatcher(fx.e, effSetProgram, 0, program, nullptr, 0.0f);
+        fx.set(kNoiseOn, 0);
+        std::vector<float> before; fx.play(1.0f, 0.25f, nullptr); fx.play(0.5f, 0.25f, &before);
         float L[128], R[128]; float* io[2] = { L, R };
         for (int i = 0; i < 128; ++i) L[i] = R[i] = 0.1f;
         L[5] = std::nanf("");
         fx.e->processReplacing(fx.e, io, io, 128);
         bool finite = true; for (int i = 0; i < 128; ++i) finite = finite && std::isfinite(L[i]) && std::isfinite(R[i]);
-        std::vector<float> after; fx.play(0.5f, 0.25f, &after);
+        std::vector<float> after; fx.play(1.0f, 0.25f, nullptr); fx.play(0.5f, 0.25f, &after);
         for (float v : after) finite = finite && std::isfinite(v);
+        std::printf("   program %2d: level before %.3f, a second after the NaN %.3f\n", program, rms(before), rms(after));
         check(finite, "every output sample is finite");
-        check(rms(after, after.size() / 2) > 0.1, "and the sound is back within a quarter of a second");
+        check(std::fabs(db(rms(after) / rms(before))) < 3.0, "and the sound is back at its level");
+    }
+    {
+        Fx fx;
+        fx.play(0.2f, 0.25f, nullptr);
+        float L[128], R[128]; float* io[2] = { L, R };
+        for (int i = 0; i < 128; ++i) { L[i] = 0.1f; R[i] = 0.1f; }
+        R[100] = INFINITY;
+        fx.e->processReplacing(fx.e, io, io, 128);
+        bool finite = true; for (int i = 0; i < 128; ++i) finite = finite && std::isfinite(L[i]) && std::isfinite(R[i]);
+        check(finite, "an infinity in one channel is caught too");
     }
 
     std::printf("9. The older programs do not use the new knobs; a suspended plugin is quiet\n");
@@ -285,12 +340,39 @@ int main()
         fx.e->dispatcher(fx.e, effMainsChanged, 0, 0, nullptr, 0.0f);
         std::this_thread::sleep_for(std::chrono::milliseconds(120));  // a call already on its way may land
         const int before = hostCalls();
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-        check(hostCalls() == before, "no calls to the host while suspended");
+        for (int k = 0; k < 6; ++k) { fx.play(0.01f, 0.1f, nullptr); std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
+        check(hostCalls() == before, "no calls to the host while suspended, even if audio keeps coming");
         fx.e->dispatcher(fx.e, effMainsChanged, 0, 1, nullptr, 0.0f);
         fx.play(0.05f, 0.1f, nullptr);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         check(hostCalls() > before, "and it speaks again after a resume");
+    }
+
+    std::printf("10. A state saved before 1.4 sounds as it was saved, whatever the instance was doing\n");
+    {
+        Fx a; a.e->dispatcher(a.e, effSetProgram, 0, 0, nullptr, 0.0f); a.set(kWarp, 70);
+        const std::vector<uint8_t> old = stateBefore14(a.e);
+        for (int first : {-1, 21, 22})   // a fresh instance, then one on Sticky Tape, one on Tube TV
+        {
+            Fx b;
+            if (first >= 0) b.e->dispatcher(b.e, effSetProgram, 0, first, nullptr, 0.0f);
+            b.play(0.05f, 0.1f, nullptr);
+            b.e->dispatcher(b.e, effSetChunk, 0, (VstIntPtr)old.size(), const_cast<uint8_t*>(old.data()), 0.0f);
+            b.play(0.05f, 0.1f, nullptr);
+            bool same = true;
+            for (int i = 0; i < kScrape; ++i) if (isSetting(i)) same = same && b.get(i) == a.get(i);
+            bool rest = true;
+            for (int i = kScrape; i < kNumParams; ++i) rest = rest && b.get(i) == 0.0f;
+            std::printf("   loaded into %s: Scrape %.0f, Whistle %.0f\n", first < 0 ? "a fresh instance" : first == 21 ? "Sticky Tape" : "Tube TV", b.get(kScrape), b.get(kWhistle));
+            check(same, "every older parameter is as saved");
+            check(rest, "the parameters added in 1.4 are at rest");
+        }
+        a.set(kScrape, 40); a.set(kWhistle, 25);
+        void* data = nullptr;
+        const VstIntPtr size = a.e->dispatcher(a.e, effGetChunk, 0, 0, &data, 0.0f);
+        Fx b;
+        b.e->dispatcher(b.e, effSetChunk, 0, size, data, 0.0f);
+        check(b.get(kScrape) == 40.0f && b.get(kWhistle) == 25.0f, "a 1.4 state brings its own Scrape and Whistle");
     }
 
     std::printf(fails ? "FAIL\n" : "PASS\n");

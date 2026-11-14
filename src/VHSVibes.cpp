@@ -154,7 +154,7 @@ enum ParamIndex
     kBreathing,    // %      hiss follows the signal
     kMix,          // %      dry / wet, 100 = all effect
     kAnimate,      // bool   moving reels / grid / sun on the screen (added in 1.3). Not part of
-                   //        the programs: choosing a program leaves it alone (see vhsDispatcher).
+                   //        the programs: choosing a program leaves it alone (see holdSwitches).
     // added in 1.4
     kScrape,       // %      scrape flutter: a fast roughness from the tape rubbing along its path
     kWhistle,      // %      the 15.7 kHz line whistle of the TV set leaking into the sound
@@ -605,8 +605,16 @@ public:
         if (notifier_.joinable()) notifier_.join();
     }
 
-    // The notifier thread stops talking to the host (until audio runs again). Any thread.
+    // The notifier thread stops talking to the host (until the next reset). Any thread.
     void goQuiet() { started_.store(false); }
+
+    // A program is about to be chosen: it takes over the Animation switch as it stands, so the
+    // switch does not move. (The host's thread, the same one that then loads the program.)
+    void holdSwitches(int program)
+    {
+        if (program >= 0 && program < (int)programs_.size())
+            programs_[(size_t)program].plainValues[kAnimate] = get(kAnimate);
+    }
 
     // Allocates the delay lines. Never called while process() runs.
     void prepare(double sampleRate, int /*maxBlockSize*/) override
@@ -637,12 +645,13 @@ public:
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
         fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
-        doReset();
+        resetPending_.store(true);   // the audio thread does the rest before its next block
     }
 
     // The host asks for a reset on resume and after a program change or state load, from
-    // whichever thread it likes. The work is done by the audio thread at the start of its
-    // next block, so it can never run while process() is in the middle of one.
+    // whichever thread it likes, and prepare() needs one too. The work is done by the audio
+    // thread at the start of its next block, so it never runs while process() is in the
+    // middle of one.
     void reset() override { resetPending_.store(true); }
 
 private:
@@ -661,6 +670,7 @@ private:
         dropGain_ = 1.0f; dropTarget_ = 1.0f; dropTicks_ = 0;
         ctrlCount_ = 0;
         inPeak_ = outPeak_ = inEnv_ = outEnv_ = breathEnv_ = 0.0f;
+        inMax_ = splat(0.0f);
         scrapeA_ = scrapeB_ = 0.0f;
         whistleS_ = 0.0f; whistleC_ = 1.0f;
         fbLp_.reset();
@@ -704,7 +714,9 @@ private:
 #endif
 
         // A reset follows the host starting the plugin and every program change and state
-        // load: the notifier thread should send the host the new values. (Only a flag here.)
+        // load: from now on the notifier thread may talk to the host, and it should send the
+        // new values. (Only flags here.)
+        started_.store(true);
         pushPending_.store(true, std::memory_order_relaxed);
     }
 
@@ -712,8 +724,6 @@ public:
     void process(mpc::ProcessContext& ctx) override
     {
         if (resetPending_.load(std::memory_order_relaxed) && resetPending_.exchange(false)) doReset();
-        // Audio is running, so the host has started us: the notifier thread may talk to it.
-        if (!started_.load(std::memory_order_relaxed)) started_.store(true);
 
         // Once per block: recompute the values of whichever groups had a parameter move.
         uint32_t dirty = 0;
@@ -730,6 +740,7 @@ public:
         float* outL = ctx.outputs[0];
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
 
+        Stereo inSum = splat(0.0f);
         for (int i = 0; i < ctx.numFrames; ++i)
         {
             const bool tick = ctrlCount_ == 0;
@@ -741,6 +752,8 @@ public:
             const float r = inR != nullptr ? inR[i] : l;
             if (tick) inPeak_ = std::fabs(l) + std::fabs(r);   // the meters look at one sample in 16
             Stereo x = stereo(l, r);
+            inSum += x;                                        // see the end of process()
+            if (breathOn_) inMax_ = vmax(inMax_, vabs(x));     // what the noise reduction hears
             float dryLen = 0.0f;
             if (dryActive_) { dryDelay_.write(x); dryLen = dryD_.next(); }   // kept for Mix below 100 %
 
@@ -856,14 +869,11 @@ public:
             }
 
             // ----- compressor (gain target is set in controlTick) ------------
-            if (compOn_)
-            {
-                const Stereo mag = vabs(x);
-                const float peak = maxf(mag[0], mag[1]);
-                env_ += (peak > env_ ? envAttack_ : envRelease_) * (peak - env_);
-                compGain_ += 0.02f * (compTarget_ - compGain_);
-                x *= compGain_ * cur_[cMakeup];
-            }
+            const Stereo mag = vabs(x);
+            const float peak = maxf(mag[0], mag[1]);
+            env_ += (peak > env_ ? envAttack_ : envRelease_) * (peak - env_);
+            compGain_ += 0.02f * (compTarget_ - compGain_);
+            x *= compGain_ * cur_[cMakeup];
             // The AGC and the make-up gain turn quiet sound up; a sudden loud hit gets that gain
             // for a few milliseconds before they react. It is clipped here, as the recorder's
             // own input would.
@@ -992,17 +1002,14 @@ public:
             if (tick) { const Stereo outMag = vabs(x); outPeak_ = 0.5f * (outMag[0] + outMag[1]); }
         }
 
-        // A NaN or an infinity from the host would go round in the filters for ever. Should one
-        // reach the output, this block is dropped and the next one starts clean.
-        if (ctx.numFrames > 0)
+        // A NaN or an infinity from the host would go round in the filters for ever (and Wear
+        // can turn one into a stuck silence that looks healthy). The sum of the input shows
+        // either: such a block comes out silent and the next one starts clean.
+        if (!(std::fabs(inSum[0] + inSum[1]) < 1.0e30f))
         {
-            const float last = outL[ctx.numFrames - 1] + (outR != nullptr ? outR[ctx.numFrames - 1] : 0.0f);
-            if (!(std::fabs(last) < 1.0e6f))
-            {
-                std::memset(outL, 0, sizeof(float) * (size_t)ctx.numFrames);
-                if (outR != nullptr) std::memset(outR, 0, sizeof(float) * (size_t)ctx.numFrames);
-                resetPending_.store(true);
-            }
+            std::memset(outL, 0, sizeof(float) * (size_t)ctx.numFrames);
+            if (outR != nullptr) std::memset(outR, 0, sizeof(float) * (size_t)ctx.numFrames);
+            resetPending_.store(true);
         }
 
         // Hand the meter values to the notifier thread.
@@ -1225,13 +1232,10 @@ private:
         loSatOn_   = cur_[cLoMix] > 0.0f;
         hiSatOn_   = cur_[cHiMix] > 0.0f;
 
-        // compressor: 4:1 above the threshold. (t ^ 0.75 with two square roots) With Comp at 0
-        // the whole stage is skipped once its gain is back at 1.
+        // compressor: 4:1 above the threshold. (t ^ 0.75 with two square roots)
         const float thr = cur_[cThresh];
-        if (thr < 1.0f && env_ > thr) { const float s = std::sqrt(thr / env_); compTarget_ = s * std::sqrt(s); }
+        if (env_ > thr) { const float s = std::sqrt(thr / env_); compTarget_ = s * std::sqrt(s); }
         else compTarget_ = 1.0f;
-        if (thr >= 1.0f && compGain_ > 0.9999f) { compGain_ = 1.0f; env_ = 0.0f; }
-        compOn_ = thr < 1.0f || compGain_ != 1.0f;
 
         // wobble: the switch fades both stages in and out
         const float wob = cur_[cWobbleOn];
@@ -1239,7 +1243,7 @@ private:
         wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
         wf1_.tick(shape1_);
         wf2_.tick(0.0f);
-        wantLatency_.store((int)(wf1_.baseTarget + wf2_.baseTarget + 0.5f), std::memory_order_relaxed);
+        wantLatency_.store((int)(wf1_.base + wf2_.base + 0.5f), std::memory_order_relaxed);   // settles when the glide ends
 
         // Mix: the dry copy is only kept while Mix is below 100 %. It waits as long as the tape
         // path does at rest; with both wobbles still that is a whole number of samples. When
@@ -1303,8 +1307,9 @@ private:
                 dropTarget_ = 1.0f - dropAmount_ * (0.4f + 0.6f * dropRng_.nextFloat());
             }
         }
-        else { dropTarget_ = 1.0f; if (dropGain_ > 0.9999f) dropGain_ = 1.0f; }
-        dropOn_ = dropAmount_ > 0.0f || dropGain_ != 1.0f;
+        else dropTarget_ = 1.0f;
+        if (dropTarget_ == 1.0f && dropGain_ > 0.9999f) dropGain_ = 1.0f;   // a dip is over
+        dropOn_ = dropGain_ != 1.0f || dropTarget_ != 1.0f;                  // only then is there work
 
         // ----- deck ------------------------------------------------------------
         // AGC: after the last peak the gain holds for a second and a half, then creeps back
@@ -1371,9 +1376,11 @@ private:
         // sound coming in (5 ms up, 70 ms back), and the head buzz is pushed down in the
         // pauses, back to its set level when the sound is at reference level. On the backup
         // track the hiss is twice as loud.
-        const float lvl = 0.5f * inPeak_;
-        breathEnv_ += (lvl > breathEnv_ ? breathAtk_ : breathRel_) * (lvl - breathEnv_);
         const float breath = cur_[cBreath];
+        breathOn_ = breath > 0.0f || tgt_[cBreath] > 0.0f;
+        const float lvl = maxf(inMax_[0], inMax_[1]);
+        inMax_ = splat(0.0f);
+        breathEnv_ += (lvl > breathEnv_ ? breathAtk_ : breathRel_) * (lvl - breathEnv_);
         hissDyn_ = (fallback ? 2.0f : 1.0f) * (1.0f + breath * 6.0f * minf(breathEnv_, 1.0f));
         headAmp_ = cur_[cHead] * (1.0f + breath * (minf(breathEnv_ * (1.0f / kRefLevel), 1.5f) - 1.0f));
 
@@ -1459,7 +1466,7 @@ private:
     void addPrograms()
     {
         // A program lists every parameter. The Animation switch is not meant to follow a
-        // program; vhsDispatcher (end of file) puts it back after one is chosen.
+        // program: see holdSwitches().
         std::vector<float> defaults;
         for (int i = 0; i < kNumParams; ++i) defaults.push_back(param(i).def);
         auto program = [&](const char* name, std::initializer_list<std::pair<int, float>> changes)
@@ -1624,7 +1631,7 @@ private:
     // which stages have work to do (set in controlTick)
     bool  humOn_ = false, buzzOn_ = false, headOn_ = false, hissOn_ = false, crackleOn_ = false;
     bool  tiltOn_ = false, driveOn_ = false, slewOn_ = false, loSatOn_ = false, hiSatOn_ = false;
-    bool  compOn_ = false, boost_ = false, dropOn_ = false, whistleOn_ = false, scrapeOn_ = false;
+    bool  boost_ = false, dropOn_ = false, whistleOn_ = false, scrapeOn_ = false, breathOn_ = false;
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
@@ -1690,6 +1697,7 @@ private:
     float linAmt_ = 0, linTarget_ = 0;                        // how much of the backup track is heard
     float hissDyn_ = 1.0f;
     float breathEnv_ = 0, breathAtk_ = 0.07f, breathRel_ = 0.005f;   // input level as the noise reduction sees it
+    Stereo inMax_ = {0.0f, 0.0f};                                    // loudest input sample since the last tick
     bool  agcActive_ = false;
     float agcAmt_ = 0, agcEnv_ = kRefLevel, agcGain_ = 1.0f, agcTarget_ = 1.0f, agcRelease_ = 0.0001f;
     int   agcHold_ = 0, agcHoldTicks_ = 4000;
@@ -1712,20 +1720,23 @@ private:
     int   dropTicks_ = 0;
 };
 
-// The framework's dispatcher with two additions:
-//  - Choosing a program leaves the Animation switch as it was. (The framework sets every value
-//    a program lists, and the parameters added after Animation have to be in that list.)
+// The framework's dispatcher with three additions:
+//  - Choosing a program leaves the Animation switch as it was. The framework sets every value
+//    a program lists, and the parameters added after Animation have to be in that list, so the
+//    program is first told the present position of the switch.
+//  - A saved state from before 1.4 does not mention the parameters added since. They go to
+//    their resting values before any state is loaded, so such a state sounds as it was saved
+//    whatever this instance was doing before; a newer state then sets them.
 //  - When the host suspends the plugin, the notifier thread stops calling the host.
 static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstIntPtr value, void* ptr, float opt)
 {
     VHSVibes* p = static_cast<VHSVibes*>(static_cast<mpc::Plugin*>(e->object));
     if (p == nullptr) return 0;
     if (opcode == effMainsChanged && value == 0) p->goQuiet();
-    if (opcode != effSetProgram) return mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
-    const float animate = p->getNormalised(kAnimate);
-    const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
-    p->setNormalised(kAnimate, animate);
-    return result;
+    else if (opcode == effSetProgram) p->holdSwitches((int)value);
+    else if (opcode == effSetChunk && ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
+        for (int i = kScrape; i < kNumParams; ++i) p->set(i, p->param(i).def);
+    return mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
 }
 
 // The exported entry point: MPC_PLUGIN_ENTRY of the framework, plus the dispatcher above. Keep it last.
