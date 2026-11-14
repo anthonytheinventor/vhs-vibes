@@ -29,7 +29,7 @@
         "empty",
         { "param": "Flutter",    "widget": "knob" },
         { "param": "Flut Rate",  "widget": "knob" },
-        "empty",
+        { "param": "Scrape",     "widget": "knob" },
         "empty",
         { "param": "Wow",        "widget": "knob" },
         { "param": "Wow Rate",   "widget": "knob" },
@@ -48,7 +48,8 @@
         { "param": "Hiss",      "widget": "fader" },
         { "param": "Crackle",   "widget": "fader" },
         { "param": "Noise",     "widget": "fader" },
-        { "param": "Noise Pos", "widget": "switch" }
+        { "param": "Noise Pos", "widget": "switch" },
+        { "param": "Whistle",   "widget": "fader" }
       ]
     },
     {

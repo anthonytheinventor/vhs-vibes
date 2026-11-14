@@ -21,10 +21,10 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 49 controls on five pages, 21 built-in programs
+- 51 controls on five pages, 23 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
-- version 1.3
+- version 1.4
 
 ## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
 
@@ -43,8 +43,8 @@ The sound goes through the machine in this order:
 
 ```
 in -> Chorus -> Mic -> AGC -> Preamp (Tone, Drive) -> Wear -> Comp -> 2-band Saturator -> Hi Cut
-   -> Wobble 1 (Warp, Flutter) -> Noise -> Wobble 2 (Wow, Flutter) -> Lo Cut / Hi Cut
-   -> Drift -> Tracking -> Head switching -> Dropouts -> Mono -> Mix -> Output
+   -> Wobble 1 (Warp, Flutter, Scrape) -> Noise -> Wobble 2 (Wow, Flutter) -> Lo Cut / Hi Cut
+   -> Drift -> Tracking -> Head switching -> Whistle -> Dropouts -> Mono -> Mix -> Output
 ```
 
 Two wobbles, because a copy of a copy wobbles twice. Each block of four controls on screen
@@ -60,7 +60,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Tone | Tilt: left is darker, right is brighter (about 6 dB each way). |
 | Wear | Limits how fast the signal can change: dulls and smears, like an old or copied tape. |
 | Comp | One-knob compressor. Past about a third it squashes and brings quiet sound (and noise) up. |
-| Dropouts | Short random level dips. 0 % is off. |
+| Dropouts | Short random dips, as when the tape lifts off the head: the highs go first and furthest, the lows only sag. 0 % is off. |
 | Mono | Sums left and right. |
 | Mix | Dry / wet. 100 % (the default) is all effect; lower lets the untouched input back in. |
 | Output | Output level. |
@@ -80,9 +80,10 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | RPM | Speed of the slow wobble, as reel turns per minute. Below about 30 rpm the depth is limited. |
 | Shape | 0 % is a smooth wobble, 100 % an uneven lurch. |
 | Flutter Depth / Rate | Fast pitch wobble. |
+| Scrape | Scrape flutter: the tape sticking and slipping along its path, far faster than any wobble. A roughness that clings to bright sounds and is silent in silence. 0 % is off. |
 | Wow, Rate, Flutter, Rate (Re-record) | A second, independent wobble: the tape after one more copy. |
 | Lo Cut / Hi Cut | Filters after the second wobble. |
-| Wobble (switch) | Turns both wobbles off or on together. The filters stay in. |
+| Wobble (switch) | Turns both wobbles and Scrape off or on together. The filters stay in. |
 
 ### ＮＯＩＳＥ　ノイズ
 
@@ -95,6 +96,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Head Buzz | The video heads switching, 59.94 times a second: a steady rasp, plus a buzz that rides on bright sounds and vanishes on bass (the signal is held for a few samples at each switch). |
 | Hiss | Tape hiss (different in left and right). |
 | Crackle | Random clicks; the knob sets both how many and how loud. |
+| Whistle | The line whistle of the TV set, 15.7 kHz, steady, never wobbling. About where a real deck has it at 50 %. Not everyone can hear it. |
 | Master | Level of all noise together. 50 % is nominal, 0 % is silent. |
 | Noise (switch) | Turns all noise off or on. |
 | Position | Post: noise is added after the first wobble (clean noise). Pre: noise goes in at the input and is compressed, clipped and wobbled with the music. |
@@ -117,8 +119,8 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Power | The whole deck section on or off. |
 | AGC | The recorder's automatic level control. A loud sound pulls the gain down at once; it stays down for a second and a half, then creeps back up over a few seconds and brings the background up with it (up to 14 dB). Comp works in milliseconds; this works in seconds. |
 | Drift | The sound slowly comes and goes: quieter and duller for a moment, then back, like the audio track wandering off the head. (Dropouts are short dips; this is slow.) |
-| Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull mono backup track, another burst, back again. Higher is more often. |
-| Breathing | The hiss rises and falls with the signal, like a mistracking noise-reduction circuit. |
+| Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
+| Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 
 There is no tape-speed or track switch because they would only repeat other controls. For a
@@ -131,7 +133,7 @@ slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss; S
 
 ## 🗃 ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ
 
-Twenty-one programs. The labels are handwritten.
+Twenty-three programs. The labels are handwritten.
 
 | Program | What is on it |
 |---|---|
@@ -155,7 +157,9 @@ Twenty-one programs. The labels are handwritten.
 | Edge Damage | The top edge of the tape is creased: the sound comes and goes. |
 | Bootleg Concert | Taped from the crowd on a boombox and copied a few times. |
 | Public Access | Local cable studio: hum, buzz, and a level control doing its best. |
-| Init | A blank tape. Everything neutral; the sound passes through unchanged. Always the last one. |
+| Init | A blank tape. Everything neutral; the sound passes through unchanged. |
+| Sticky Tape | Gone sticky with age: it drags and scrapes through the machine. |
+| Tube TV | The living-room set: a small speaker, mains hum and the whistle of the picture tube. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
@@ -174,8 +178,12 @@ The Animation switch on the DECK page turns them off.
   That is how a real recorder's level control behaves; turn Master down if it is too much.
 - The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a
   silent background.
-- Turning a wobble depth or rate changes the plugin's own delay for a moment, which bends
-  the pitch while you turn it.
+- Turning a wobble depth or rate changes the plugin's own delay. It follows at a limited
+  pace, so the pitch bends by a couple of percent at most, and a big jump takes a few seconds
+  to arrive in full.
+- Projects made with 1.3 load with every setting in place. Scrape and Whistle rest at 0, no
+  older program uses them, and the two new programs come after Init so every older one keeps
+  its number.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
   like a chorus. That is the nature of mixing a wobbling signal with a steady one.
@@ -228,9 +236,11 @@ read-outs under the knobs are live text (Nexa).
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds four small programs and runs them on the computer: `host_test` (what the plugin tells
-the host and when), `mix_test`, `deck_test` and `levels_test` (measurements of each stage to
-read through). The first two end in PASS or FAIL.
+Builds five small programs and runs them on the computer: `host_test` (what the plugin tells
+the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `deck_test` and
+`levels_test` (measurements of each stage to read through). The first three end in PASS or FAIL.
+`race_test` is not run by the script: it hammers the plugin from several threads and is meant
+to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
 
 <p align="center"><sub>MIT licence, see <a href="LICENSE">LICENSE</a>. Stage order after the idea of James Peck's "VHS Audio Degradation Suite" for Reaktor; all code here is original.</sub></p>
 

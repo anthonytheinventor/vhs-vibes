@@ -1863,6 +1863,35 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "Scrape",
+                                "type": "vvKnobUni",
+                                "data": {
+                                    "version": 1,
+                                    "handleName": "Data"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": [
+                                    {
+                                        "key": "Data",
+                                        "value": "Parameter 51"
+                                    }
+                                ]
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "Yes",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "920 260 140 152"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Wobble On",
                                 "type": "vvToggle",
                                 "data": {
@@ -2464,13 +2493,42 @@
                                 "boundsType": "Absolute",
                                 "bounds": "1060 260 140 152"
                             }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "Whistle",
+                                "type": "vvKnobUni",
+                                "data": {
+                                    "version": 1,
+                                    "handleName": "Data"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": [
+                                    {
+                                        "key": "Data",
+                                        "value": "Parameter 52"
+                                    }
+                                ]
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "Yes",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "80 444 140 152"
+                            }
                         }
                     ]
                 },
                 "qlinkBoundsData": [
                     "76 234 568 180",
                     "636 234 568 180",
-                    "0 0 0 0",
+                    "76 418 568 180",
                     "0 0 0 0"
                 ]
             },

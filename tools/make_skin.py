@@ -117,14 +117,14 @@ PAGES = [
     ]},
     {"name": "WOBBLE", "jp": "ゆらぎ", "file": "bg_wobble.png", "blocks": [
         ("TRACKING", "トラッキング", ["Warp", "RPM", "Shape", None]),
-        ("FLUTTER", "フラッター", ["Flutter", "Flut Rate", None, "Wobble On"]),
+        ("FLUTTER", "フラッター", ["Flutter", "Flut Rate", "Scrape", "Wobble On"]),
         ("RE-RECORD", "ダビング", ["Wow", "Wow Rate", "Flutter 2", "Flut2 Rate"]),
         ("FILTER", "フィルター", ["Lo Cut", "Hi Cut 2", None, None]),
     ]},
     {"name": "NOISE", "jp": "ノイズ", "file": "bg_noise.png", "blocks": [
         ("NOISE", "ノイズ", ["Hum", "Buzz", "Head Buzz", "Hiss"]),
         ("", "", ["Crackle", "Noise", "Noise Pos", "Noise On"]),
-        ("", "", [None, None, None, None]),
+        ("TV SET", "テレビ", ["Whistle", None, None, None]),
         ("", "", [None, None, None, None]),
     ]},
     {"name": "INPUT", "jp": "インプット", "file": "bg_input.png", "blocks": [
