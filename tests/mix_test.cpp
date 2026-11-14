@@ -16,7 +16,7 @@ static AEffect* make(int program)
     e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
     e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
     e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
-    e->dispatcher(e, effSetProgram, 0, program < 0 ? e->numPrograms - 1 : program, nullptr, 0.0f);
+    e->dispatcher(e, effSetProgram, 0, program < 0 ? 20 : program, nullptr, 0.0f);
     return e;
 }
 static void run(AEffect* e, std::vector<float>& L, std::vector<float>& R)

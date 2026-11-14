@@ -12,7 +12,7 @@ if [ ! -f "$FRAMEWORK/mpc_plugin.h" ]; then
   exit 2
 fi
 status=0
-for t in host_test mix_test deck_test levels_test; do
+for t in host_test mix_test v14_test deck_test levels_test; do
   echo "===== $t ====="
   if ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/$t.cpp" -o "$OUT/$t" 2> "$OUT/$t.log"; then
     grep -E "error" -A6 "$OUT/$t.log" | head -30
@@ -21,5 +21,5 @@ for t in host_test mix_test deck_test levels_test; do
   fi
   "$OUT/$t" || status=1
 done
-# host_test and mix_test end with PASS or FAIL; deck_test and levels_test print measurements to read.
+# host_test, mix_test and v14_test end with PASS or FAIL; deck_test and levels_test print measurements to read.
 exit $status

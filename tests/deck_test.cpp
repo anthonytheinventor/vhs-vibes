@@ -19,10 +19,10 @@ struct Fx
         e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
         e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
         e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
-        e->dispatcher(e, effSetProgram, 0, e->numPrograms - 1, nullptr, 0.0f);   // Init
+        e->dispatcher(e, effSetProgram, 0, 20, nullptr, 0.0f);   // Init (program 20 in every version)
         char name[64] = {0};
-        e->dispatcher(e, effGetProgramNameIndexed, e->numPrograms - 1, 0, name, 0.0f);
-        if (std::strcmp(name, "Init") != 0) std::printf("!! last program is %s, not Init\n", name);
+        e->dispatcher(e, effGetProgramNameIndexed, 20, 0, name, 0.0f);
+        if (std::strcmp(name, "Init") != 0) std::printf("!! program 20 is %s, not Init\n", name);
     }
     ~Fx() { e->dispatcher(e, effMainsChanged, 0, 0, nullptr, 0.0f); e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f); }
     void set(int i, float plain) { static_cast<mpc::Plugin*>(e->object)->set(i, plain); }
