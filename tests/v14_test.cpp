@@ -197,7 +197,7 @@ int main()
         std::vector<float> glide; fx.play(8.0f, 0.25f, &glide);
         pitchRange(glide, 1000, lo, hi);
         std::printf("   Wow 0 -> 100 %% at 0.1 Hz, the next 8 s: %+6.0f .. %+5.0f cents\n", lo, hi);
-        check(lo > -90 && hi < 90, "the whole glide stays within 90 cents (the wobble itself is 52)");
+        check(lo > -70 && hi < 70, "no glide: only the wobble itself, which is 52 cents");
     }
     {
         Fx fx; fx.set(kChorusOn, 1); fx.set(kChoMix, 100); fx.set(kChoDelay, 30.0f); fx.set(kChoSpeed, 0.05f);
@@ -489,6 +489,49 @@ int main()
         fx.set(kHq, 0);
         fx.e->dispatcher(fx.e, effSetProgram, 0, 5, nullptr, 0.0f);
         check(fx.get(kHq) < 0.5f, "and leaves it off");
+    }
+
+    std::printf("12. No clicks: a program chosen while sound plays, and a knob jump that moves the delay far\n");
+    {
+        // largest step between two samples of a 1 kHz tone at 0.25 (the tone itself steps 0.036)
+        auto largestStep = [](const std::vector<float>& v) { float m = 0.0f; for (size_t i = 1; i < v.size(); ++i) m = std::fmax(m, std::fabs(v[i] - v[i - 1])); return m; };
+        {
+            Fx fx; fx.set(kNoiseOn, 0);
+            std::vector<float> out; fx.play(1.0f, 0.25f, nullptr); fx.play(0.1f, 0.25f, &out);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, 12, nullptr, 0.0f);   // Subtle Glue: no noise of its own
+            fx.play(0.5f, 0.25f, &out);
+            const std::vector<float> tail(out.end() - 4410, out.end());   // Subtle Glue once it has settled
+            std::printf("   Init -> Subtle Glue while playing: largest step %.3f (Subtle Glue itself steps %.3f, Init 0.036)\n", largestStep(out), largestStep(tail));
+            check(largestStep(out) < 1.3f * largestStep(tail), "a program change fades out and in: no step much beyond the new program's own");
+            check(rms(out, out.size() - 4410) > 0.1, "and the new program is playing a moment later");
+        }
+        for (int mixed = 0; mixed < 2; ++mixed)
+        {
+            Fx fx; fx.set(kWowRate, 0.1f); if (mixed) fx.set(kMix, 50);
+            std::vector<float> out; fx.play(1.0f, 0.25f, nullptr); fx.play(0.1f, 0.25f, &out);
+            fx.set(kWow, 100);            // the resting delay goes from 6 to about 2000 samples
+            fx.play(1.0f, 0.25f, &out);
+            fx.set(kWow, 0);              // and back
+            fx.play(3.0f, 0.25f, &out);
+            std::printf("   Wow 0 -> 100 -> 0 %% at 0.1 Hz, Mix %s: largest step %.3f\n", mixed ? "50 %" : "100 %", largestStep(out));
+            check(largestStep(out) < 0.05f, "the delay crossfades to its new length and back without a click");
+        }
+        {
+            // how soon the full wobble is there after the jump: by half a second, not after seconds
+            Fx fx; fx.set(kRpm, 45.0f);
+            fx.play(1.0f, 0.25f, nullptr);
+            fx.set(kWarp, 90);
+            std::vector<float> early; fx.play(0.5f, 0.25f, nullptr); fx.play(2.0f, 0.25f, &early);
+            pitchRange(early, 1000, lo, hi);
+            std::printf("   Warp 0 -> 90 %% at 45 rpm, from 0.5 to 2.5 s after: %+.0f .. %+.0f cents (settled: about -98 .. +98)\n", lo, hi);
+            check(hi - lo > 150, "the full wobble is there half a second after the jump");
+        }
+        char name[64] = {0};
+        Fx fx;
+        fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 23, 0, name, 0.0f);
+        const bool worn = std::strcmp(name, "Worn Heads") == 0;
+        fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 24, 0, name, 0.0f);
+        check(worn && std::strcmp(name, "Dirty Heads") == 0 && fx.e->numPrograms == 25, "25 programs; Worn Heads and Dirty Heads are the last two");
     }
 
     std::printf(fails ? "FAIL\n" : "PASS\n");

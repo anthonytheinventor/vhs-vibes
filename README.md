@@ -21,7 +21,7 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 52 controls on five pages, 23 built-in programs
+- 52 controls on five pages, 25 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
 - version 1.4
@@ -134,7 +134,7 @@ slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss; S
 
 ## 🗃 ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ
 
-Twenty-three programs. The labels are handwritten.
+Twenty-five programs. The labels are handwritten.
 
 | Program | What is on it |
 |---|---|
@@ -161,6 +161,8 @@ Twenty-three programs. The labels are handwritten.
 | Init | A blank tape. Everything neutral; the sound passes through unchanged. |
 | Sticky Tape | Gone sticky with age: it drags and scrapes through the machine. |
 | Tube TV | The living-room set: a small speaker, mains hum and the whistle of the picture tube. |
+| Worn Heads | A good Hi-Fi deck with tired heads: buzz that rides on the music and sinks in the pauses, the right channel crackling. |
+| Dirty Heads | Oxide on the heads: dull, and the highs keep falling away. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
@@ -179,12 +181,13 @@ The Animation switch on the DECK page turns them off.
   That is how a real recorder's level control behaves; turn Master down if it is too much.
 - The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a
   silent background.
-- Turning a wobble depth or rate changes the plugin's own delay. It follows at a limited
-  pace, so the pitch bends by a couple of percent at most, and a big jump takes a few seconds
-  to arrive in full.
+- Turning a wobble depth or rate changes the plugin's own delay. A small move is followed at
+  a limited pace, so the pitch bends by a couple of percent at most. A big jump crossfades to
+  the new delay in 25 ms, with no bend.
+- Choosing a program fades the sound out, starts the new tape and fades it in.
 - Projects made with 1.3 load with every setting in place. Scrape, Whistle and HQ rest at 0
-  or off, no older program uses them, and the two new programs come after Init so every older
-  one keeps its number.
+  or off, no older program uses them, and the four new programs come after Init so every
+  older one keeps its number.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
   like a chorus. That is the nature of mixing a wobbling signal with a steady one.

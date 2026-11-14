@@ -189,7 +189,10 @@ constexpr float kMaxExcursionSec    = 0.045f; // largest wobble swing we allow, 
 constexpr float kSwingRoom          = VHS_VIBES_SWING_ROOM;   // resting delay = this many times the slow wobble's own swing
 constexpr bool  kReportLatency      = true;   // tell the host how late the output is (see notifierMain)
 constexpr float kGlideStep          = 0.25f;  // most a delay's resting length moves per control tick, in
-                                              // samples: a knob jump bends the pitch by 1.6 % at most
+                                              // samples: a knob move bends the pitch by 1.6 % at most
+constexpr float kJumpMin            = 96.0f;  // a resting length further away than this many samples is
+                                              // not glided to (the bend would last too long) but
+                                              // crossfaded to, in 25 ms
 constexpr float kBoostCeil          = 1.5f;   // the AGC and the compressor's make-up never push a sample
                                               // past this (the rail the soft clippers work to)
 constexpr float kFbLevel            = 0.71f;  // the backup track plays 3 dB quieter than the Hi-Fi track
@@ -198,7 +201,7 @@ constexpr float kLineHz             = 15734.0f;   // NTSC line rate: the whistle
 // late the pair makes the sound, in samples
 constexpr float kHb[3]              = { 0.1035037879f, 0.3717428742f, 0.7519142908f };
 constexpr float kHqDelay            = 1.412f;
-constexpr int   kFadeTicks          = 8;      // control ticks of fade-out before HQ switches (3 ms)
+constexpr int   kFadeTicks          = 8;      // control ticks of fade-out before a reset while sound plays (3 ms)
 
 // Which values a parameter feeds. A knob move only recomputes its own group in readParams().
 enum Group : uint32_t
@@ -410,6 +413,8 @@ struct TapeSpeed
     float inc = 0.0f;
     float err = 0.0f;         // current relative speed error (for the reel animation)
     float baseTarget = 6.0f;  // the resting delay the current settings need
+    float jump = 0.0f;        // not 0 while the reader crossfades to a resting delay this far away
+    float xf = 0.0f, xfInc = 0.0f;   // how far that crossfade is (0..1), and its step per sample
     bool  still = false;      // no wobble and settled: the delay is a whole number of samples
                               // and is not moving, so the reader needs no interpolation
 
@@ -426,6 +431,7 @@ struct TapeSpeed
         if (d1 == inDev1 && rate1 == inRate1 && d2 == inDev2 && rate2 == inRate2 && sr == inSr) return;
         inDev1 = d1; inRate1 = rate1; inDev2 = d2; inRate2 = rate2; inSr = sr;
         const float dt = (float)kCtrl / sr;
+        xfInc = 1.0f / (0.025f * sr);
         // Keep the swing inside the delay line: very slow rates get less depth.
         dev1 = minf(d1, kMaxExcursionSec * kTwoPi * rate1 * (1.0f / kSwingRoom));
         dev2 = d2;
@@ -447,15 +453,39 @@ struct TapeSpeed
         ph1 = ph2 = 0.0f;
         n1a = n1b = n2a = n2b = 0.0f;
         x = 0.0f; base = baseTarget; delay = baseTarget; inc = 0.0f; err = 0.0f;
+        jump = 0.0f; xf = 0.0f;
         still = false;
     }
 
-    // The resting delay follows what the settings need: quickly when that is near, at a
-    // limited rate when a knob jumped (a moving delay is a pitch bend).
-    void glideBase()
+    // The resting delay follows what the settings need. A moving delay is a pitch bend, so a
+    // near target is glided to at a limited rate. To a far one the bend would last seconds:
+    // there the reader crossfades to the new place instead (blend() below), once the swing
+    // fits the new resting delay.
+    void followBase()
     {
+        if (jump != 0.0f) return;   // a crossfade is under way
         const float d = baseTarget - base;
-        base = std::fabs(d) < 0.01f ? baseTarget : base + clamp(0.003f * d, -kGlideStep, kGlideStep);
+        if (std::fabs(d) < 0.01f) base = baseTarget;
+        else if (std::fabs(d) <= kJumpMin || x < -(baseTarget - 4.0f)) base += clamp(0.003f * d, -kGlideStep, kGlideStep);
+        else { jump = d; xf = 0.0f; }
+    }
+
+    // Keeps the swing inside the delay line: at the resting delay there is and, while a
+    // crossfade runs, at the one it is going to as well.
+    float fit(float v) const
+    {
+        const float lo = minf(base, base + jump), hi = maxf(base, base + jump);
+        return clamp(v, -(lo - 3.0f), (float)kTapeDelaySamples - 8.0f - hi);
+    }
+
+    // One sample of the crossfade: a was read at the old place, b at the new one. When it is
+    // over, the new place is the resting delay.
+    Stereo blend(Stereo a, Stereo b)
+    {
+        const Stereo y = a + (b - a) * xf;
+        xf += xfInc;
+        if (xf >= 1.0f) { delay += jump; base += jump; jump = 0.0f; xf = 0.0f; }
+        return y;
     }
 
     // Called every kCtrl samples.
@@ -469,8 +499,8 @@ struct TapeSpeed
             if (still) return;
             x -= clamp(0.0015f * x, -kGlideStep, kGlideStep);
             if (std::fabs(x) < 0.01f) x = 0.0f;
-            glideBase();
-            x = clamp(x, -(base - 3.0f), (float)kTapeDelaySamples - 8.0f - base);
+            followBase();
+            x = fit(x);
             const float target = base + x;
             if (x == 0.0f && base == baseTarget && std::fabs(target - delay) < 0.01f)
             {
@@ -504,11 +534,20 @@ struct TapeSpeed
 
         // Leaky integrator: without the leak the random part would wander off.
         x += err * (float)kCtrl - leak * x;
-        glideBase();
-        x = clamp(x, -(base - 3.0f), (float)kTapeDelaySamples - 8.0f - base);
+        followBase();
+        x = fit(x);
         inc = (base + x - delay) * kCtrlInv;
     }
 };
+
+// Reads a wobble stage's delay line at the transport's place (`extra` samples further back),
+// crossfading to the new resting delay while the transport is on its way to one.
+inline Stereo wobbleRead(const PairDelay& line, TapeSpeed& w, float extra)
+{
+    w.delay += w.inc;
+    const Stereo y = line.read(w.delay + extra);
+    return w.jump == 0.0f ? y : w.blend(y, line.read(w.delay + w.jump + extra));
+}
 
 // Control values that are smoothed once per control tick and then held for 16 samples.
 enum CtlIndex
@@ -651,7 +690,7 @@ public:
     // Suspended (or closing): the notifier thread stops talking to the host until the plugin
     // is resumed and has been reset. Any thread.
     void goQuiet() { suspended_.store(true); started_.store(false); }
-    void resume()  { suspended_.store(false); }
+    void resume()  { suspended_.store(false); resetPending_.store(true); }
 
     // A program is about to be chosen: it takes over the Animation and HQ switches as they
     // stand, so they do not move. (The host's thread, the same one that then loads the program.)
@@ -670,11 +709,12 @@ public:
         resetPending_.store(true);
     }
 
-    // The host asks for a reset on resume and after a program change or state load, from
-    // whichever thread it likes, and prepare() needs one too. The work is done by the audio
-    // thread at the start of its next block, so it never runs while process() is in the
-    // middle of one.
-    void reset() override { tellHost_.store(true); resetPending_.store(true); }
+    // The host asks for a reset after a program change or a state load (and on resume), from
+    // whichever thread it likes. The audio thread does the work between two blocks, so it never
+    // runs while process() is in the middle of one; and since sound may be playing, it fades
+    // the output out first (see process() and fadeOut_). prepare() and a resume ask for theirs
+    // through resetPending_, which is done at once.
+    void reset() override { tellHost_.store(true); resetWanted_.store(true); }
 
 private:
     // Everything that depends on the sample rate alone.
@@ -760,6 +800,7 @@ private:
         dryActive_ = rampT_[rMix] < 1.0f;
         dryStill_ = false;
         dryHold_ = choHold_ = 0;
+        dryJump_ = dryXf_ = 0.0f; dryFill_ = 1 << 20;
         choBase_ = choDelayTarget_;
         choD_[0].snap(choBase_); choD_[1].snap(choBase_);
         choActive_ = rampT_[rChorus] > 0.0f;
@@ -823,7 +864,13 @@ private:
 public:
     void process(mpc::ProcessContext& ctx) override
     {
-        if (resetPending_.load(std::memory_order_relaxed) && resetPending_.exchange(false)) doReset();
+        if (resetPending_.load(std::memory_order_relaxed) && resetPending_.exchange(false))
+        {
+            resetWanted_.store(false);   // this one serves a waiting request too
+            doReset();
+        }
+        else if (resetWanted_.load(std::memory_order_relaxed) && resetWanted_.exchange(false))
+            fadeOut_ = kFadeTicks;       // a program change or state load: fade out, then reset
 
         // Once per block: recompute the values of whichever groups had a parameter move.
         uint32_t dirty = 0;
@@ -986,18 +1033,17 @@ public:
                 // of a sample, which puts a roughness around every bright sound.
                 scrapeA_ += scrapeHi_ * (scrapeRng_.nextBipolar() - scrapeA_);
                 scrapeB_ += scrapeLo_ * (scrapeA_ - scrapeB_);
-                wf1_.delay += wf1_.inc;
-                x = wf1Delay_.read(wf1_.delay + (scrapeA_ - scrapeB_) * cur_[cScrape]);
+                x = wobbleRead(wf1Delay_, wf1_, (scrapeA_ - scrapeB_) * cur_[cScrape]);
             }
             else if (wf1_.still) x = wf1Delay_.tap((int)wf1_.delay);
-            else { wf1_.delay += wf1_.inc; x = wf1Delay_.read(wf1_.delay); }
+            else x = wobbleRead(wf1Delay_, wf1_, 0.0f);
 
             if (!noisePre_) x += noise;
 
             // ----- wobble 2 and its filters ----------------------------------
             wf2Delay_.write(x);
             if (wf2_.still) x = wf2Delay_.tap((int)wf2_.delay);
-            else { wf2_.delay += wf2_.inc; x = wf2Delay_.read(wf2_.delay); }
+            else x = wobbleRead(wf2Delay_, wf2_, 0.0f);
 
             loCutLp_ += loCutCoeff_ * (x - loCutLp_);
             x -= loCutLp_;
@@ -1074,7 +1120,13 @@ public:
             {
                 // dry / wet: the dry signal waits as long as the tape path does at rest
                 // (a whole number of samples when nothing wobbles: no interpolation then)
-                const Stereo dry = dryStill_ ? dryDelay_.tap((int)dryLen) : dryDelay_.read(dryLen);
+                Stereo dry = dryStill_ ? dryDelay_.tap((int)dryLen) : dryDelay_.read(dryLen);
+                if (dryJump_ != 0.0f)
+                {
+                    dry += (dryDelay_.read(dryLen + dryJump_) - dry) * dryXf_;
+                    dryXf_ += wf1_.xfInc;
+                    if (dryXf_ >= 1.0f) { dryD_.snap(dryD_.v + dryJump_); dryJump_ = 0.0f; }
+                }
                 x = dry + (x - dry) * mix;
             }
             x *= outGain;
@@ -1298,8 +1350,9 @@ private:
 
         // just after a reset: the output stays shut until the emptied delays have filled
         if (fadeHold_ > 0) { --fadeHold_; rampS_[rOut] = 0.0f; ramp_[rOut].snap(0.0f); }
-        // HQ was switched: the output goes down in a straight line over 3 ms, stays shut, and
-        // the reset that follows brings the sound back at the other rate.
+        // Before a reset the host asked for (a program change, a state load) and when HQ is
+        // switched: the output goes down in a straight line over 3 ms and stays shut, then the
+        // reset brings the sound back with its fade-in.
         if (fadeOut_ > 0)
         {
             --fadeOut_;
@@ -1342,11 +1395,23 @@ private:
         // Mix is first turned down the copy is still empty (or holds old sound), so the blend
         // waits until it has filled: no dip.
         const bool dryWant = rampT_[rMix] < 1.0f || ramp_[rMix].v < 1.0f;
-        dryStill_ = wf1_.still && wf2_.still;
-        if (dryStill_) dryD_.snap(wf1_.delay + wf2_.delay);
-        else if (dryWant && !dryActive_) dryD_.snap(wf1_.base + wf2_.base);
-        else if (dryWant) dryD_.to(wf1_.base + wf2_.base);
-        if (dryWant && !dryActive_) dryHold_ = (int)(dryD_.v * kCtrlInv) + 2;
+        // It follows the tape path the way the wobble stages do: glided to a near length,
+        // crossfaded to a far one (once it holds enough sound to be read that far back).
+        const float dryTarget = wf1_.base + wf2_.base;
+        if (dryWant && !dryActive_)
+        {
+            dryD_.snap(dryTarget); dryJump_ = 0.0f; dryFill_ = 0;
+            dryHold_ = (int)(dryTarget * kCtrlInv) + 2;
+        }
+        else if (dryWant && dryJump_ == 0.0f)
+        {
+            const float off = dryTarget - dryD_.v;
+            if (dryFill_ < (1 << 20)) ++dryFill_;
+            if (std::fabs(off) < 0.01f) dryD_.snap(dryTarget);
+            else if (std::fabs(off) <= kJumpMin) dryD_.to(dryTarget);
+            else if ((float)(dryFill_ * kCtrl) > dryTarget + 8.0f) { dryD_.inc = 0.0f; dryJump_ = off; dryXf_ = 0.0f; }
+        }
+        dryStill_ = wf1_.still && wf2_.still && dryD_.inc == 0.0f && dryJump_ == 0.0f;
         if (dryHold_ > 0) { --dryHold_; rampS_[rMix] = 1.0f; ramp_[rMix].snap(1.0f); }
         dryActive_ = dryWant;
 
@@ -1709,6 +1774,19 @@ private:
             {kHum, 30}, {kBuzz, 25}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 5}, {kWhistle, 60},
             {kMicOn, 1}, {kMicType, 3}, {kMono, 1},
             {kAgc, 25}, {kDrift, 10} });
+        // A good Hi-Fi deck with tired heads: buzz that rides on the music and sinks in the
+        // pauses, the right channel crackling, now and then a moment on the backup track.
+        program("Worn Heads", {
+            {kDrive, 15}, {kWear, 5}, {kComp, 25}, {kHiCut, 15000}, {kHiSat, 20},
+            {kWarp, 8}, {kFlutter, 8}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 25}, {kHiCut2, 16000},
+            {kHum, 0}, {kHeadBuzz, 55}, {kHiss, 20}, {kCrackle, 5},
+            {kTracking, 45}, {kBreathing, 45} });
+        // Oxide on the heads: dull, and the highs keep falling away.
+        program("Dirty Heads", {
+            {kDrive, 30}, {kWear, 35}, {kComp, 40}, {kHiCut, 5000}, {kHighs, -6}, {kHiSat, 45},
+            {kWarp, 30}, {kFlutter, 30}, {kScrape, 30}, {kWow, 20}, {kFlutter2, 15}, {kLoCut, 80}, {kHiCut2, 7000},
+            {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
+            {kAgc, 25}, {kDrift, 45} });
     }
 
     // ----- state ------------------------------------------------------------------
@@ -1716,6 +1794,7 @@ private:
     std::atomic<bool> quit_{false}, pushPending_{false};
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
     std::atomic<bool> resetPending_{false};               // a reset is due at the start of the next block
+    std::atomic<bool> resetWanted_{false};                // the host asked for one: fade out first, then reset
     std::atomic<bool> suspended_{false};                  // the host has suspended us
     std::atomic<float> srWanted_{0.0f};                   // the sample rate the host announced
     std::atomic<bool> tellHost_{false};                   // the host asked for the pending reset: send it the values after
@@ -1730,7 +1809,7 @@ private:
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
-    int   fadeOut_ = 0;                                   // ticks left of the fade-out before HQ switches
+    int   fadeOut_ = 0;                                   // ticks left of the fade-out before a reset
 
     // what the screen shows (audio thread)
     bool  playing_ = false;
@@ -1775,6 +1854,8 @@ private:
     PairDelay wf1Delay_, wf2Delay_;
     PairDelay dryDelay_;                 // the untouched input, for Mix
     Ramp  dryD_;                         // its delay: the resting length of the two wobble delays
+    float dryJump_ = 0, dryXf_ = 0;      // its crossfade to a far new length (as TapeSpeed::jump, xf)
+    int   dryFill_ = 0;                  // control ticks of sound it has taken in since it was switched in
     TapeSpeed wf1_, wf2_;
     float dev1Slow_ = 0, rate1Slow_ = 0.55f, shape1_ = 0, dev1Fast_ = 0, rate1Fast_ = 9;
     float dev2Slow_ = 0, rate2Slow_ = 0.8f,  dev2Fast_ = 0, rate2Fast_ = 14;
