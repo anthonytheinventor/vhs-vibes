@@ -102,7 +102,7 @@ int main()
     for (int b = 0; b < 350; ++b) { e->setParameter(e, kWarp, 0.2f + 0.6f * (float)b / 350.0f); play(e, 1, 0.2f); }   // a 1 s knob sweep
     { std::lock_guard<std::mutex> l(g_m); std::printf("   latency updates sent during a one-second Warp sweep: %d\n", g_io); }
     check(g_io == 0, "no latency updates while a knob is moving");
-    play(e, 400, 0.2f);
+    play(e, 1200, 0.2f);                                      // the delay glides to its new length (about 2 s), then half a second of quiet
     { std::lock_guard<std::mutex> l(g_m); std::printf("   after the sweep settles: %d update(s), now %d samples (%.1f ms)\n", g_io, (int)e->initialDelay, e->initialDelay / 44.1); }
     check(g_io == 1 && (int)e->initialDelay > homeLat, "one update after the knob stops, and the latency grew with Warp");
     e->dispatcher(e, effSetProgram, 0, 20, nullptr, 0.0f);    // Init: no wobble

@@ -50,6 +50,11 @@
 // blend is clean, with them on dry and wet drift against each other and it sounds like a
 // chorus. At 100 % (the default) the dry path is not computed.
 //
+// HQ (off unless switched on) runs the stages that distort, from the preamp clip to the
+// saturator, at twice the sample rate between two half-band filters. What those stages add
+// above 22 kHz is then filtered off; without HQ it folds back down as tones that were never in
+// the sound (a loud 14 kHz comes back at 2.1 kHz). It costs about a quarter more CPU.
+//
 // Compatibility: parameters are only ever appended, and a new one rests at 0 where the plugin
 // sounds as it did without it. Programs 0 to 20 keep their numbers and leave the 1.4 knobs at
 // 0, so a project saved with an older version loads with every setting in place.
@@ -158,6 +163,8 @@ enum ParamIndex
     // added in 1.4
     kScrape,       // %      scrape flutter: a fast roughness from the tape rubbing along its path
     kWhistle,      // %      the 15.7 kHz line whistle of the TV set leaking into the sound
+    kHq,           // bool   the stages that distort run at twice the sample rate (no fold-back).
+                   //        Like Animation, not part of the programs.
     kNumParams
 };
 
@@ -184,12 +191,17 @@ constexpr float kBoostCeil          = 1.5f;   // the AGC and the compressor's ma
                                               // past this (the rail the soft clippers work to)
 constexpr float kFbLevel            = 0.71f;  // the backup track plays 3 dB quieter than the Hi-Fi track
 constexpr float kLineHz             = 15734.0f;   // NTSC line rate: the whistle of a TV set
+// HQ: the half-band filter that doubles and halves the sample rate (see HalfBand), and how
+// late the pair makes the sound, in samples
+constexpr float kHb[3]              = { 0.1035037879f, 0.3717428742f, 0.7519142908f };
+constexpr float kHqDelay            = 1.412f;
 
 // Which values a parameter feeds. A knob move only recomputes its own group in readParams().
 enum Group : uint32_t
 {
     gRamps = 1u << 0, gPreamp = 1u << 1, gWear = 1u << 2, gComp = 1u << 3, gSat = 1u << 4, gHiCut = 1u << 5,
     gWobble = 1u << 6, gCuts = 1u << 7, gNoise = 1u << 8, gChorus = 1u << 9, gMic = 1u << 10, gDeck = 1u << 11,
+    gQuality = 1u << 12,   // the HQ switch: not a group to recompute, the whole plugin restarts
     gAll = 0xffffffffu
 };
 inline uint32_t groupOf(int param)
@@ -212,6 +224,7 @@ inline uint32_t groupOf(int param)
         case kChoSpeed: case kChoDelay: case kChoWidth:                     return gChorus;
         case kMicType: case kMicGain:                                       return gMic;
         case kDeckOn: case kAgc: case kDrift: case kTracking: case kBreathing: return gDeck;
+        case kHq:                                                           return gQuality;
         default:                                                            return 0;   // the two meters
     }
 }
@@ -357,6 +370,22 @@ private:
     Stereo at(int i) const { Stereo v; std::memcpy(&v, &buf_[(size_t)i * 2], sizeof(v)); return v; }
     std::vector<float> buf_;
     int mask_ = 0, w_ = 0;
+};
+
+// Half-band lowpass for 2x oversampling: two chains of first-order allpass sections that add
+// up to a lowpass at a quarter of the doubled rate (the elliptic design of Valenzuela and
+// Constantinides: 62 dB down from 28 kHz at 88.2 kHz). One of these doubles the rate, a second
+// one halves it again; the two together are a pure allpass, flat at every frequency and
+// kHqDelay samples late.
+struct HalfBand
+{
+    Stereo s[3][2] = {};   // per section: its last input and last output
+    void reset() { for (auto& v : s) v[0] = v[1] = splat(0.0f); }
+    Stereo ap(int i, Stereo x) { const Stereo y = kHb[i] * (x - s[i][1]) + s[i][0]; s[i][0] = x; s[i][1] = y; return y; }
+    // one sample in, two out (a is the earlier one)
+    void up(Stereo x, Stereo& a, Stereo& b) { a = ap(2, ap(0, x)); b = ap(1, x); }
+    // two samples in (a the earlier one), one out
+    Stereo down(Stereo a, Stereo b) { return 0.5f * (ap(2, ap(0, b)) + ap(1, a)); }
 };
 
 // The tape transport: turns "how wrong is the tape speed right now" into a delay time.
@@ -579,6 +608,7 @@ public:
         // 1.4. Both rest at 0, where the plugin sounds as it did before they existed.
         addParam(floatParam ("scrape",     "Scrape",       0.0f, 100.0f, 0.0f, "%", 0));
         addParam(floatParam ("whistle",    "Whistle",      0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(boolParam  ("hq",         "HQ",         false));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -608,12 +638,12 @@ public:
     // The notifier thread stops talking to the host (until the next reset). Any thread.
     void goQuiet() { started_.store(false); }
 
-    // A program is about to be chosen: it takes over the Animation switch as it stands, so the
-    // switch does not move. (The host's thread, the same one that then loads the program.)
+    // A program is about to be chosen: it takes over the Animation and HQ switches as they
+    // stand, so they do not move. (The host's thread, the same one that then loads the program.)
     void holdSwitches(int program)
     {
-        if (program >= 0 && program < (int)programs_.size())
-            programs_[(size_t)program].plainValues[kAnimate] = get(kAnimate);
+        if (program < 0 || program >= (int)programs_.size()) return;
+        for (int i : {(int)kAnimate, (int)kHq}) programs_[(size_t)program].plainValues[(size_t)i] = get(i);
     }
 
     // Allocates the delay lines. Never called while process() runs.
@@ -624,8 +654,6 @@ public:
         wf2Delay_.prepare(kTapeDelaySamples);
         dryDelay_.prepare(kTapeDelaySamples);
         choDelay_.prepare(2 * kChorusDelaySamples);   // the delay time plus its swing
-        envAttack_  = 1.0f - std::exp(-1.0f / (0.003f * sr_));
-        envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * sr_));
         // Hi-Fi noise reduction, per control tick: 5 ms up, 70 ms back (the VHS specification)
         breathAtk_  = 1.0f - std::exp(-(float)kCtrl / (0.005f * sr_));
         breathRel_  = 1.0f - std::exp(-(float)kCtrl / (0.070f * sr_));
@@ -655,10 +683,23 @@ public:
     void reset() override { resetPending_.store(true); }
 
 private:
+    // HQ on or off: the rate the distorting stages run at, and everything that follows from it.
+    void setQuality()
+    {
+        hq_   = getBool(kHq);
+        nlSr_ = hq_ ? 2.0f * sr_ : sr_;
+        envAttack_  = 1.0f - std::exp(-1.0f / (0.003f * nlSr_));   // the compressor detector
+        envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * nlSr_));
+        compSmooth_ = hq_ ? 0.01005f : 0.02f;                      // and its gain smoothing, per sample
+        hqLag_ = hq_ ? kHqDelay : 0.0f;
+    }
+
     // Clears every memory and jumps all smoothed values to the current settings.
     void doReset()
     {
         if (sr_ <= 0.0f) return;
+        setQuality();
+        hbUp_.reset(); hbDown_.reset();
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
         micHp_.reset(); micPk_.reset(); micLp_.reset();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
@@ -695,7 +736,7 @@ private:
         wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
         wf1_.reset(0x1234abcdu);
         wf2_.reset(0x0badf00du);
-        dryD_.snap(wf1_.base + wf2_.base);
+        dryD_.snap(wf1_.base + wf2_.base + hqLag_);
         dryActive_ = rampT_[rMix] < 1.0f;
         dryStill_ = false;
         dryHold_ = choHold_ = 0;
@@ -720,6 +761,45 @@ private:
         pushPending_.store(true, std::memory_order_relaxed);
     }
 
+    // The stages that distort: preamp clip, Wear, the compressor with the clip on its boost,
+    // and the 2-band saturator. Once per sample, or twice per sample in HQ (their per-sample
+    // values are then set for the doubled rate: see setQuality, slewStep_, splitCoeff_).
+    __attribute__((always_inline)) Stereo shape(Stereo x, float satMix)
+    {
+        if (driveOn_) x = driveSat(x, cur_[cDrvG], cur_[cDrvMk], cur_[cDrvMix]);
+
+        // ----- wear: slew limiter ----------------------------------------
+        if (slewOn_)
+        {
+            const Stereo step = splat(slewStep_);
+            slew_ += vmax(vmin(x - slew_, step), -step);
+            x = slew_;
+        }
+
+        // ----- compressor (gain target is set in controlTick) ------------
+        const Stereo mag = vabs(x);
+        const float peak = maxf(mag[0], mag[1]);
+        env_ += (peak > env_ ? envAttack_ : envRelease_) * (peak - env_);
+        compGain_ += compSmooth_ * (compTarget_ - compGain_);
+        x *= compGain_ * cur_[cMakeup];
+        // The AGC and the make-up gain turn quiet sound up; a sudden loud hit gets that gain
+        // for a few milliseconds before they react. It is clipped here, as the recorder's
+        // own input would.
+        if (boost_) x = vmax(vmin(x, splat(kBoostCeil)), splat(-kBoostCeil));
+
+        // ----- 2-band saturator ------------------------------------------
+        if (satMix > 0.0f)
+        {
+            splitLp_ += splitCoeff_ * (x - splitLp_);
+            Stereo lo = splitLp_ * cur_[cLowsG];
+            Stereo hi = (x - splitLp_) * cur_[cHighsG];
+            if (loSatOn_) lo = driveSat(lo, cur_[cLoG], cur_[cLoMk], cur_[cLoMix]);
+            if (hiSatOn_) hi = driveSat(hi, cur_[cHiG], cur_[cHiMk], cur_[cHiMix]);
+            x += (lo + hi - x) * satMix;
+        }
+        return x;
+    }
+
 public:
     void process(mpc::ProcessContext& ctx) override
     {
@@ -732,7 +812,8 @@ public:
             const float v = getNormalised(i);
             if (v != lastNorm_[i]) { lastNorm_[i] = v; dirty |= groupOf(i); }
         }
-        if (dirty) readParams(dirty);
+        if (dirty & gQuality) doReset();   // HQ switched: the tape path starts again at the other rate
+        else if (dirty) readParams(dirty);
         playing_ = ctx.transport.valid && ctx.transport.playing;
 
         const float* inL = (ctx.inputs != nullptr && ctx.numInputs > 0) ? ctx.inputs[0] : nullptr;
@@ -858,37 +939,18 @@ public:
                 x = tiltLp_ * cur_[cTiltLo] + (x - tiltLp_) * cur_[cTiltHi];
             }
             else tiltLp_ = x;   // stays with the sound, so Tone can come in without a click
-            if (driveOn_) x = driveSat(x, cur_[cDrvG], cur_[cDrvMk], cur_[cDrvMix]);
-
-            // ----- wear: slew limiter ----------------------------------------
-            if (slewOn_)
+            // ----- drive, wear, compressor, saturator: the stages that distort ----
+            if (hq_)
             {
-                const Stereo step = splat(cur_[cSlew]);
-                slew_ += vmax(vmin(x - slew_, step), -step);
-                x = slew_;
+                // HQ: they run at twice the sample rate, so what they add above 22 kHz is
+                // filtered off instead of folding back down into the sound.
+                Stereo a, b;
+                hbUp_.up(x, a, b);
+                a = shape(a, satMix);
+                b = shape(b, satMix);
+                x = hbDown_.down(a, b);
             }
-
-            // ----- compressor (gain target is set in controlTick) ------------
-            const Stereo mag = vabs(x);
-            const float peak = maxf(mag[0], mag[1]);
-            env_ += (peak > env_ ? envAttack_ : envRelease_) * (peak - env_);
-            compGain_ += 0.02f * (compTarget_ - compGain_);
-            x *= compGain_ * cur_[cMakeup];
-            // The AGC and the make-up gain turn quiet sound up; a sudden loud hit gets that gain
-            // for a few milliseconds before they react. It is clipped here, as the recorder's
-            // own input would.
-            if (boost_) x = vmax(vmin(x, splat(kBoostCeil)), splat(-kBoostCeil));
-
-            // ----- 2-band saturator ------------------------------------------
-            if (satMix > 0.0f)
-            {
-                splitLp_ += splitCoeff_ * (x - splitLp_);
-                Stereo lo = splitLp_ * cur_[cLowsG];
-                Stereo hi = (x - splitLp_) * cur_[cHighsG];
-                if (loSatOn_) lo = driveSat(lo, cur_[cLoG], cur_[cLoMk], cur_[cLoMix]);
-                if (hiSatOn_) hi = driveSat(hi, cur_[cHiG], cur_[cHiMk], cur_[cHiMix]);
-                x += (lo + hi - x) * satMix;
-            }
+            else x = shape(x, satMix);
 
             // ----- 4-pole high cut -------------------------------------------
             x = lpfB_.process(lpfA_.process(x));
@@ -1109,7 +1171,7 @@ private:
             tgt_[cHighsG] = dbToGain(get(kHighs));
             setDrive(pct(kLoSat), 9.0f, cLoG, cLoMk, cLoMix);
             setDrive(pct(kHiSat), 9.0f, cHiG, cHiMk, cHiMix);
-            splitCoeff_ = lpCoeff(get(kSplit), sr);
+            splitCoeff_ = lpCoeff(get(kSplit), nlSr_);
         }
         if (groups & gHiCut)
         {
@@ -1229,6 +1291,7 @@ private:
         tiltOn_    = cur_[cTiltLo] != 1.0f || cur_[cTiltHi] != 1.0f;
         driveOn_   = cur_[cDrvMix] > 0.0f;
         slewOn_    = cur_[cSlew] < 2.0f;
+        slewStep_  = cur_[cSlew] * (hq_ ? 0.5f : 1.0f);   // per sample at the rate the stage runs at
         loSatOn_   = cur_[cLoMix] > 0.0f;
         hiSatOn_   = cur_[cHiMix] > 0.0f;
 
@@ -1243,17 +1306,17 @@ private:
         wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
         wf1_.tick(shape1_);
         wf2_.tick(0.0f);
-        wantLatency_.store((int)(wf1_.base + wf2_.base + 0.5f), std::memory_order_relaxed);   // settles when the glide ends
+        wantLatency_.store((int)(wf1_.base + wf2_.base + hqLag_ + 0.5f), std::memory_order_relaxed);   // settles when the glide ends
 
         // Mix: the dry copy is only kept while Mix is below 100 %. It waits as long as the tape
         // path does at rest; with both wobbles still that is a whole number of samples. When
         // Mix is first turned down the copy is still empty (or holds old sound), so the blend
         // waits until it has filled: no dip.
         const bool dryWant = rampT_[rMix] < 1.0f || ramp_[rMix].v < 1.0f;
-        dryStill_ = wf1_.still && wf2_.still;
+        dryStill_ = wf1_.still && wf2_.still && !hq_;   // (HQ adds a fraction of a sample)
         if (dryStill_) dryD_.snap(wf1_.delay + wf2_.delay);
-        else if (dryWant && !dryActive_) dryD_.snap(wf1_.base + wf2_.base);
-        else if (dryWant) dryD_.to(wf1_.base + wf2_.base);
+        else if (dryWant && !dryActive_) dryD_.snap(wf1_.base + wf2_.base + hqLag_);
+        else if (dryWant) dryD_.to(wf1_.base + wf2_.base + hqLag_);
         if (dryWant && !dryActive_) dryHold_ = (int)(dryD_.v * kCtrlInv) + 2;
         if (dryHold_ > 0) { --dryHold_; rampS_[rMix] = 1.0f; ramp_[rMix].snap(1.0f); }
         dryActive_ = dryWant;
@@ -1465,8 +1528,8 @@ private:
     // ----- built-in programs ---------------------------------------------------
     void addPrograms()
     {
-        // A program lists every parameter. The Animation switch is not meant to follow a
-        // program: see holdSwitches().
+        // A program lists every parameter. The Animation and HQ switches are not meant to
+        // follow a program: see holdSwitches().
         std::vector<float> defaults;
         for (int i = 0; i < kNumParams; ++i) defaults.push_back(param(i).def);
         auto program = [&](const char* name, std::initializer_list<std::pair<int, float>> changes)
@@ -1662,7 +1725,13 @@ private:
     Stereo tiltLp_ = {0.0f, 0.0f}, slew_ = {0.0f, 0.0f};
     float tiltCoeff_ = 0.1f;
     float env_ = 0.0f, envAttack_ = 0.01f, envRelease_ = 0.0002f;
-    float compGain_ = 1.0f, compTarget_ = 1.0f;
+    float compGain_ = 1.0f, compTarget_ = 1.0f, compSmooth_ = 0.02f;
+    float slewStep_ = 2.0f;
+
+    // HQ (2x oversampling of the distorting stages)
+    bool  hq_ = false;
+    float nlSr_ = 44100.0f, hqLag_ = 0.0f;   // the rate those stages run at; how late HQ makes the sound
+    HalfBand hbUp_, hbDown_;
 
     // saturator and filters
     Stereo splitLp_ = {0.0f, 0.0f}, loCutLp_ = {0.0f, 0.0f};
@@ -1721,9 +1790,9 @@ private:
 };
 
 // The framework's dispatcher with three additions:
-//  - Choosing a program leaves the Animation switch as it was. The framework sets every value
-//    a program lists, and the parameters added after Animation have to be in that list, so the
-//    program is first told the present position of the switch.
+//  - Choosing a program leaves the Animation and HQ switches as they were. The framework sets
+//    every value a program lists, and the parameters added after Animation have to be in that
+//    list, so the program is first told the present position of the two switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
 //    their resting values before any state is loaded, so such a state sounds as it was saved
 //    whatever this instance was doing before; a newer state then sets them.

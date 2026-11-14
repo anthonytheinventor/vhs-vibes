@@ -137,7 +137,7 @@ PAGES = [
         ("DECK", "デッキ", ["Deck On", "AGC", "Drift", None]),
         ("HI-FI TRACK", "ハイファイ", ["Tracking", "Breathing", None, None]),
         ("SCREEN", "スクリーン", ["Animation", None, None, None]),
-        ("", "", [None, None, None, None]),
+        ("QUALITY", "高音質", ["HQ", None, None, None]),
     ]},
 ]
 

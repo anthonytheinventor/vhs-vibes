@@ -21,7 +21,7 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 51 controls on five pages, 23 built-in programs
+- 52 controls on five pages, 23 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
 - version 1.4
@@ -122,6 +122,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
+| HQ | Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate, so loud, bright sounds do not fold back into the midrange as false tones. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it restarts the tape path with a short fade. Choosing a program does not change it. |
 
 There is no tape-speed or track switch because they would only repeat other controls. For a
 slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss; SP is about
@@ -181,9 +182,9 @@ The Animation switch on the DECK page turns them off.
 - Turning a wobble depth or rate changes the plugin's own delay. It follows at a limited
   pace, so the pitch bends by a couple of percent at most, and a big jump takes a few seconds
   to arrive in full.
-- Projects made with 1.3 load with every setting in place. Scrape and Whistle rest at 0, no
-  older program uses them, and the two new programs come after Init so every older one keeps
-  its number.
+- Projects made with 1.3 load with every setting in place. Scrape, Whistle and HQ rest at 0
+  or off, no older program uses them, and the two new programs come after Init so every older
+  one keeps its number.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
   like a chorus. That is the nature of mixing a wobbling signal with a steady one.
@@ -209,7 +210,8 @@ options work. The plain `tools/build.py` also builds the plugin, without LTO.
 Left and right run through the effect chain together as one two-float vector, which the
 compiler turns into NEON instructions on the MPC. A stage whose amount is zero is skipped,
 and maths that would be a library call on the 32-bit MPCs (fmax, tanh, sin per sample) is
-kept out of the per-sample code.
+kept out of the per-sample code. HQ doubles the sample rate around the distorting stages
+with a pair of small half-band filters (three allpass sections each way).
 
 **Skin.** The interface is a hand-made skin: a hot pink cassette with the reel window and two
 stickers along the top and the controls on a dark face label, in two rows of eight. The

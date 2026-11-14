@@ -939,6 +939,13 @@
                     "Off",
                     "On"
                 ]
+            },
+            {
+                "key": "Parameter 53",
+                "value": [
+                    "Off",
+                    "On"
+                ]
             }
         ],
         "info": {
@@ -3270,6 +3277,35 @@
                                 "boundsType": "Absolute",
                                 "bounds": "80 444 140 152"
                             }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "HQ",
+                                "type": "vvToggle",
+                                "data": {
+                                    "version": 1,
+                                    "handleName": "Data"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": [
+                                    {
+                                        "key": "Data",
+                                        "value": "Parameter 53"
+                                    }
+                                ]
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "Yes",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "640 444 140 152"
+                            }
                         }
                     ]
                 },
@@ -3277,7 +3313,7 @@
                     "76 234 568 180",
                     "636 234 568 180",
                     "76 418 568 180",
-                    "0 0 0 0"
+                    "636 418 568 180"
                 ]
             }
         ]

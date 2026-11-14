@@ -79,6 +79,17 @@ static double rms(const std::vector<float>& v, size_t from = 0, size_t to = (siz
     return std::sqrt(s / (double)(to > from ? to - from : 1));
 }
 static double db(double x) { return 20.0 * std::log10(x > 1e-12 ? x : 1e-12); }
+// amplitude of the component at `hz` (a whole number of Hz) in the first second of `v`
+static double toneLevel(const std::vector<float>& v, double hz)
+{
+    double re = 0, im = 0;
+    for (size_t i = 0; i < 44100 && i < v.size(); ++i)
+    {
+        const double w = 6.283185307179586 * hz * (double)i / 44100.0;
+        re += v[i] * std::cos(w); im += v[i] * std::sin(w);
+    }
+    return 2.0 * std::sqrt(re * re + im * im) / 44100.0;
+}
 // lowest RMS of any 5 ms window
 static double quietest(const std::vector<float>& v)
 {
@@ -328,10 +339,10 @@ int main()
         for (int p = 0; p <= kInit; ++p)
         {
             fx.e->dispatcher(fx.e, effSetProgram, 0, p, nullptr, 0.0f);
-            clean = clean && fx.get(kScrape) == 0.0f && fx.get(kWhistle) == 0.0f;
+            clean = clean && fx.get(kScrape) == 0.0f && fx.get(kWhistle) == 0.0f && fx.get(kHq) == 0.0f;
         }
         fx.e->dispatcher(fx.e, effGetProgramNameIndexed, kInit, 0, name, 0.0f);
-        check(clean, "programs 0 to 20 leave Scrape and Whistle at 0");
+        check(clean, "programs 0 to 20 leave Scrape, Whistle and HQ at 0");
         check(std::strcmp(name, "Init") == 0, "program 20 is Init");
         fx.play(0.1f, 0.1f, nullptr);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -352,10 +363,10 @@ int main()
     {
         Fx a; a.e->dispatcher(a.e, effSetProgram, 0, 0, nullptr, 0.0f); a.set(kWarp, 70);
         const std::vector<uint8_t> old = stateBefore14(a.e);
-        for (int first : {-1, 21, 22})   // a fresh instance, then one on Sticky Tape, one on Tube TV
+        for (int first : {-1, 21, 22})   // a fresh instance, then one on Sticky Tape and one on Tube TV, both with HQ on
         {
             Fx b;
-            if (first >= 0) b.e->dispatcher(b.e, effSetProgram, 0, first, nullptr, 0.0f);
+            if (first >= 0) { b.e->dispatcher(b.e, effSetProgram, 0, first, nullptr, 0.0f); b.set(kHq, 1); }
             b.play(0.05f, 0.1f, nullptr);
             b.e->dispatcher(b.e, effSetChunk, 0, (VstIntPtr)old.size(), const_cast<uint8_t*>(old.data()), 0.0f);
             b.play(0.05f, 0.1f, nullptr);
@@ -373,6 +384,65 @@ int main()
         Fx b;
         b.e->dispatcher(b.e, effSetChunk, 0, size, data, 0.0f);
         check(b.get(kScrape) == 40.0f && b.get(kWhistle) == 25.0f, "a 1.4 state brings its own Scrape and Whistle");
+    }
+
+    std::printf("11. HQ: the distorting stages at twice the sample rate\n");
+    {
+        // A loud 14 kHz tone through 3rd Gen Copy (noise, wobble and deck off). Its third
+        // harmonic, 42 kHz, cannot exist at 44.1 kHz and comes back as 2.1 kHz.
+        double fold[2];
+        for (int hq = 0; hq < 2; ++hq)
+        {
+            Fx fx; fx.e->dispatcher(fx.e, effSetProgram, 0, 2, nullptr, 0.0f);
+            fx.set(kNoiseOn, 0); fx.set(kWobbleOn, 0); fx.set(kDeckOn, 0); fx.set(kHq, (float)hq);
+            std::vector<float> out; fx.play(2.0f, 0.7f, nullptr, 14000.0f); fx.play(1.1f, 0.7f, &out, 14000.0f);
+            fold[hq] = db(toneLevel(out, 2100.0));
+        }
+        std::printf("   fold-back at 2.1 kHz: HQ off %+.1f dBFS, HQ on %+.1f dBFS\n", fold[0], fold[1]);
+        check(fold[0] > -20.0, "without HQ the fold-back is loud (this is what HQ is for)");
+        check(fold[1] < fold[0] - 40.0, "HQ takes it down by more than 40 dB");
+    }
+    {
+        // Init, HQ off against HQ on: the same level at every pitch, and at Mix 50 % too
+        // (there the dry signal has to be lined up with the HQ path, 1.4 samples late).
+        bool flat = true; double mixed[2] = {0, 0};
+        for (float hz : {100.0f, 1000.0f, 10000.0f, 15000.0f, 18000.0f})
+        {
+            double g[2];
+            for (int hq = 0; hq < 2; ++hq)
+            {
+                Fx fx; fx.set(kHq, (float)hq);
+                std::vector<float> out; fx.play(0.5f, 0.25f, nullptr, hz); fx.play(1.1f, 0.25f, &out, hz);
+                g[hq] = db(toneLevel(out, hz) / 0.25);
+            }
+            std::printf("   Init, %5.0f Hz: HQ off %+.3f dB, HQ on %+.3f dB\n", hz, g[0], g[1]);
+            flat = flat && std::fabs(g[1] - g[0]) < 0.05;
+        }
+        check(flat, "HQ alone changes no level from 100 Hz to 18 kHz");
+        for (int hq = 0; hq < 2; ++hq)
+        {
+            Fx fx; fx.set(kHq, (float)hq); fx.set(kMix, 50);
+            std::vector<float> out; fx.play(0.5f, 0.25f, nullptr, 5000.0f); fx.play(1.1f, 0.25f, &out, 5000.0f);
+            mixed[hq] = db(toneLevel(out, 5000.0) / 0.25);
+        }
+        std::printf("   Init, Mix 50 %%, 5 kHz: HQ off %+.3f dB, HQ on %+.3f dB (dry and wet out of line would cost 1.1 dB)\n", mixed[0], mixed[1]);
+        check(std::fabs(mixed[1] - mixed[0]) < 0.1, "the dry signal is lined up with the HQ path");
+    }
+    {
+        Fx fx;
+        fx.play(1.0f, 0.25f, nullptr);
+        fx.set(kHq, 1);
+        std::vector<float> out; fx.play(0.5f, 0.25f, &out);
+        bool finite = true; float step = 0.0f;
+        for (size_t i = 1; i < out.size(); ++i) { finite = finite && std::isfinite(out[i]); step = std::fmax(step, std::fabs(out[i] - out[i - 1])); }
+        std::printf("   HQ switched on while a 1 kHz tone plays: largest step between samples %.3f (the tone itself steps 0.036)\n", step);
+        check(finite && step < 0.05, "switching HQ makes no click (a short fade)");
+        check(rms(out, out.size() / 2) > 0.17, "and the sound is back within a quarter of a second");
+        fx.e->dispatcher(fx.e, effSetProgram, 0, 3, nullptr, 0.0f);
+        check(fx.get(kHq) > 0.5f, "choosing a program leaves HQ on");
+        fx.set(kHq, 0);
+        fx.e->dispatcher(fx.e, effSetProgram, 0, 5, nullptr, 0.0f);
+        check(fx.get(kHq) < 0.5f, "and leaves it off");
     }
 
     std::printf(fails ? "FAIL\n" : "PASS\n");
