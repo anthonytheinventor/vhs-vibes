@@ -346,6 +346,25 @@ int main()
         check(finite, "an infinity in one channel is caught too");
     }
 
+    {
+        // a program chosen while bad input keeps arriving is still reported to the host
+        Fx fx; fx.play(0.2f, 0.1f, nullptr);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        const int before = hostCalls();
+        fx.e->dispatcher(fx.e, effSetProgram, 0, 2, nullptr, 0.0f);
+        float L[128], R[128]; float* io[2] = { L, R };
+        for (int b = 0; b < 40; ++b)
+        {
+            for (int i = 0; i < 128; ++i) L[i] = R[i] = 0.1f;
+            L[3] = std::nanf("");
+            fx.e->processReplacing(fx.e, io, io, 128);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        std::printf("   program chosen while a NaN arrives in every block: %d values sent to the host\n", hostCalls() - before);
+        check(hostCalls() - before >= 50, "the host still hears about the program");
+    }
+
     std::printf("9. The older programs do not use the new knobs; a suspended plugin is quiet\n");
     {
         Fx fx; bool clean = true; char name[64] = {0};

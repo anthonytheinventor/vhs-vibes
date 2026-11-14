@@ -666,6 +666,7 @@ public:
     void prepare(double sampleRate, int /*maxBlockSize*/) override
     {
         srWanted_.store((float)sampleRate);
+        tellHost_.store(true);
         resetPending_.store(true);
     }
 
@@ -673,7 +674,7 @@ public:
     // whichever thread it likes, and prepare() needs one too. The work is done by the audio
     // thread at the start of its next block, so it never runs while process() is in the
     // middle of one.
-    void reset() override { resetPending_.store(true); }
+    void reset() override { tellHost_.store(true); resetPending_.store(true); }
 
 private:
     // Everything that depends on the sample rate alone.
@@ -774,11 +775,10 @@ private:
 #endif
 
         // A reset follows the host starting the plugin and every program change and state
-        // load: from now on the notifier thread may talk to the host, and it should send the
-        // new values. (Only flags here.)
+        // load: from now on the notifier thread may talk to the host, and after a reset the
+        // host asked for it should send the new values. (Only flags here.)
         if (!suspended_.load()) started_.store(true);
-        if (!quietReset_) pushPending_.store(true, std::memory_order_relaxed);
-        quietReset_ = false;
+        if (tellHost_.exchange(false)) pushPending_.store(true, std::memory_order_relaxed);
     }
 
     // The stages that distort: preamp clip, Wear, the compressor with the clip on its boost,
@@ -1091,8 +1091,7 @@ public:
         {
             std::memset(outL, 0, sizeof(float) * (size_t)ctx.numFrames);
             if (outR != nullptr) std::memset(outR, 0, sizeof(float) * (size_t)ctx.numFrames);
-            quietReset_ = true;   // nothing changed that the host should hear about
-            resetPending_.store(true);
+            resetPending_.store(true);   // (our own reset: nothing the host needs to hear about)
         }
 
         // Hand the meter values to the notifier thread.
@@ -1719,7 +1718,7 @@ private:
     std::atomic<bool> resetPending_{false};               // a reset is due at the start of the next block
     std::atomic<bool> suspended_{false};                  // the host has suspended us
     std::atomic<float> srWanted_{0.0f};                   // the sample rate the host announced
-    bool  quietReset_ = false;                            // the pending reset is our own (bad input): no word to the host
+    std::atomic<bool> tellHost_{false};                   // the host asked for the pending reset: send it the values after
     std::atomic<bool> animate_{true};                     // the Animation switch
     std::atomic<float> visReel_{0.0f}, visLevel_{0.0f};   // audio thread -> notifier thread
     std::atomic<int> wantLatency_{12};                    // resting delay of the tape path, in samples
