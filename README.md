@@ -1,24 +1,45 @@
-# VHS Vibes
+<p align="center">
+  <img src="docs/page_1_tape.png" alt="VHS Vibes: the TAPE page, a hot pink cassette with knobs" width="820">
+</p>
 
-A VHS tape degradation effect for Akai MPC standalone hardware, by anthonytheinventor.
-Pitch wobble, saturation, generation loss, hum, hiss and crackle, on a hot pink cassette.
+<h1 align="center">ＶＨＳ　ＶＩＢＥＳ</h1>
 
-![The TAPE page](docs/page_1_tape.png)
+<p align="center">
+  <b>ビデオカセット　・　ａｅｓｔｈｅｔｉｃ　ｔａｐｅ　ｄｅｇｒａｄａｔｉｏｎ　・　Ｔ－１２０</b><br>
+  an effect plugin for Akai MPC standalone hardware, by anthonytheinventor
+</p>
 
-(The pictures in `docs/` are mock-ups drawn by the skin script, not photos of an MPC.)
+> *You found this tape in a box with no label. Somebody recorded over it, twice.*
+> *The picture is gone. The sound stayed. It is not the sound that went in.*
 
-This repository is the plugin's project folder for the
-[Akai MPC Plugin SDK](https://github.com/inmusic-software/mpc-plugin-builder-sdk). To build
-it, clone the SDK and put this folder inside it as `plugins/VHS Vibes`. The MPC needs MPC OS
-3.10.1 or later with Preferences > Enhancements (Beta) > Enable Enhancements and External
-Plugin Support switched on.
+---
 
-Insert effect, stereo in / stereo out, 49 controls on five pages, 21 built-in programs. Version 1.3.
+## ▶ ＰＬＡＹ
 
-## What it does
+**VHS Vibes makes clean audio sound like it lived on a video cassette.** Put it on a track and
+the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts and, if you
+let it, the machine loses the tape for a moment and finds it again.
 
-The stage order follows the idea of James Peck's "VHS Audio Degradation Suite" for Reaktor.
-All code here is original and no samples are used: every noise is synthesised.
+- insert effect, stereo in, stereo out
+- 49 controls on five pages, 21 built-in programs
+- a hot pink cassette on the MPC's screen, with reels that turn when sound passes
+- every noise is synthesised: no samples, nothing to load
+- version 1.3
+
+## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
+
+1. Take the zip from [Releases](https://github.com/anthonytheinventor/vhs-vibes/releases).
+2. Copy the folder `anthonytheinventor - VST - VHS Vibes` into a folder named `VST2 Plugins`
+   at the top of a USB drive, an SD card or the MPC's internal drive.
+3. On the MPC: **Preferences > Enhancements (Beta)**, switch on **Enable Enhancements** and
+   **External Plugin Support**. Restart the MPC.
+4. It is in the plugin browser under **External Plugins**.
+
+Needs MPC OS 3.10.1 or later. `INSTALL.txt` in the zip says the same at more length.
+
+## 📼 ＷＨＡＴ　ＩＳ　ＯＮ　ＴＨＥ　ＴＡＰＥ
+
+The sound goes through the machine in this order:
 
 ```
 in -> Chorus -> Mic -> AGC -> Preamp (Tone, Drive) -> Wear -> Comp -> 2-band Saturator -> Hi Cut
@@ -26,9 +47,12 @@ in -> Chorus -> Mic -> AGC -> Preamp (Tone, Drive) -> Wear -> Comp -> 2-band Sat
    -> Drift -> Tracking -> Head switching -> Dropouts -> Mono -> Mix -> Output
 ```
 
-## Pages and controls
+Two wobbles, because a copy of a copy wobbles twice. Each block of four controls on screen
+is one Q-Link group: touch a control and the four knobs follow that block.
 
-**TAPE**
+### ＴＡＰＥ　テープ
+
+*What the tape did to the sound.*
 
 | Control | What it does |
 |---|---|
@@ -46,7 +70,9 @@ in -> Chorus -> Mic -> AGC -> Preamp (Tone, Drive) -> Wear -> Comp -> 2-band Sat
 | Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
 | Hi Cut | 4-pole lowpass after the saturator. |
 
-**WOBBLE**
+### ＷＯＢＢＬＥ　ゆらぎ
+
+*The motor is tired.*
 
 | Control | What it does |
 |---|---|
@@ -58,7 +84,9 @@ in -> Chorus -> Mic -> AGC -> Preamp (Tone, Drive) -> Wear -> Comp -> 2-band Sat
 | Lo Cut / Hi Cut | Filters after the second wobble. |
 | Wobble (switch) | Turns both wobbles off or on together. The filters stay in. |
 
-**NOISE**
+### ＮＯＩＳＥ　ノイズ
+
+*Everything the tape adds when nobody is talking.*
 
 | Control | What it does |
 |---|---|
@@ -71,16 +99,18 @@ in -> Chorus -> Mic -> AGC -> Preamp (Tone, Drive) -> Wear -> Comp -> 2-band Sat
 | Noise (switch) | Turns all noise off or on. |
 | Position | Post: noise is added after the first wobble (clean noise). Pre: noise goes in at the input and is compressed, clipped and wobbled with the music. |
 
-**INPUT**
+### ＩＮＰＵＴ　インプット
+
+*What it was recorded through.*
 
 | Control | What it does |
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
 | Mic Power, Type, Gain | The tone of re-recording through a cheap microphone: Camcorder, Dynamic, Phone or Boombox. |
 
-**DECK**
+### ＤＥＣＫ　デッキ
 
-Faults of the machine rather than the tape. Each does something no other control can.
+*Faults of the machine rather than the tape. Each does something no other control can.*
 
 | Control | What it does |
 |---|---|
@@ -95,28 +125,39 @@ There is no tape-speed or track switch because they would only repeat other cont
 slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss; SP is about
 10 kHz and 50 Hz. For a clean Hi-Fi sound keep the wobbles and the noise low.
 
-## Programs
+<p align="center">
+  <img src="docs/page_5_deck.png" alt="The DECK page" width="640">
+</p>
 
-Home Recording (the default), Fresh Rental, 3rd Gen Copy, Vaporwave Mall, Camcorder 89,
-Tracking Error, Late Night TV, Clean Widener, Training Video, Chewed Tape, Answer Machine,
-Dream Sequence, Subtle Glue, Bad Tracking, Six Hour Tape, Wedding Video, Hi-Fi Master,
-Edge Damage, Bootleg Concert, Public Access, Init.
+## 🗃 ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ
 
-Init is a blank tape: everything neutral, the sound passes through unchanged. It is always
-the last program.
+Twenty-one programs. The labels are handwritten.
 
-## Tips
+| Program | What is on it |
+|---|---|
+| Home Recording | The default. A family tape in good shape: gentle wobble, some hiss, a level control that rides a little. |
+| Fresh Rental | Friday night, new release. Clean, a trace of breathing, loses lock once in a long while. |
+| 3rd Gen Copy | A copy of a copy of a copy: dull, clipped highs, deep wobble, plenty of noise. |
+| Vaporwave Mall | Slow warble and a wide chorus under dimmed lights. |
+| Camcorder 89 | Built-in microphone, level control squashing everything, noise recorded with the picture. |
+| Tracking Error | Buzz on the music, static, and the sound dropping to the backup track. |
+| Late Night TV | Mono, narrow, hum from the studio. |
+| Clean Widener | No tape at all: only the chorus, used as a stereo widener. |
+| Training Video | Please watch carefully. Mono, hiss that swells in every pause, slow warble, head buzz. |
+| Chewed Tape | The machine ate it. Lurching pitch, dropouts, sound that comes and goes. |
+| Answer Machine | You have one new message. Telephone tone, narrow and squashed. |
+| Dream Sequence | Wide, slow and hazy, with hardly any noise. |
+| Subtle Glue | Just a little tape: gentle clipping, the faintest wobble, no noise. |
+| Bad Tracking | A good tape in a deck that cannot quite follow it. |
+| Six Hour Tape | Recorded at the slowest speed: about 100 Hz to 6 kHz, more hiss, more wobble. |
+| Wedding Video | A camcorder at the back of the hall; the level control rides everything. |
+| Hi-Fi Master | The best VHS could do: wide, steady, quiet, breathing a little. |
+| Edge Damage | The top edge of the tape is creased: the sound comes and goes. |
+| Bootleg Concert | Taped from the crowd on a boombox and copied a few times. |
+| Public Access | Local cable studio: hum, buzz, and a level control doing its best. |
+| Init | A blank tape. Everything neutral; the sound passes through unchanged. Always the last one. |
 
-- With Position on Pre and Comp turned up, the noise swells whenever the music stops. That is
-  how a real VCR's automatic level control behaves; turn Master down if it is too much.
-- The effect makes noise even with no input. Set Master to 0 % for a silent background.
-- Turning a wobble depth or rate changes the plugin's own delay for a moment, which bends
-  the pitch while you turn it.
-- Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
-  off the blend is clean; with them on, dry and wet drift against each other and it sounds
-  like a chorus. That is the nature of mixing a wobbling signal with a steady one.
-
-## Moving parts
+## 👁 ＩＴ　ＭＯＶＥＳ
 
 - The two reels turn while sound comes in or the song is playing, coast to a stop about two
   seconds after, and lurch with the wobble.
@@ -127,30 +168,28 @@ These are driven by two extra read-only parameters, Reel and Level, which the pl
 up to 20 times a second. They are not settings, cannot be automated and are best left alone.
 The Animation switch on the DECK page turns them off.
 
-## The interface
+## 📝 ＮＯＴＥＳ　ＦＲＯＭ　ＴＨＥ　ＢＡＣＫ　ＯＦ　ＴＨＥ　ＢＯＸ
 
-A hand-made skin: a hot pink cassette with the reel window and two stickers along the top
-and the controls on a dark face label, in two rows of eight. Each block of four controls is
-one Q-Link group; touch a control and the four knobs follow that block. The block titles
-start a little to the right so the MPC's "Q" marker does not cover them.
+- With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops.
+  That is how a real recorder's level control behaves; turn Master down if it is too much.
+- The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a
+  silent background.
+- Turning a wobble depth or rate changes the plugin's own delay for a moment, which bends
+  the pitch while you turn it.
+- Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
+  off the blend is clean; with them on, dry and wet drift against each other and it sounds
+  like a chorus. That is the nature of mixing a wobbling signal with a steady one.
+- The pictures in `docs/` are mock-ups drawn by the skin script, not photos of an MPC.
 
-The skin is generated by a script (needs Python with Pillow, on Windows for the fonts):
+## ⏪ ＲＥＷＩＮＤ　巻き戻し
 
-```
-python "plugins/VHS Vibes/tools/make_skin.py"
-```
+For those who want to open the cassette.
 
-It reads `build/params.json` (run a build first, `--target native` is enough), draws every picture and writes
-`skins/TUI.json` and `skins/Q-Links.json`. `tools/build.py` copies `skins/` into the plugin
-as it is. Mock-ups of each page are written to `build/preview/`. `ui.json` is not used
-while `skins/` exists; it is a plain fallback layout.
+This repository is the plugin's project folder for the
+[Akai MPC Plugin SDK](https://github.com/inmusic-software/mpc-plugin-builder-sdk). Clone the
+SDK and put this folder inside it as `plugins/VHS Vibes`.
 
-Captions and titles are part of the pictures, because the MPC can only draw live text in
-three built-in fonts. They were rendered from fonts installed with Windows and Office
-(MS Gothic, Times New Roman, Brush Script MT). No font files are in the plugin. The value
-read-outs under the knobs are live text (Nexa).
-
-## Building
+**Build** (Linux or WSL):
 
 ```
 python3 "plugins/VHS Vibes/tools/build_lto.py" "plugins/VHS Vibes"
@@ -160,26 +199,47 @@ This is the SDK's `tools/build.py` with link-time optimisation (`-flto`) added; 
 options work. The plain `tools/build.py` also builds the plugin, without LTO.
 
 Left and right run through the effect chain together as one two-float vector, which the
-compiler turns into NEON instructions on the MPC. Maths that would be a library call on the
-32-bit MPCs (fmax, tanh, sin per sample) is avoided in the per-sample code.
+compiler turns into NEON instructions on the MPC. A stage whose amount is zero is skipped,
+and maths that would be a library call on the 32-bit MPCs (fmax, tanh, sin per sample) is
+kept out of the per-sample code.
 
-## Tests
+**Skin.** The interface is a hand-made skin: a hot pink cassette with the reel window and two
+stickers along the top and the controls on a dark face label, in two rows of eight. The
+block titles start a little to the right so the MPC's "Q" marker does not cover them. It is
+generated by a script (needs Python with Pillow, on Windows for the fonts):
+
+```
+python "plugins/VHS Vibes/tools/make_skin.py"
+```
+
+It reads `build/params.json` (run a build first, `--target native` is enough), draws every
+picture and writes `skins/TUI.json` and `skins/Q-Links.json`. `tools/build.py` copies
+`skins/` into the plugin as it is. Mock-ups of each page are written to `build/preview/`.
+`ui.json` is not used while `skins/` exists; it is a plain fallback layout.
+
+Captions and titles are part of the pictures, because the MPC can only draw live text in
+three built-in fonts. They were rendered from fonts installed with Windows and Office
+(MS Gothic, Times New Roman, Brush Script MT). No font files are in the plugin. The value
+read-outs under the knobs are live text (Nexa).
+
+**Tests** (Linux or WSL, needs zig):
 
 ```
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds four small programs with zig and runs them on the computer (Linux or WSL):
-`host_test` (what the plugin tells the host and when), `mix_test`, `deck_test` and
-`levels_test` (measurements of each stage to read through). The first two end in PASS or
-FAIL.
+Builds four small programs and runs them on the computer: `host_test` (what the plugin tells
+the host and when), `mix_test`, `deck_test` and `levels_test` (measurements of each stage to
+read through). The first two end in PASS or FAIL.
 
-## Honest status
+## 🔍 ＦＩＮＥ　ＰＲＩＮＴ
 
 - Built for 32-bit and 64-bit MPCs; passes the SDK host simulator (the one warning, sound
   with silent input, is the noise section doing its job).
 - Versions 1.0 to 1.2 ran on an MPC One+. The 1.3 changes (a code review's bug fixes and
   speed-ups, the latency report, the Animation switch) are tested on the PC only so far.
+- A plugin runs inside the MPC software. A faulty one can freeze or crash the MPC, and
+  third-party plugins are not supported by inMusic / Akai. Save your project first.
 - What comes from real VCR data: heads switch every video field (59.94 Hz); a Hi-Fi deck
   that loses its carrier makes static and falls back to the mono linear track; camcorder
   level controls duck fast, hold for seconds and creep back; Hi-Fi noise reduction breathes.
@@ -196,7 +256,9 @@ FAIL.
   over about 20 ms, so presets switch without a click or a pitch slide.
 - The sample rate is not assumed, but only 44.1 kHz has been tested.
 
-## Licence
+**Credits.** The order of the stages follows the idea of James Peck's "VHS Audio Degradation
+Suite" for Reaktor. That ensemble is not used, copied or required: all code here is original.
 
-MIT (see the source file). The Reaktor ensemble that inspired the stage order is not used,
-copied or required.
+**Licence.** MIT, see [LICENSE](LICENSE).
+
+<p align="center"><i>ｂｅ　ｋｉｎｄ　・　ｒｅｗｉｎｄ</i></p>

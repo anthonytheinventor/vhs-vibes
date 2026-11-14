@@ -12,6 +12,6 @@
   "file64": "VST/vhs-vibes-arm64.so",
   "description": "VHS Vibes: a VHS tape degradation effect (pitch wobble, saturation, generation loss, hum, hiss and crackle) for the MPC.",
   "author": "anthonytheinventor",
-  "url": "",
+  "url": "https://github.com/anthonytheinventor/vhs-vibes",
   "license": "MIT"
 }
