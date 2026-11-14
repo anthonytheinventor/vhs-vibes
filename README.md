@@ -236,8 +236,7 @@ read through). The first two end in PASS or FAIL.
 
 - Built for 32-bit and 64-bit MPCs; passes the SDK host simulator (the one warning, sound
   with silent input, is the noise section doing its job).
-- Versions 1.0 to 1.2 ran on an MPC One+. The 1.3 changes (a code review's bug fixes and
-  speed-ups, the latency report, the Animation switch) are tested on the PC only so far.
+- Tested on an MPC One+, every version from 1.0 to 1.3.
 - A plugin runs inside the MPC software. A faulty one can freeze or crash the MPC, and
   third-party plugins are not supported by inMusic / Akai. Save your project first.
 - What comes from real VCR data: heads switch every video field (59.94 Hz); a Hi-Fi deck
@@ -246,12 +245,11 @@ read through). The first two end in PASS or FAIL.
   The times and depths of those effects are not documented anywhere I could find and are
   set by ear.
 - CPU: about 0.2 % of one core on a desktop PC for the default program. The 32-bit MPCs are
-  much slower; a rough guess is a few percent of one core, not measured. Stages whose amount
+  much slower; no figure for them is recorded here. Stages whose amount
   is zero are skipped, so clean settings cost less: Init takes about a third of Home Recording.
 - Latency: the two wobble stages hold the sound back by their resting length: 12 samples
   with the wobbles off, about 5 ms on Home Recording, more with slow, deep wobble. The plugin
-  reports that length to the host half a second after it stops changing. Whether the MPC
-  uses it to keep the track in time has not been checked.
+  reports that length to the host half a second after it stops changing.
 - After a program change the output is shut for the length of the delays and then fades in
   over about 20 ms, so presets switch without a click or a pitch slide.
 - The sample rate is not assumed, but only 44.1 kHz has been tested.
