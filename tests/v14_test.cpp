@@ -194,10 +194,10 @@ int main()
         Fx fx; fx.set(kWowRate, 0.1f);
         fx.play(1.0f, 0.25f, nullptr);
         fx.set(kWow, 100);
-        std::vector<float> glide; fx.play(8.0f, 0.25f, &glide);
+        std::vector<float> glide; fx.play(0.5f, 0.25f, nullptr); fx.play(7.5f, 0.25f, &glide);
         pitchRange(glide, 1000, lo, hi);
-        std::printf("   Wow 0 -> 100 %% at 0.1 Hz, the next 8 s: %+6.0f .. %+5.0f cents\n", lo, hi);
-        check(lo > -70 && hi < 70, "no glide: only the wobble itself, which is 52 cents");
+        std::printf("   Wow 0 -> 100 %% at 0.1 Hz, from 0.5 s to 8 s after: %+6.0f .. %+5.0f cents\n", lo, hi);
+        check(lo > -70 && hi < 70, "half a second after the jump only the wobble itself is left, which is 52 cents");
     }
     {
         Fx fx; fx.set(kChorusOn, 1); fx.set(kChoMix, 100); fx.set(kChoDelay, 30.0f); fx.set(kChoSpeed, 0.05f);
@@ -504,6 +504,49 @@ int main()
             std::printf("   Init -> Subtle Glue while playing: largest step %.3f (Subtle Glue itself steps %.3f, Init 0.036)\n", largestStep(out), largestStep(tail));
             check(largestStep(out) < 1.3f * largestStep(tail), "a program change fades out and in: no step much beyond the new program's own");
             check(rms(out, out.size() - 4410) > 0.1, "and the new program is playing a moment later");
+        }
+        // quietest 2 ms of a signal, against its usual level (dB)
+        auto lowest = [](const std::vector<float>& v, double usual)
+        {
+            double lo = 1e9;
+            for (size_t i = 0; i + 88 <= v.size(); i += 44) lo = std::fmin(lo, rms(v, i, i + 88));
+            return db(lo / usual);
+        };
+        // What a crossfade costs at worst: it runs between the sound at the old delay and at
+        // the new one, and where the two copies of a steady tone are out of phase the level
+        // dips for a few ms in the middle. (Printed for the record, not judged: it depends on
+        // the pitch of the tone. At Mix below 100 % dry and wet drift against each other
+        // whenever a wobble runs, by design, so a dip there says nothing about the crossfade.)
+        for (float hz : {1000.0f, 300.0f})
+        {
+            Fx fx; fx.set(kWowRate, 0.1f);
+            std::vector<float> out; fx.play(1.0f, 0.25f, nullptr, hz); fx.play(0.1f, 0.25f, &out, hz);
+            const double usual = rms(out);
+            fx.set(kWow, 100); fx.play(1.0f, 0.25f, &out, hz);
+            fx.set(kWow, 0);   fx.play(3.0f, 0.25f, &out, hz);
+            std::printf("   Wow 0 -> 100 -> 0 %% at 0.1 Hz, %4.0f Hz tone: quietest 2 ms %+.1f dB\n", hz, lowest(out, usual));
+        }
+        {
+            // a knob that is still turning is glided after: no crossfades, so no dips, during the sweep
+            Fx fx; fx.set(kWowRate, 0.1f);
+            std::vector<float> out; fx.play(1.0f, 0.25f, nullptr, 300.0f); fx.play(0.1f, 0.25f, &out, 300.0f);
+            const double usual = rms(out);
+            std::vector<float> sweep;
+            for (int b = 0; b < 345; ++b) { fx.set(kWow, 60.0f * (float)b / 344.0f); fx.play(128.0f / 44100.0f, 0.25f, &sweep, 300.0f); }
+            std::printf("   Wow swept 0 -> 60 %% over 1 s (300 Hz tone): quietest 2 ms during the sweep %+.1f dB\n", lowest(sweep, usual));
+            check(lowest(sweep, usual) > -1.5, "a knob that is still turning is glided after: no crossfade, so no dip, during the sweep");
+        }
+        {
+            // a jump right after a program change: the delay line is still filling
+            Fx fx; fx.set(kWowRate, 0.1f); fx.set(kNoiseOn, 0);
+            fx.play(1.0f, 0.25f, nullptr, 300.0f);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, 20, nullptr, 0.0f);
+            fx.set(kWowRate, 0.1f);
+            std::vector<float> out; fx.play(0.02f, 0.25f, &out, 300.0f);
+            fx.set(kWow, 100);
+            fx.play(2.0f, 0.25f, &out, 300.0f);
+            std::printf("   Wow 0 -> 100 %% 20 ms after a program change: largest step %.3f (the 300 Hz tone steps 0.011)\n", largestStep(out));
+            check(largestStep(out) < 0.02f, "a jump right after a reset does not click");
         }
         for (int mixed = 0; mixed < 2; ++mixed)
         {

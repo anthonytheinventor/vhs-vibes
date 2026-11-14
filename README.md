@@ -182,8 +182,9 @@ The Animation switch on the DECK page turns them off.
 - The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a
   silent background.
 - Turning a wobble depth or rate changes the plugin's own delay. A small move is followed at
-  a limited pace, so the pitch bends by a couple of percent at most. A big jump crossfades to
-  the new delay in 25 ms, with no bend.
+  a limited pace, so the pitch bends by a couple of percent at most. After a big jump, once
+  the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
+  is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
 - Projects made with 1.3 load with every setting in place. Scrape, Whistle and HQ rest at 0
   or off, no older program uses them, and the four new programs come after Init so every

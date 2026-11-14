@@ -415,6 +415,10 @@ struct TapeSpeed
     float baseTarget = 6.0f;  // the resting delay the current settings need
     float jump = 0.0f;        // not 0 while the reader crossfades to a resting delay this far away
     float xf = 0.0f, xfInc = 0.0f;   // how far that crossfade is (0..1), and its step per sample
+    float seenTarget = 6.0f;  // baseTarget at the last tick
+    int   calm = 0;           // ticks since baseTarget last changed (a knob at rest)
+    int   calmTicks = 276;    // ... and how many of them make a tenth of a second
+    int   filled = 0;         // ticks of sound written to the delay line since the last reset
     bool  still = false;      // no wobble and settled: the delay is a whole number of samples
                               // and is not moving, so the reader needs no interpolation
 
@@ -432,6 +436,7 @@ struct TapeSpeed
         inDev1 = d1; inRate1 = rate1; inDev2 = d2; inRate2 = rate2; inSr = sr;
         const float dt = (float)kCtrl / sr;
         xfInc = 1.0f / (0.025f * sr);
+        calmTicks = (int)(0.1f * sr * kCtrlInv);
         // Keep the swing inside the delay line: very slow rates get less depth.
         dev1 = minf(d1, kMaxExcursionSec * kTwoPi * rate1 * (1.0f / kSwingRoom));
         dev2 = d2;
@@ -454,20 +459,27 @@ struct TapeSpeed
         n1a = n1b = n2a = n2b = 0.0f;
         x = 0.0f; base = baseTarget; delay = baseTarget; inc = 0.0f; err = 0.0f;
         jump = 0.0f; xf = 0.0f;
+        seenTarget = baseTarget; calm = 0; filled = 0;
         still = false;
     }
 
-    // The resting delay follows what the settings need. A moving delay is a pitch bend, so a
-    // near target is glided to at a limited rate. To a far one the bend would last seconds:
-    // there the reader crossfades to the new place instead (blend() below), once the swing
-    // fits the new resting delay.
+    // The resting delay follows what the settings need. A moving delay is a pitch bend, so the
+    // target is glided to at a limited rate. To a far one that would take seconds, so there
+    // the reader crossfades to the new place instead (blend() below): one crossfade, once the
+    // knob has rested for a tenth of a second (a knob still turning is glided after), the swing
+    // fits the new resting delay, and the line holds enough sound since the last reset to be
+    // read that far back.
     void followBase()
     {
+        if (filled < (1 << 20)) ++filled;
+        calm = baseTarget != seenTarget ? 0 : calm < (1 << 20) ? calm + 1 : calm;
+        seenTarget = baseTarget;
         if (jump != 0.0f) return;   // a crossfade is under way
         const float d = baseTarget - base;
         if (std::fabs(d) < 0.01f) base = baseTarget;
-        else if (std::fabs(d) <= kJumpMin || x < -(baseTarget - 4.0f)) base += clamp(0.003f * d, -kGlideStep, kGlideStep);
-        else { jump = d; xf = 0.0f; }
+        else if (std::fabs(d) > kJumpMin && calm >= calmTicks && x >= -(baseTarget - 4.0f)
+                 && (float)(filled * kCtrl) > baseTarget + x + 8.0f) { jump = d; xf = 0.0f; }
+        else base += clamp(0.003f * d, -kGlideStep, kGlideStep);
     }
 
     // Keeps the swing inside the delay line: at the resting delay there is and, while a
@@ -1395,9 +1407,10 @@ private:
         // Mix is first turned down the copy is still empty (or holds old sound), so the blend
         // waits until it has filled: no dip.
         const bool dryWant = rampT_[rMix] < 1.0f || ramp_[rMix].v < 1.0f;
-        // It follows the tape path the way the wobble stages do: glided to a near length,
-        // crossfaded to a far one (once it holds enough sound to be read that far back).
-        const float dryTarget = wf1_.base + wf2_.base;
+        // It follows the tape path: glided along with it, and crossfaded together with a wobble
+        // stage that crossfades (their jump is part of the target from the first tick of the
+        // crossfade), once it holds enough sound to be read that far back.
+        const float dryTarget = wf1_.base + wf1_.jump + wf2_.base + wf2_.jump;
         if (dryWant && !dryActive_)
         {
             dryD_.snap(dryTarget); dryJump_ = 0.0f; dryFill_ = 0;
