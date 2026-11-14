@@ -51,9 +51,12 @@
 // chorus. At 100 % (the default) the dry path is not computed.
 //
 // HQ (off unless switched on) runs the stages that distort, from the preamp clip to the
-// saturator, at twice the sample rate between two half-band filters. What those stages add
-// above 22 kHz is then filtered off; without HQ it folds back down as tones that were never in
-// the sound (a loud 14 kHz comes back at 2.1 kHz). It costs about a quarter more CPU.
+// saturator, at twice the sample rate between two half-band filters. Without it, what those
+// stages add above 22 kHz folds back down as tones that were never in the sound (a loud
+// 14 kHz comes back at 2.1 kHz). With it, what the soft part of the distortion adds is
+// filtered off almost entirely; what hard clipping and Wear add when a full-level high tone
+// drives them goes further up than twice the rate can hold, and that part comes down by
+// 6 to 20 dB only. It costs about a quarter more CPU.
 //
 // Compatibility: parameters are only ever appended, and a new one rests at 0 where the plugin
 // sounds as it did without it. Programs 0 to 20 keep their numbers and leave the 1.4 knobs at
@@ -195,6 +198,7 @@ constexpr float kLineHz             = 15734.0f;   // NTSC line rate: the whistle
 // late the pair makes the sound, in samples
 constexpr float kHb[3]              = { 0.1035037879f, 0.3717428742f, 0.7519142908f };
 constexpr float kHqDelay            = 1.412f;
+constexpr int   kFadeTicks          = 8;      // control ticks of fade-out before HQ switches (3 ms)
 
 // Which values a parameter feeds. A knob move only recomputes its own group in readParams().
 enum Group : uint32_t
@@ -374,9 +378,9 @@ private:
 
 // Half-band lowpass for 2x oversampling: two chains of first-order allpass sections that add
 // up to a lowpass at a quarter of the doubled rate (the elliptic design of Valenzuela and
-// Constantinides: 62 dB down from 28 kHz at 88.2 kHz). One of these doubles the rate, a second
-// one halves it again; the two together are a pure allpass, flat at every frequency and
-// kHqDelay samples late.
+// Constantinides; at 88.2 kHz it is 0.1 dB down at 19.8 kHz and 62 dB down from 28.2 kHz).
+// One of these doubles the rate, a second one halves it again; the two together are a pure
+// allpass: flat at every frequency, kHqDelay samples late in the lows and up to 2 in the highs.
 struct HalfBand
 {
     Stereo s[3][2] = {};   // per section: its last input and last output
@@ -386,6 +390,9 @@ struct HalfBand
     void up(Stereo x, Stereo& a, Stereo& b) { a = ap(2, ap(0, x)); b = ap(1, x); }
     // two samples in (a the earlier one), one out
     Stereo down(Stereo a, Stereo b) { return 0.5f * (ap(2, ap(0, b)) + ap(1, a)); }
+    // What up() followed by down() does to a sound, without the doubling in between: for a
+    // copy that has to stay lined up with the doubled path at every frequency (the dry signal).
+    Stereo trip(Stereo x) { return ap(1, ap(2, ap(0, x))); }
 };
 
 // The tape transport: turns "how wrong is the tape speed right now" into a delay time.
@@ -624,6 +631,12 @@ public:
 
         addPrograms();
 
+        // The delay lines have fixed sizes, so they are made here once and never again.
+        wf1Delay_.prepare(kTapeDelaySamples);   // the longest delay read is kTapeDelaySamples - 7
+        wf2Delay_.prepare(kTapeDelaySamples);
+        dryDelay_.prepare(kTapeDelaySamples);
+        choDelay_.prepare(2 * kChorusDelaySamples);   // the delay time plus its swing
+
         // See notifierMain(): tells the host about program changes, the meters and the latency.
         notifier_ = std::thread(&VHSVibes::notifierMain, this);
     }
@@ -635,8 +648,10 @@ public:
         if (notifier_.joinable()) notifier_.join();
     }
 
-    // The notifier thread stops talking to the host (until the next reset). Any thread.
-    void goQuiet() { started_.store(false); }
+    // Suspended (or closing): the notifier thread stops talking to the host until the plugin
+    // is resumed and has been reset. Any thread.
+    void goQuiet() { suspended_.store(true); started_.store(false); }
+    void resume()  { suspended_.store(false); }
 
     // A program is about to be chosen: it takes over the Animation and HQ switches as they
     // stand, so they do not move. (The host's thread, the same one that then loads the program.)
@@ -646,14 +661,24 @@ public:
         for (int i : {(int)kAnimate, (int)kHq}) programs_[(size_t)program].plainValues[(size_t)i] = get(i);
     }
 
-    // Allocates the delay lines. Never called while process() runs.
+    // The host announces the sample rate here, on its own thread and possibly while audio is
+    // running. Nothing is worked out here: the audio thread picks the rate up at its next reset.
     void prepare(double sampleRate, int /*maxBlockSize*/) override
     {
-        sr_ = (float)sampleRate;
-        wf1Delay_.prepare(kTapeDelaySamples);   // the longest delay read is kTapeDelaySamples - 7
-        wf2Delay_.prepare(kTapeDelaySamples);
-        dryDelay_.prepare(kTapeDelaySamples);
-        choDelay_.prepare(2 * kChorusDelaySamples);   // the delay time plus its swing
+        srWanted_.store((float)sampleRate);
+        resetPending_.store(true);
+    }
+
+    // The host asks for a reset on resume and after a program change or state load, from
+    // whichever thread it likes, and prepare() needs one too. The work is done by the audio
+    // thread at the start of its next block, so it never runs while process() is in the
+    // middle of one.
+    void reset() override { resetPending_.store(true); }
+
+private:
+    // Everything that depends on the sample rate alone.
+    void setRate()
+    {
         // Hi-Fi noise reduction, per control tick: 5 ms up, 70 ms back (the VHS specification)
         breathAtk_  = 1.0f - std::exp(-(float)kCtrl / (0.005f * sr_));
         breathRel_  = 1.0f - std::exp(-(float)kCtrl / (0.070f * sr_));
@@ -673,16 +698,8 @@ public:
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
         fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
-        resetPending_.store(true);   // the audio thread does the rest before its next block
     }
 
-    // The host asks for a reset on resume and after a program change or state load, from
-    // whichever thread it likes, and prepare() needs one too. The work is done by the audio
-    // thread at the start of its next block, so it never runs while process() is in the
-    // middle of one.
-    void reset() override { resetPending_.store(true); }
-
-private:
     // HQ on or off: the rate the distorting stages run at, and everything that follows from it.
     void setQuality()
     {
@@ -691,15 +708,17 @@ private:
         envAttack_  = 1.0f - std::exp(-1.0f / (0.003f * nlSr_));   // the compressor detector
         envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * nlSr_));
         compSmooth_ = hq_ ? 0.01005f : 0.02f;                      // and its gain smoothing, per sample
-        hqLag_ = hq_ ? kHqDelay : 0.0f;
     }
 
     // Clears every memory and jumps all smoothed values to the current settings.
     void doReset()
     {
-        if (sr_ <= 0.0f) return;
+        const float sr = srWanted_.load(std::memory_order_relaxed);
+        if (sr <= 0.0f) return;
+        if (sr != sr_) { sr_ = sr; setRate(); }
         setQuality();
-        hbUp_.reset(); hbDown_.reset();
+        hbUp_.reset(); hbDown_.reset(); hbDry_.reset();
+        fadeOut_ = 0;
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
         micHp_.reset(); micPk_.reset(); micLp_.reset();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
@@ -736,7 +755,7 @@ private:
         wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
         wf1_.reset(0x1234abcdu);
         wf2_.reset(0x0badf00du);
-        dryD_.snap(wf1_.base + wf2_.base + hqLag_);
+        dryD_.snap(wf1_.base + wf2_.base);
         dryActive_ = rampT_[rMix] < 1.0f;
         dryStill_ = false;
         dryHold_ = choHold_ = 0;
@@ -757,8 +776,9 @@ private:
         // A reset follows the host starting the plugin and every program change and state
         // load: from now on the notifier thread may talk to the host, and it should send the
         // new values. (Only flags here.)
-        started_.store(true);
-        pushPending_.store(true, std::memory_order_relaxed);
+        if (!suspended_.load()) started_.store(true);
+        if (!quietReset_) pushPending_.store(true, std::memory_order_relaxed);
+        quietReset_ = false;
     }
 
     // The stages that distort: preamp clip, Wear, the compressor with the clip on its boost,
@@ -812,8 +832,8 @@ public:
             const float v = getNormalised(i);
             if (v != lastNorm_[i]) { lastNorm_[i] = v; dirty |= groupOf(i); }
         }
-        if (dirty & gQuality) doReset();   // HQ switched: the tape path starts again at the other rate
-        else if (dirty) readParams(dirty);
+        if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
+        if (dirty) readParams(dirty);
         playing_ = ctx.transport.valid && ctx.transport.playing;
 
         const float* inL = (ctx.inputs != nullptr && ctx.numInputs > 0) ? ctx.inputs[0] : nullptr;
@@ -836,7 +856,7 @@ public:
             inSum += x;                                        // see the end of process()
             if (breathOn_) inMax_ = vmax(inMax_, vabs(x));     // what the noise reduction hears
             float dryLen = 0.0f;
-            if (dryActive_) { dryDelay_.write(x); dryLen = dryD_.next(); }   // kept for Mix below 100 %
+            if (dryActive_) { dryDelay_.write(hq_ ? hbDry_.trip(x) : x); dryLen = dryD_.next(); }   // kept for Mix below 100 %
 
             const float outGain = ramp_[rOut].next();
             const float mix     = ramp_[rMix].next();
@@ -1071,6 +1091,7 @@ public:
         {
             std::memset(outL, 0, sizeof(float) * (size_t)ctx.numFrames);
             if (outR != nullptr) std::memset(outR, 0, sizeof(float) * (size_t)ctx.numFrames);
+            quietReset_ = true;   // nothing changed that the host should hear about
             resetPending_.store(true);
         }
 
@@ -1278,6 +1299,15 @@ private:
 
         // just after a reset: the output stays shut until the emptied delays have filled
         if (fadeHold_ > 0) { --fadeHold_; rampS_[rOut] = 0.0f; ramp_[rOut].snap(0.0f); }
+        // HQ was switched: the output goes down in a straight line over 3 ms, stays shut, and
+        // the reset that follows brings the sound back at the other rate.
+        if (fadeOut_ > 0)
+        {
+            --fadeOut_;
+            rampS_[rOut] = ramp_[rOut].v * (float)fadeOut_ / (float)(fadeOut_ + 1);
+            ramp_[rOut].to(rampS_[rOut]);
+            if (fadeOut_ == 0) { fadeHold_ = 1 << 20; resetPending_.store(true); }
+        }
 
         // Which stages have anything to do for the next 16 samples.
         humOn_     = cur_[cHum] > 0.0f     || tgt_[cHum] > 0.0f;
@@ -1306,17 +1336,17 @@ private:
         wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
         wf1_.tick(shape1_);
         wf2_.tick(0.0f);
-        wantLatency_.store((int)(wf1_.base + wf2_.base + hqLag_ + 0.5f), std::memory_order_relaxed);   // settles when the glide ends
+        wantLatency_.store((int)(wf1_.base + wf2_.base + (hq_ ? kHqDelay : 0.0f) + 0.5f), std::memory_order_relaxed);   // settles when the glide ends
 
         // Mix: the dry copy is only kept while Mix is below 100 %. It waits as long as the tape
         // path does at rest; with both wobbles still that is a whole number of samples. When
         // Mix is first turned down the copy is still empty (or holds old sound), so the blend
         // waits until it has filled: no dip.
         const bool dryWant = rampT_[rMix] < 1.0f || ramp_[rMix].v < 1.0f;
-        dryStill_ = wf1_.still && wf2_.still && !hq_;   // (HQ adds a fraction of a sample)
+        dryStill_ = wf1_.still && wf2_.still;
         if (dryStill_) dryD_.snap(wf1_.delay + wf2_.delay);
-        else if (dryWant && !dryActive_) dryD_.snap(wf1_.base + wf2_.base + hqLag_);
-        else if (dryWant) dryD_.to(wf1_.base + wf2_.base + hqLag_);
+        else if (dryWant && !dryActive_) dryD_.snap(wf1_.base + wf2_.base);
+        else if (dryWant) dryD_.to(wf1_.base + wf2_.base);
         if (dryWant && !dryActive_) dryHold_ = (int)(dryD_.v * kCtrlInv) + 2;
         if (dryHold_ > 0) { --dryHold_; rampS_[rMix] = 1.0f; ramp_[rMix].snap(1.0f); }
         dryActive_ = dryWant;
@@ -1687,6 +1717,9 @@ private:
     std::atomic<bool> quit_{false}, pushPending_{false};
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
     std::atomic<bool> resetPending_{false};               // a reset is due at the start of the next block
+    std::atomic<bool> suspended_{false};                  // the host has suspended us
+    std::atomic<float> srWanted_{0.0f};                   // the sample rate the host announced
+    bool  quietReset_ = false;                            // the pending reset is our own (bad input): no word to the host
     std::atomic<bool> animate_{true};                     // the Animation switch
     std::atomic<float> visReel_{0.0f}, visLevel_{0.0f};   // audio thread -> notifier thread
     std::atomic<int> wantLatency_{12};                    // resting delay of the tape path, in samples
@@ -1698,6 +1731,7 @@ private:
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
+    int   fadeOut_ = 0;                                   // ticks left of the fade-out before HQ switches
 
     // what the screen shows (audio thread)
     bool  playing_ = false;
@@ -1730,8 +1764,8 @@ private:
 
     // HQ (2x oversampling of the distorting stages)
     bool  hq_ = false;
-    float nlSr_ = 44100.0f, hqLag_ = 0.0f;   // the rate those stages run at; how late HQ makes the sound
-    HalfBand hbUp_, hbDown_;
+    float nlSr_ = 44100.0f;                  // the rate those stages run at
+    HalfBand hbUp_, hbDown_, hbDry_;         // up, down, and the same phase shift for the dry copy
 
     // saturator and filters
     Stereo splitLp_ = {0.0f, 0.0f}, loCutLp_ = {0.0f, 0.0f};
@@ -1801,7 +1835,7 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
 {
     VHSVibes* p = static_cast<VHSVibes*>(static_cast<mpc::Plugin*>(e->object));
     if (p == nullptr) return 0;
-    if (opcode == effMainsChanged && value == 0) p->goQuiet();
+    if (opcode == effMainsChanged) { if (value != 0) p->resume(); else p->goQuiet(); }
     else if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (opcode == effSetChunk && ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
         for (int i = kScrape; i < kNumParams; ++i) p->set(i, p->param(i).def);

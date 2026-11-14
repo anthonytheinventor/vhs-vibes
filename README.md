@@ -122,7 +122,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
-| HQ | Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate, so loud, bright sounds do not fold back into the midrange as false tones. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it restarts the tape path with a short fade. Choosing a program does not change it. |
+| HQ | Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate. Without it, bright sounds that hit those stages fold back into the midrange as tones that were never played. With it, that is gone for highs at ordinary levels; a full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it fades the sound out and back in at the other rate. Choosing a program does not change it. |
 
 There is no tape-speed or track switch because they would only repeat other controls. For a
 slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss; SP is about

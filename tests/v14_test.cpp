@@ -79,6 +79,19 @@ static double rms(const std::vector<float>& v, size_t from = 0, size_t to = (siz
     return std::sqrt(s / (double)(to > from ? to - from : 1));
 }
 static double db(double x) { return 20.0 * std::log10(x > 1e-12 ? x : 1e-12); }
+// Everything in the first second of `v` that is neither the tone at `hz` nor one of its
+// harmonics below half the sample rate, as an RMS level: with the noise off, that is what folded back.
+static double toneLevel(const std::vector<float>& v, double hz);
+static double foldBack(const std::vector<float>& v, double hz)
+{
+    double mean = 0, power = 0;
+    for (size_t i = 0; i < 44100; ++i) mean += v[i];
+    mean /= 44100.0;
+    for (size_t i = 0; i < 44100; ++i) power += (v[i] - mean) * (v[i] - mean);
+    power /= 44100.0;
+    for (double f = hz; f < 22050.0; f += hz) { const double a = toneLevel(v, f); power -= 0.5 * a * a; }
+    return std::sqrt(power > 0.0 ? power : 0.0);
+}
 // amplitude of the component at `hz` (a whole number of Hz) in the first second of `v`
 static double toneLevel(const std::vector<float>& v, double hz)
 {
@@ -388,19 +401,27 @@ int main()
 
     std::printf("11. HQ: the distorting stages at twice the sample rate\n");
     {
-        // A loud 14 kHz tone through 3rd Gen Copy (noise, wobble and deck off). Its third
-        // harmonic, 42 kHz, cannot exist at 44.1 kHz and comes back as 2.1 kHz.
-        double fold[2];
-        for (int hq = 0; hq < 2; ++hq)
+        // Everything that folds back, not one line of it (noise, wobble and deck off).
+        //  - highs at an ordinary level: only the soft part of the distortion is at work, its
+        //    third harmonic lands below twice the rate, and HQ removes it;
+        //  - a full-level high tone: the clippers and Wear square it off, the harmonics run far
+        //    beyond twice the rate, and HQ can only take some of it away.
+        struct Case { const char* name; int program; float hz, amp; double atLeast; };
+        for (const Case& c : { Case{"Home Recording, 12 kHz at -15 dBFS", 0, 12000.0f, 0.18f, 30.0},
+                               Case{"3rd Gen Copy, 14 kHz at -3 dBFS   ", 2, 14000.0f, 0.70f, 6.0},
+                               Case{"Training Video, 15 kHz at -3 dBFS ", 8, 15000.0f, 0.70f, 6.0} })
         {
-            Fx fx; fx.e->dispatcher(fx.e, effSetProgram, 0, 2, nullptr, 0.0f);
-            fx.set(kNoiseOn, 0); fx.set(kWobbleOn, 0); fx.set(kDeckOn, 0); fx.set(kHq, (float)hq);
-            std::vector<float> out; fx.play(2.0f, 0.7f, nullptr, 14000.0f); fx.play(1.1f, 0.7f, &out, 14000.0f);
-            fold[hq] = db(toneLevel(out, 2100.0));
+            double fold[2];
+            for (int hq = 0; hq < 2; ++hq)
+            {
+                Fx fx; fx.e->dispatcher(fx.e, effSetProgram, 0, c.program, nullptr, 0.0f);
+                fx.set(kNoiseOn, 0); fx.set(kWobbleOn, 0); fx.set(kDeckOn, 0); fx.set(kDropouts, 0); fx.set(kHq, (float)hq);
+                std::vector<float> out; fx.play(2.0f, c.amp, nullptr, c.hz); fx.play(1.1f, c.amp, &out, c.hz);
+                fold[hq] = db(foldBack(out, c.hz));
+            }
+            std::printf("   %s: fold-back HQ off %+.1f dBFS, HQ on %+.1f dBFS\n", c.name, fold[0], fold[1]);
+            check(fold[1] < fold[0] - c.atLeast, c.atLeast > 20.0 ? "highs at an ordinary level: HQ takes more than 30 dB off" : "a full-level high tone: HQ takes at least 6 dB off");
         }
-        std::printf("   fold-back at 2.1 kHz: HQ off %+.1f dBFS, HQ on %+.1f dBFS\n", fold[0], fold[1]);
-        check(fold[0] > -20.0, "without HQ the fold-back is loud (this is what HQ is for)");
-        check(fold[1] < fold[0] - 40.0, "HQ takes it down by more than 40 dB");
     }
     {
         // Init, HQ off against HQ on: the same level at every pitch, and at Mix 50 % too
@@ -419,24 +440,30 @@ int main()
             flat = flat && std::fabs(g[1] - g[0]) < 0.05;
         }
         check(flat, "HQ alone changes no level from 100 Hz to 18 kHz");
-        for (int hq = 0; hq < 2; ++hq)
+        bool lined = true;
+        for (float hz : {5000.0f, 12000.0f, 15000.0f, 17000.0f, 19000.0f})
         {
-            Fx fx; fx.set(kHq, (float)hq); fx.set(kMix, 50);
-            std::vector<float> out; fx.play(0.5f, 0.25f, nullptr, 5000.0f); fx.play(1.1f, 0.25f, &out, 5000.0f);
-            mixed[hq] = db(toneLevel(out, 5000.0) / 0.25);
+            for (int hq = 0; hq < 2; ++hq)
+            {
+                Fx fx; fx.set(kHq, (float)hq); fx.set(kMix, 50);
+                std::vector<float> out; fx.play(0.5f, 0.25f, nullptr, hz); fx.play(1.1f, 0.25f, &out, hz);
+                mixed[hq] = db(toneLevel(out, hz) / 0.25);
+            }
+            std::printf("   Init, Mix 50 %%, %5.0f Hz: HQ off %+.3f dB, HQ on %+.3f dB\n", hz, mixed[0], mixed[1]);
+            lined = lined && std::fabs(mixed[1] - mixed[0]) < 0.1;
         }
-        std::printf("   Init, Mix 50 %%, 5 kHz: HQ off %+.3f dB, HQ on %+.3f dB (dry and wet out of line would cost 1.1 dB)\n", mixed[0], mixed[1]);
-        check(std::fabs(mixed[1] - mixed[0]) < 0.1, "the dry signal is lined up with the HQ path");
+        check(lined, "at Mix 50 % the dry signal is lined up with the HQ path from 5 to 19 kHz");
     }
     {
         Fx fx;
         fx.play(1.0f, 0.25f, nullptr);
+        std::vector<float> out; fx.play(0.1f, 0.25f, &out);   // the samples before the switch are kept too
         fx.set(kHq, 1);
-        std::vector<float> out; fx.play(0.5f, 0.25f, &out);
+        fx.play(0.5f, 0.25f, &out);
         bool finite = true; float step = 0.0f;
         for (size_t i = 1; i < out.size(); ++i) { finite = finite && std::isfinite(out[i]); step = std::fmax(step, std::fabs(out[i] - out[i - 1])); }
         std::printf("   HQ switched on while a 1 kHz tone plays: largest step between samples %.3f (the tone itself steps 0.036)\n", step);
-        check(finite && step < 0.05, "switching HQ makes no click (a short fade)");
+        check(finite && step < 0.04, "switching HQ makes no click: no step larger than the tone makes anyway");
         check(rms(out, out.size() / 2) > 0.17, "and the sound is back within a quarter of a second");
         fx.e->dispatcher(fx.e, effSetProgram, 0, 3, nullptr, 0.0f);
         check(fx.get(kHq) > 0.5f, "choosing a program leaves HQ on");
