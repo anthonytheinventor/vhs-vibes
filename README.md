@@ -215,7 +215,8 @@ The Animation switch on the DECK page turns them off.
   record side meets all eight (1.4, 2, 5 and 10 kHz at -20 to -40 dB) within 0.5 dB, where
   the chips are specified to 2 dB (within 0.6 dB at sample rates up to 192 kHz). The playback
   side undoes the record side to about -100 dB when nothing lies between them. Switching NR
-  fades it in or out over 8 ms. Dolby level is taken as -8 dBFS.
+  fades it in or out over 8 ms. Dolby level is taken as -8 dBFS. While the playback side runs,
+  Whistle is added after it, since the TV set is not on the tape.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
   like a chorus. That is the nature of mixing a wobbling signal with a steady one.

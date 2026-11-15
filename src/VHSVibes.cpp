@@ -35,6 +35,7 @@
 //      -> DROPOUTS    short random dips that take the highs first
 //      -> NR DECODE   (deck) B-type noise reduction, playback side: cuts quiet highs, and the
 //                     hiss with them. Whatever the tape did in between makes it mistrack.
+//                     (While it runs, the whistle is added after it, not before the dropouts.)
 //      -> MONO -> MIX (dry / wet) -> OUTPUT
 //
 // Breathing (deck) makes the hiss rise and fall with the signal and holds the head buzz down
@@ -1387,11 +1388,17 @@ public:
 
             // ----- line whistle ----------------------------------------------
             // A steady sine from two state values that turn around each other: no table, no sin().
+            // With the NR playback side running it is added after that instead (below): the
+            // set is not on the tape, so the decoder has no business turning it down. Without
+            // NR it stays here, as in 1.4.
+            const bool whistleLate = nrDecRun_;
+            float whistle = 0.0f;
             if (whistleOn_)
             {
                 whistleS_ += whistleE_ * whistleC_;
                 whistleC_ -= whistleE_ * whistleS_;
-                x += whistleS_ * cur_[cWhistle];
+                whistle = whistleS_ * cur_[cWhistle];
+                if (!whistleLate) x += whistle;
             }
 
             // ----- dropouts, mono, mix, output -------------------------------
@@ -1415,6 +1422,7 @@ public:
                     x += (plain - x) * nrDecMix_;
                 }
             }
+            if (whistleLate) x += whistle;
             const float monoAmt = maxf(monoMix, fbMono_);
             if (monoAmt > 0.0f) x += (splat(0.5f * (x[0] + x[1])) - x) * monoAmt;
             if (mix < 1.0f && dryActive_)

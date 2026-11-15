@@ -242,6 +242,19 @@ int main()
             check(worst < (hz < 1000.0f ? 1.3f : 3.6f) * own, hz < 1000.0f ? "switching NR under a loud low tone makes no click" : "under a quiet 5 kHz tone the step stays what the boost itself makes it");
         }
 
+        // the TV's whistle is not on the tape: the playback side must leave it alone
+        {
+            Fx a, b; double lv[2]; int k = 0;
+            for (Fx* f : {&a, &b})
+            {
+                f->set(kWhistle, 100); f->set(kNoise, 100); f->set(kNoiseOn, 1);
+                if (f == &b) f->set(kNr, 2);
+                lv[k++] = f->level(1000.0f, -200.0f);   // silence in: only the whistle comes out
+            }
+            std::printf("   Whistle alone: %.1f dBFS with NR off, %.1f dBFS with NR on Play\n", lv[0], lv[1]);
+            check(lv[0] > -40.0 && std::fabs(lv[0] - lv[1]) < 0.1, "the playback side does not turn the whistle down");
+        }
+
         Fx fx; bool clean = true;
         for (int p = 0; p < 25; ++p) { fx.e->dispatcher(fx.e, effSetProgram, 0, p, nullptr, 0.0f); clean = clean && fx.get(kNr) == 0.0f; }
         check(clean, "programs 0 to 24 leave NR off");
