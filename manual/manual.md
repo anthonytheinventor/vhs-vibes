@@ -67,6 +67,7 @@ epigraph: Press it. What comes back is almost your song.
 - {{controls}} controls on {{pages}} pages, {{programs}} built-in programs.
 - A hot pink cassette on the MPC's screen, with reels that turn when sound passes.
 - Every noise is synthesised: no samples, nothing to load.
+- Two parts are built from the machines' own published figures: the tape of the VHS linear track, and the noise reduction circuit of early stereo decks. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
 - This manual describes version {{version}}.
 
 [[screenshot TAPE | The first of the five pages, as the MPC shows it.]]
@@ -237,10 +238,8 @@ The **Type** switch changes what the saturator stage is, and with it what three 
 
 **2-Band** is a crossover with a soft clipper on each side. **VHS** is a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way): quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds, and the five programs whose names begin with VHS are older programs with this saturator in place of the 2-Band one.
 
-::: note What is documented and what is estimated in Type = VHS
-It follows the figures an Audio Engineering Society tutorial on videotape duplication gives for the VHS linear track in SP: 33.35 mm/s, a record pre-emphasis of 120 microseconds, reference level 100 nWb/m (taken as -8 dBFS) and 3 % third-harmonic distortion at that reference level, a band that reaches about 10 kHz, and the direction of the bias effects. Deck specification sheets give EP's speed (11.12 mm/s) and band (4 to 6 kHz).
-
-Estimates: that EP behaves like SP at a third of every frequency, how far the pre-emphasis keeps rising, the shape of the curve past the 3 % point and the sizes of the bias effects. There is no head bump: at these tape speeds it lies below 20 Hz. Driven hard, the stage clips highs it has just lifted, which folds back into the band without HQ; HQ is on in a new instance for that reason.
+::: note Where Type = VHS comes from
+It is built on the published figures of the VHS linear track: its tape speeds, its record pre-emphasis, its reference level and its 3 % distortion at that level. How it works, what it measures and what is estimated is in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ. Driven hard, the stage clips highs it has just lifted, which folds back into the band without HQ; HQ is on in a new instance for that reason.
 :::
 
 ::: page WOBBLE
@@ -296,9 +295,7 @@ NR is B-type noise reduction. On the record side it lifts quiet highs by up to 1
 The programs Wrong Switch (REC) and Stereo Rental (ON) are built on it. Switching NR fades it in or out over 8 ms.
 
 ::: note Where NR comes from
-Early stereo VHS decks had Dolby B-type noise reduction on their linear tracks. NR is a model of that circuit, not of its effect: the Signetics NE545 application circuit, with the side-chain filter and its real part values, the sliding band, the overshoot clipper and the two-speed smoothing.
-
-What the datasheets do not give as numbers was fitted to the figures they publish. The record side meets all eight of them (1.4, 2, 5 and 10 kHz at -20 to -40 dB) within 0.6 dB at every sample rate up to 192 kHz, where the chips are specified to 2 dB. The playback side undoes the record side to about -100 dB when nothing lies between them. The reference level of the circuit is taken as -8 dBFS.
+It is a model of the circuit early stereo VHS decks had on their linear tracks, part by part, not of its effect. The circuit, the datasheet figures it meets and why it mistracks are in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 :::
 
 ## HQ
@@ -310,6 +307,173 @@ HQ runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the samp
 - On takes about a quarter more CPU.
 - Switching it fades the sound out and back in at the other rate.
 - HQ is on in a new instance. Choosing a program does not change it.
+
+::: chapter
+id: inside
+title: ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ
+jp: 内部
+word: INSIDE
+toc: How the VHS saturator and B-Type NR are modelled
+epigraph: Somebody took the lid off and wrote down what was there.
+:::
+
+Two parts of VHS Vibes are not tuned by ear to sound like tape. They are built from what was published about the machines: a format's own figures in one case, a chip's circuit diagram in the other. This chapter says what each is made of, what was measured, and what had to be estimated.
+
+## The tape itself: Type = VHS
+
+A VHS deck without Hi-Fi records its sound on a thin track along the edge of the tape, the linear track. The tape crawls past the head at 33 mm a second, slower than an audio cassette, on a coating made for pictures. **Type = VHS** is a model of what that track does to sound.
+
+### The figures it is built on
+
+| Figure | Value | Where it is from |
+|---|---|---|
+| Tape speed, SP | 33.35 mm/s | Audio Engineering Society tutorial on videotape duplication, table of audio recording formats, column VHS |
+| Record pre-emphasis | 120 microseconds: the highs are lifted 6 dB per octave from 1.33 kHz | the same table |
+| Reference level | 100 nWb/m, taken here as -8 dBFS | the same table |
+| Distortion | 3 % third harmonic at reference level | the same table |
+| Top of the band, SP | about 10 kHz | the same tutorial |
+| Bias | too much sounds dull, too little bright and distorted | the same tutorial |
+| Tape speed, EP | 11.12 mm/s | deck specification sheets |
+| Top of the band, EP | 4 to 6 kHz | deck specification sheets |
+
+The fourth line is the heart of it. An audio cassette reaches 3 % distortion 7 dB above its reference level and a studio machine 10 dB above. The VHS linear track is there at reference level. It has no headroom at all.
+
+### What happens to the sound, step by step
+
+1. **Record level.** The sound is made louder or quieter by the ^REC LEVEL^ knob, from 10 dB under to 8 dB over the deck's reference level.
+2. **Pre-emphasis.** The highs are lifted, as the format prescribes, before they reach the tape. In SP the lift starts at 1.33 kHz; a 5 kHz sound arrives at the tape about 11 dB hotter than a bass note of the same level.
+3. **The tape.** A smooth curve that bends more the harder it is driven and goes level at its ceiling. It is set so that a tone at reference level comes out with 3 % third harmonic.
+4. **De-emphasis.** The playback side cuts the highs again, by exactly what step 2 lifted.
+5. **Playback level.** Whatever step 1 added is taken off again, so the knob changes how hard the tape is driven, not how loud the result is.
+6. **The top of the band.** A gentle roll-off, 3 dB down at 10 kHz in SP and at 4.5 kHz in EP.
+7. **Bias.** A shelf that brightens or dulls the highs, depending on ^BIAS^.
+
+### Why the highs go first
+
+Steps 2 and 4 are exact opposites. For a quiet sound the tape in between is a straight line, so the two cancel and the sound comes back as it went in. A loud sound meets the curve with its highs already lifted. They hit the ceiling first; the lows pass under it. The cut of step 4 then lowers what is left of them. So the louder the music, the more top it loses, and bass and voice stay.
+
+At the slow speed everything happens at a third of the frequency: the lift starts at 440 Hz, so in EP even the midrange runs out of tape.
+
+### What comes out, measured
+
+| Test | Result |
+|---|---|
+| A quiet sound (-40 dB), SP | unchanged at 100 Hz, 0.05 dB down at 1 kHz, 3 dB down at 10 kHz |
+| A quiet sound (-40 dB), EP | unchanged at 100 Hz, 3 dB down at 4.5 kHz |
+| 441 Hz at reference level, Rec Level 0 dB | 3.0 % third harmonic |
+| The same tone 10 dB under reference | 0.3 % |
+| The same tone recorded 8 dB over | 12 %, and it comes back 4.8 dB quieter |
+| 10 dB under reference, SP | 441 Hz loses 0.1 dB, 7 kHz loses 2.5 dB |
+| 2.5 kHz, 10 dB under reference | SP loses 0.5 dB, EP 2.3 dB |
+| A low tone 4 dB under reference | 4.7 % with too little bias, 1.3 % with the bias right |
+| 6 kHz played quietly | 0.6 dB up with too little bias, 5.4 dB down with too much |
+
+The figures hold at every sample rate from 44.1 to 192 kHz.
+
+### The three knobs, in the model's terms
+
+- ^REC LEVEL^ is step 1. At 0 dB a tone at -8 dBFS sits exactly at the deck's reference level.
+- ^TAPE SPEED^ moves steps 2, 4 and 6 together, from SP to EP.
+- ^BIAS^ at "right" does nothing. Towards too little, the tape's ceiling drops by up to 6 dB and the highs come up by up to 3 dB: bright and gritty. Towards too much, the highs lose headroom sooner and are cut by up to 6 dB: dull.
+
+### What is estimated
+
+No figures were found for EP's equalisation or headroom; it is taken to behave like SP at a third of every frequency. Also estimated: that the lift of step 2 levels off 20 dB up, the shape of the curve beyond the 3 % point, and the sizes of the bias effects. There is no head bump: at these tape speeds it lies below 20 Hz.
+
+::: note Hear it
+Load **SP Tape** and play something with cymbals and a bass line. Turn ^REC LEVEL^ up: the cymbals soften and sink, the bass stays where it was. Now turn ^TAPE SPEED^ to EP and listen to the voice go the same way. Keep **HQ** on while you do: driven hard, the stage clips highs it has just lifted, and without HQ part of that folds back into the band.
+:::
+
+::: aside
+The tape was never meant to carry music. It carried it anyway.
+:::
+
+[[pagebreak]]
+
+## The switch on the back: B-Type NR
+
+The linear track hisses. When stereo came to VHS, that track was split in two, each half narrower and noisier, so those decks were given the noise reduction of the audio cassette: Dolby B-type. **B-Type NR** is that circuit.
+
+### The idea
+
+Hiss is a high sound, and it is only heard when the music is quiet. So the recorder lifts the quiet highs before they reach the tape, by up to 10 dB, and the player cuts them by the same amount afterwards. The music comes back as it was. The hiss, which joined in between, has only been cut. Loud highs are left alone on both sides: they cover the hiss by themselves, and lifting them would overload the tape.
+
+### A circuit, not an effect
+
+The model is not a filter tuned to sound like noise reduction. It is the application circuit of the Signetics NE545, a chip made for this job, with the part values printed in its datasheet:
+
+| Part | Value | What it does |
+|---|---|---|
+| C301 | 5600 pF | with C302 and R301, the fixed half of the filter |
+| C302 | 27 nF | |
+| R301 | 3.3 kOhm | |
+| R302 | 47 kOhm | with C303 and F, the sliding half |
+| C303 | 4700 pF | |
+| F | 700 kOhm at rest, down to 70 Ohm | a resistance the circuit itself controls |
+
+The signal goes two ways. The main path passes it untouched. Beside it runs a side chain, a filter that lets only the highs through, and its output is added to the main path. That sum is the 10 dB lift.
+
+The side chain also listens to itself. Its output is rectified into a control voltage, and that voltage turns F down. As F conducts, the filter's corner slides upwards, so less and less passes: the louder the highs, the less is added, until at the circuit's reference level nothing is. This is the sliding band.
+
+The control voltage has two speeds. It follows the music with a time of about 100 ms, slow enough not to distort the sound. A sudden loud sound would get through boosted before that, so for a large jump the time drops to about 2 ms, and a clipper in the side chain holds the overshoot down for the instant in between.
+
+The player is the same side chain turned around: connected in a loop, subtracting from the signal where the recorder added.
+
+### Solved exactly
+
+A loop of this kind is hard to compute, because the output depends on a filter whose setting depends on the output. The model solves the whole network for every sample, with its two capacitor charges and with F included, so nothing in the loop lags by a sample. One result is that the playback side undoes the record side almost perfectly when nothing lies between them: on music, what remains is about 130 dB below the signal.
+
+### Against the datasheets
+
+The datasheets of the NE545 and of a second chip of the same kind, the TEA0665, give the record side's lift at eight points. Three things they do not give as numbers (one amplifier's gain, another's rise with frequency, and how F follows the control voltage) were fitted to those eight points.
+
+| Tone | Level under reference | Datasheet | Model |
+|---|---|---|---|
+| 1.4 kHz | 20 dB | +4.4 dB | +4.3 dB |
+| 1.4 kHz | 30 dB | +7.5 dB | +7.6 dB |
+| 2 kHz | 25 dB | +7.0 dB | +7.2 dB |
+| 5 kHz | 20 dB | +3.2 dB | +2.9 dB |
+| 5 kHz | 30 dB | +8.2 dB | +7.9 dB |
+| 5 kHz | 40 dB | +10.3 dB | +10.3 dB |
+| 10 kHz | 20 dB | +2.6 dB | +2.9 dB |
+| 10 kHz | 30 dB | +6.5 dB | +6.8 dB |
+
+That is at 44.1 kHz. At every sample rate up to 192 kHz the model stays within 0.6 dB of all eight; the chips themselves are specified to 2 dB.
+
+Other things measured on the model:
+
+- **Very quiet sound** is lifted 0.6 dB at 200 Hz, 3.7 dB at 600 Hz, 9.3 dB at 2.4 kHz and 10.3 dB at 5 kHz.
+- **At reference level** the lift is under 0.2 dB.
+- **Hiss** at 8 kHz, through the playback side alone, drops by 10.5 dB.
+- **A sudden jump** from quiet to reference level overshoots by 0.9 dB and has settled within 5 ms. After the loud sound stops, the full lift is back in about 155 ms.
+
+Two values are estimates: the level at which the fast smoothing takes over, and the level of the clipper. The reference level of the circuit is taken as -8 dBFS, the same level the VHS saturator takes as the deck's.
+
+### Why it mistracks
+
+The playback side decides how much to cut from the level it sees. If the tape gives back less than was recorded, it sees a quieter sound than the recorder did, takes it for one that was lifted more, and cuts more. Every loss of the tape is made larger.
+
+| Between the two sides | Without NR | With NR on both sides |
+|---|---|---|
+| The tape plays 2 dB quiet (5 kHz, 30 dB under reference) | 2 dB down | 4.3 dB down |
+| The tape has lost its highs from 4 kHz (8 kHz, 25 dB under reference) | 6.5 dB down | 12.2 dB down |
+
+In the plugin everything from Drive to Dropouts lies between the two sides. So with NR on ^ON^, Hi Cut, Wear, the saturator, Drift and Dropouts all become stronger in the highs, and unsteady, because the cut moves with the music. That is the sound of a worn tape in a deck with the switch on.
+
+### What it means for the knobs
+
+- **It works on quiet highs.** Sound near -8 dBFS and above passes almost untouched on both sides. To hear NR, play something with quiet passages, or turn the input down.
+- **Hiss is only reduced if it is on the tape.** With the noise's Position on Post, the hiss joins between the two sides and ^ON^ or ^PLAY^ cuts it. With Position on Pre it goes in before the record side, is lifted and cut like the music, and comes out as loud as before.
+- ^REC^ alone is the lift without the cut: bright, airy, a little squashed, because quiet highs come up and loud ones do not.
+- ^PLAY^ alone is the cut without the lift: dull, and duller the quieter it gets.
+
+::: note Hear it
+Load **Wrong Switch**, a tape recorded with the switch on and played with it off, and compare it with NR on ^OFF^. Then load **Stereo Rental**, with NR on both sides of an aged tape, and switch NR between ^ON^ and ^OFF^ during a quiet passage: the top end ducks and comes back with the music.
+:::
+
+::: aside
+It was built to take something away. Set wrong, it adds.
+:::
 
 ::: chapter
 id: switches
@@ -384,7 +548,7 @@ epigraph: Written in pencil on the back of the box, by someone who knew the mach
 | A dropout is the tape lifting off the head, which costs the highs far more than the lows. | Dropouts |
 | The line whistle of a TV set sits at 15.734 kHz. | Whistle |
 
-The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS** and in **NR** is said in the chapters ＴＡＰＥ and ＤＥＣＫ.
+The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS** and in **B-Type NR** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: chapter
 id: compat
