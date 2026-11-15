@@ -2326,7 +2326,7 @@ private:
         // mic: the model runs while the mic is heard or on its way in or out. Coming in from
         // silence (switched on, or a new type) it starts from rest and runs unheard for 20 ms
         // before the fade-in: long enough for the filters to settle and for the Boombox's ALC
-        // to catch a loud sound (which takes it about 3 ms from rest, with a burst).
+        // to catch a loud sound (which takes it about 5 ms from rest, with a burst).
         const bool micWant = rampT_[rMic] > 0.0f;
         if (micWant && !micRun_) { mic_.reset(); micRun_ = true; micHold_ = micHoldTicks_; }
         else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
