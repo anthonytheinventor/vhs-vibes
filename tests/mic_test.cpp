@@ -39,7 +39,10 @@ static const double kKneeOut  = kRef * std::pow(10.0, -22.0 / 19.0 / 20.0);  // 
 static const double kCamGain  = kKneeOut / kKneePk;                          // the record gain before the ALC
 static const double kAttDb    = 22.0 * 18.0 / 19.0;                          // its largest attenuation
 static const double kRecDbS   = 18.0 * 20.0 * std::log10(std::exp(1.0)) / 19.0;   // recovery, dB/s (19 s detector, 18 dB per dB)
-static double knee(double d) { return kKneePk * fromDb(d); }                 // a sine d dB above the knee
+// The Camcorder hears the source kCamDistanceDb quieter (the camera across the room), so a sine
+// that reaches the microphone d dB above the knee comes into the plugin this much louder.
+static const double kDist     = fromDb(kCamDistanceDb);
+static double knee(double d) { return kKneePk * fromDb(d) * kDist; }          // the input (Mic Gain 0) that puts a sine d dB above the knee
 // the static curve the report gives, output in dB re the knee's output
 static double lawDb(double d) { return d <= 0.0 ? d : d <= 22.0 ? d / 19.0 : 22.0 / 19.0 + (d - 22.0); }
 
@@ -558,7 +561,8 @@ int main()
     }
 
     std::printf("13. Camcorder: the ALC's static curve, 1 kHz (TRV900 measured 1 : 19 above its knee; range 22 dB, Sanyo VM-RZ1P;\n"
-                "    knee at -66 dBs = %.1f dB SPL = %.1f dBFS peak; record gain %+.2f dB; the range ends at %.1f dB SPL)\n", kKneeSpl, dB(kKneePk), dB(kCamGain), kKneeSpl + 22.0);
+                "    knee at -66 dBs = %.1f dB SPL = %.1f dBFS peak at the microphone, %.1f dBFS peak in at Mic Gain 0 with the %.0f dB distance; record gain %+.2f dB; the range ends at %.1f dB SPL)\n",
+                kKneeSpl, dB(kKneePk), dB(knee(0.0)), (double)kCamDistanceDb, dB(kCamGain), kKneeSpl + 22.0);
     {
         const double ds[] = { -20.0, -10.0, 0.0, 1.6, 3.5, 6.0, 9.5, 12.0, 14.0, 20.0, 22.0, 25.0, 28.0, 31.0 };
         const double trv[][2] = { {1.6,1.1},{3.5,1.6},{6.0,2.0},{9.5,2.3},{12.0,2.4},{14.0,2.5},{20.0,2.8} };
@@ -619,7 +623,7 @@ int main()
                 double vc = 0.0, g = 1.0;
                 for (size_t i = 0; i < in.size(); ++i)
                 {
-                    double y = std::fmax(-2.2364, std::fmin(2.2364, (double)in[i] * kCamGain * g));
+                    double y = std::fmax(-2.2364, std::fmin(2.2364, (double)in[i] / kDist * kCamGain * g));
                     y -= c * y * y * y;
                     vc *= rel;
                     if (std::fabs(y) > vc) vc += atk * (std::fabs(y) - vc);
@@ -675,49 +679,52 @@ int main()
     }
 
     std::printf("16. How far from bypass: a music-like signal at -18 dBFS rms (chord, kick, hi-hat; loud and 15 dB quieter parts; a 2 s gap), the mic alone\n"
-                "    crest = peak / rms; loud-quiet = the level difference of the two parts; spread = standard deviation of the 50 ms level; gap = noise in the gap's last half second re the loud part (Noise on)\n"
-                "    Mic Gain below -12 dB is beyond the knob: the same as a source that much quieter (further away)\n");
+                "    crest = peak / rms; loud-quiet = the level difference of the two parts; spread = standard deviation of the 50 ms level;\n"
+                "    gap = noise in the gap's last half second re the loud part (Noise on); THD = a 1 kHz sine at -18 dBFS rms at the same setting.\n"
+                "    The new one hears the source %.0f dB quieter (the camera across the room) before Mic Gain's own change\n", (double)kCamDistanceDb);
     {
         const float sr = 44100.0f;
         const std::vector<float> in = music(sr);
         const Dyn by = dynamics(in, sr);
-        std::printf("   %-32s crest %5.1f dB, loud-quiet %5.1f dB, spread %4.1f dB, gap %s\n", "bypass (the input)", by.crest, by.loudQuiet, by.spread, "silent");
+        std::printf("   %-34s crest %5.1f dB, loud-quiet %5.1f dB, spread %4.1f dB, gap %s\n", "bypass (the input)", by.crest, by.loudQuiet, by.spread, "silent");
         auto row = [&](const char* name, double gainDb, bool old) {
             Dyn d = dynamics(micOnly(in, sr, gainDb, false, old), sr);
             d.gap = dynamics(micOnly(in, sr, gainDb, true, old), sr).gap;
-            std::printf("   %-32s crest %5.1f dB, loud-quiet %5.1f dB, spread %4.1f dB, gap %6.1f dB; change from bypass: crest %+5.1f, loud-quiet %+5.1f, spread %+5.1f\n",
-                        name, d.crest, d.loudQuiet, d.spread, d.gap, d.crest - by.crest, d.loudQuiet - by.loudQuiet, d.spread - by.spread);
+            const std::vector<float> t = micOnly(sine(sr, 1000.0, fromDb(-15.0), 2.0), sr, gainDb, false, old);
+            const double dist = thd(t, sr, 1000.0, (size_t)sr, t.size());
+            std::printf("   %-34s crest %5.1f dB, loud-quiet %5.1f dB, spread %4.1f dB, gap %6.1f dB, THD %5.2f %%; change from bypass: crest %+5.1f, loud-quiet %+5.1f, spread %+5.1f\n",
+                        name, d.crest, d.loudQuiet, d.spread, d.gap, 100 * dist, d.crest - by.crest, d.loudQuiet - by.loudQuiet, d.spread - by.spread);
             return d;
         };
         const Dyn o0 = row("replaced (capsule alone), 0 dB", 0.0, true);
         row("replaced (capsule alone), -12 dB", -12.0, true);
+        const Dyn p12 = row("new, Mic Gain +12 dB", 12.0, false);
+        row("new, Mic Gain +6 dB", 6.0, false);
         row("new, Mic Gain 0 dB", 0.0, false);
-        row("new, Mic Gain -6 dB", -6.0, false);
-        const Dyn n12 = row("new, Mic Gain -12 dB (the programs)", -12.0, false);
-        row("new, source 20 dB quieter", -20.0, false);
-        const Dyn n26 = row("new, source 26 dB quieter", -26.0, false);
-        row("new, source 32 dB quieter", -32.0, false);
+        const Dyn m6 = row("new, Mic Gain -6 dB", -6.0, false);
+        const Dyn m12 = row("new, Mic Gain -12 dB", -12.0, false);
         const double oldMove = std::fmax(std::fabs(o0.loudQuiet - by.loudQuiet), std::fabs(o0.spread - by.spread));
         check(oldMove < 0.5 && std::fabs(o0.crest - by.crest) < 1.5,
               "the model it replaces leaves the level over time within 0.5 dB and the crest within 1.5 dB (its 53 Hz highpass on the kick) (the owner: \"You can barely tell it's on\")");
-        check(n12.crest < by.crest - 2.0, "the new one at the programs' Mic Gain (-12 dB): past the ALC's range, the peaks come down by at least 2 dB");
-        check(n26.loudQuiet < by.loudQuiet - 6.0 && n26.spread < 0.6 * by.spread && n26.gap > -50.0,
-              "inside the range (the source 26 dB quieter): at least 6 dB less between loud and quiet, under 0.6 of the spread, and the noise lifted in the gap to within 50 dB of the loud part");
+        check(p12.crest < by.crest - 2.0, "the new one at Mic Gain +12 dB: past the ALC's range, the peaks come down by at least 2 dB");
+        check(m6.loudQuiet < by.loudQuiet - 6.0 && m6.spread < 0.6 * by.spread && m6.gap > -50.0 && m12.loudQuiet < by.loudQuiet - 6.0 && m12.gap > -50.0,
+              "at Mic Gain -6 and -12 dB, inside the range: at least 6 dB less between loud and quiet (and under 0.6 of the spread at -6), the noise lifted in the gap to within 50 dB of the loud part");
     }
 
     std::printf("17. The two programs with the Camcorder (Camcorder 89, Wedding Video): where typical material lands (the mic alone, 1 kHz)\n"
-                "    the range ends at %.1f dBFS peak at Mic Gain 0 (%.1f dB SPL); typical: the levels_test tone (-12 dBFS peak) and a sine at -18 dBFS rms\n", dB(knee(22.0)), kKneeSpl + 22.0);
+                "    the range ends at %.1f dBFS peak in at Mic Gain 0 (%.1f dB SPL at the microphone, %.0f dB of distance); typical: the levels_test tone (-12 dBFS peak) and a sine at -18 dBFS rms\n",
+                dB(knee(22.0)), kKneeSpl + 22.0, (double)kCamDistanceDb);
     {
         const float sr = 44100.0f;
         auto at = [&](double gainDb, double peakDbfs, double* past, double* g, double* dist, double* opk) {
             MicModel m;
             const std::vector<float> o = micOnly(sine(sr, 1000.0, fromDb(peakDbfs), 1.5), sr, gainDb, false, false, &m);
-            *past = peakDbfs + gainDb - dB(knee(22.0));
+            *past = peakDbfs + gainDb - dB(knee(22.0));   // knee() has the distance in
             *g = dB(m.alcG);
             *dist = thd(o, sr, 1000.0, (size_t)sr, o.size());
             *opk = 0; for (size_t i = (size_t)sr; i < o.size(); ++i) *opk = std::fmax(*opk, std::fabs(o[i]));
         };
-        for (double gainDb : {12.0, 2.0, 1.0, 0.0, -6.0, -12.0})
+        for (double gainDb : {12.0, 6.0, 2.0, 1.0, 0.0, -6.0, -12.0})
             for (double pk : {-12.0, -15.0})
             {
                 double past, g, dist, opk;
@@ -725,7 +732,7 @@ int main()
                 std::printf("   Mic Gain %+5.1f dB, %s: %+5.1f dB past the end of the range, ALC gain %+6.2f dB, out peak %.2f, THD %5.2f %%\n",
                             gainDb, pk == -12.0 ? "-12 dBFS peak" : "-18 dBFS rms ", past, g, opk, 100 * dist);
             }
-        std::printf("   to keep a -18 dBFS rms sine inside the range Mic Gain would have to be %+.1f dB (the knob goes down to -12)\n", dB(knee(22.0)) - (-15.0));
+        std::printf("   a -18 dBFS rms sine stays inside the range up to Mic Gain %+.1f dB, the levels_test tone up to %+.1f dB\n", dB(knee(22.0)) - (-15.0), dB(knee(22.0)) - (-12.0));
         for (int prog : {4, 15})
         {
             Fx fx(sr, 0, true);
@@ -739,8 +746,8 @@ int main()
             at(g, -15.0, &past2, &g2, &d2, &p2);
             std::printf("   %-14s Mic %s, type %d, Mic Gain %+.1f dB, AGC %.0f %%: the tone %+.1f dB past the range (THD %.2f %%), the sine %+.1f dB past (THD %.2f %%)\n",
                         name, pl->getBool(kMicOn) ? "on" : "off", pl->getInt(kMicType), g, pl->get(kAgc), past1, 100 * d1, past2, 100 * d2);
-            check(pl->getInt(kMicType) == 0 && g == -12.0 && d1 < 0.01 && d2 < 0.01 && p1 < 1.0,
-                  std::string(name) + ": Mic Gain at the bottom of its range, where typical material is squashed and not clipped (THD under 1 %)");
+            check(pl->getInt(kMicType) == 0 && std::fabs(g - (prog == 4 ? 2.0 : 1.0)) < 0.01 && past1 <= 0.0 && past2 <= 0.0 && d1 < 0.005 && d2 < 0.005,
+                  std::string(name) + ": its original Mic Gain; with the distance, typical material at or inside the top of the ALC's range (THD under 0.5 %)");
         }
     }
 
@@ -769,6 +776,40 @@ int main()
             std::printf("   %6.0f Hz, dB above the knee (m: Mic switched on, t: type chosen), loudest after it re steady:%s\n", sr, line.c_str());
             char what[120]; std::snprintf(what, sizeof(what), "%.0f Hz: no start-up burst: never more than 1 dB above the steady level (worst %+.2f)", sr, worst);
             check(worst < 1.0, what);
+        }
+    }
+
+    std::printf("19. Camcorder: after a sound louder than the ALC's range its detector holds more than full attenuation needs, so the gain\n"
+                "    starts to come back only once that has drained (19 s discharge). How long after the sound ends, the mic alone, then 40 s of silence\n");
+    {
+        const float sr = 44100.0f;
+        auto after = [&](std::vector<float> in, double gainDb, double* start, double* full, double* endG) {
+            const size_t end = in.size();
+            in.resize(end + (size_t)(40.0f * sr), 0.0f);
+            MicModel m; m.set(0, sr); m.reset();
+            const float g = (float)fromDb(gainDb);
+            double lo = 1e9; *start = -1.0; *full = -1.0;
+            for (size_t i = 0; i < in.size(); ++i)
+            {
+                m.process(splat(in[i] * g), 0.0f);
+                if (i == end) *endG = dB(m.alcG);
+                if (i < end) continue;
+                const double gd = dB(m.alcG);
+                lo = std::fmin(lo, gd);
+                if (*start < 0.0 && gd > lo + 1.0) *start = std::fmax(0.0, (double)(i - end) / sr - 1.0 / kRecDbS);   // back to where it rose its first dB
+                if (*full < 0.0 && gd > -1.0) *full = (double)(i - end) / sr;
+            }
+        };
+        struct Case { const char* name; std::vector<float> in; double gain; };
+        const std::vector<float> mus = music(sr), tone = sine(sr, 1000.0, 0.25, 4.0);
+        const Case cases[] = { {"music, Mic Gain 0", mus, 0.0}, {"music, Mic Gain +12", mus, 12.0},
+                               {"levels_test tone, Mic Gain 0", tone, 0.0}, {"levels_test tone, Mic Gain +12", tone, 12.0} };
+        for (const Case& c : cases)
+        {
+            double start, full, endG;
+            after(c.in, c.gain, &start, &full, &endG);
+            std::printf("   %-31s gain at the end %+6.2f dB; it starts to come back %5.2f s after, is within 1 dB of full gain %5.2f s after\n", c.name, endG, start, full);
+            check(full > 0.0 && full < 40.0, std::string(c.name) + ": the gain comes all the way back");
         }
     }
 
