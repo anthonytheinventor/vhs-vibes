@@ -21,10 +21,10 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 52 controls on five pages, 25 built-in programs
+- 53 controls on five pages, 27 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
-- version 1.4
+- version 1.5
 
 ## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
 
@@ -123,6 +123,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 | HQ | Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate. Without it, bright sounds that hit those stages fold back into the midrange as tones that were never played. With it, that is gone for highs at ordinary levels; a full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it fades the sound out and back in at the other rate. Choosing a program does not change it. |
+| NR | The noise reduction of early stereo decks' linear tracks (B-type). On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. **Off**: none. **Rec**: recorded with it, played without: bright, airy, a little squashed, all the hiss. **Play**: the opposite: dull, the highs ducking in quiet passages. **On**: both, which on a clean tape only removes hiss; the more the tape has lost in between (Hi Cut, Wear, Dropouts, Drift), the more the decoder mistracks and the duller and more unsteady the top end gets. Loud sounds pass untouched. |
 
 There is no tape-speed or track switch because they would only repeat other controls. For a
 slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss; SP is about
@@ -163,6 +164,8 @@ Twenty-five programs. The labels are handwritten.
 | Tube TV | The living-room set: a small speaker, mains hum and the whistle of the picture tube. |
 | Worn Heads | A good Hi-Fi deck with tired heads: buzz that rides on the music and sinks in the pauses, the right channel crackling. |
 | Dirty Heads | Oxide on the heads: dull, and the highs keep falling away. |
+| Stereo Rental | An early stereo rental with noise reduction on both sides, and a tape that has aged in between: dull, the highs ducking in the quiet parts. |
+| Wrong Switch | Recorded with noise reduction, played without: bright, airy, a little squashed, all of the hiss. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
@@ -186,9 +189,16 @@ The Animation switch on the DECK page turns them off.
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with 1.3 load with every setting in place. Scrape, Whistle and HQ rest at 0
-  or off, no older program uses them, and the four new programs come after Init so every
-  older one keeps its number.
+- Projects made with 1.3 or 1.4 load with every setting in place. Scrape, Whistle, HQ and NR
+  rest at 0 or off, no older program uses them, and the newer programs come after Init so
+  every older one keeps its number.
+- NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
+  their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
+  its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
+  What the datasheets do not give as numbers was fitted to the figures they publish: the
+  record side meets all eight (1.4, 2, 5 and 10 kHz at -20 to -40 dB) within 0.5 dB, where
+  the chips are specified to 2 dB. The playback side undoes the record side to better than
+  -100 dB when nothing lies between them. Dolby level is taken as -8 dBFS.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
   like a chorus. That is the nature of mixing a wobbling signal with a steady one.
@@ -242,9 +252,10 @@ read-outs under the knobs are live text (Nexa).
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds five small programs and runs them on the computer: `host_test` (what the plugin tells
-the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `deck_test` and
-`levels_test` (measurements of each stage to read through). The first three end in PASS or FAIL.
+Builds six small programs and runs them on the computer: `host_test` (what the plugin tells
+the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `nr_test` (the noise reduction
+against the chip makers' figures), `deck_test` and
+`levels_test` (measurements of each stage to read through). The first four end in PASS or FAIL.
 `race_test` is not run by the script: it hammers the plugin from several threads and is meant
 to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
 

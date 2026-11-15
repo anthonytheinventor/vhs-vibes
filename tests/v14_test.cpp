@@ -587,7 +587,7 @@ int main()
         fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 23, 0, name, 0.0f);
         const bool worn = std::strcmp(name, "Worn Heads") == 0;
         fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 24, 0, name, 0.0f);
-        check(worn && std::strcmp(name, "Dirty Heads") == 0 && fx.e->numPrograms == 25, "25 programs; Worn Heads and Dirty Heads are the last two");
+        check(worn && std::strcmp(name, "Dirty Heads") == 0 && fx.e->numPrograms >= 25, "Worn Heads and Dirty Heads are programs 23 and 24");
     }
 
     std::printf(fails ? "FAIL\n" : "PASS\n");

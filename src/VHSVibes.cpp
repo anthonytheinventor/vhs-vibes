@@ -12,6 +12,7 @@
 //      -> CHORUS      short modulated delay, L/R out of phase for width
 //      -> MIC         three-band EQ curve of a cheap microphone ("re-recorded through a mic")
 //      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
+//      -> NR ENCODE   (deck) B-type noise reduction, record side: lifts quiet highs
 //      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage)
 //      -> WEAR        slew limiter: the signal cannot change faster than a set rate
 //      -> COMP        one-knob compressor with make-up gain
@@ -30,6 +31,8 @@
 //                     sounds and vanishes on bass
 //      -> WHISTLE     the TV set's line whistle, added here so no filter or wobble touches it
 //      -> DROPOUTS    short random dips that take the highs first
+//      -> NR DECODE   (deck) B-type noise reduction, playback side: cuts quiet highs, and the
+//                     hiss with them. Whatever the tape did in between makes it mistrack.
 //      -> MONO -> MIX (dry / wet) -> OUTPUT
 //
 // Breathing (deck) makes the hiss rise and fall with the signal and holds the head buzz down
@@ -168,6 +171,9 @@ enum ParamIndex
     kWhistle,      // %      the 15.7 kHz line whistle of the TV set leaking into the sound
     kHq,           // bool   the stages that distort run at twice the sample rate (no fold-back).
                    //        Like Animation, not part of the programs.
+    // added in 1.5
+    kNr,           // choice B-type noise reduction on the linear track: Off, Rec (recorded with it,
+                   //        played without), Play (the opposite), On (both)
     kNumParams
 };
 
@@ -209,6 +215,7 @@ enum Group : uint32_t
     gRamps = 1u << 0, gPreamp = 1u << 1, gWear = 1u << 2, gComp = 1u << 3, gSat = 1u << 4, gHiCut = 1u << 5,
     gWobble = 1u << 6, gCuts = 1u << 7, gNoise = 1u << 8, gChorus = 1u << 9, gMic = 1u << 10, gDeck = 1u << 11,
     gQuality = 1u << 12,   // the HQ switch: not a group to recompute, the whole plugin restarts
+    gNr = 1u << 13,
     gAll = 0xffffffffu
 };
 inline uint32_t groupOf(int param)
@@ -232,6 +239,7 @@ inline uint32_t groupOf(int param)
         case kMicType: case kMicGain:                                       return gMic;
         case kDeckOn: case kAgc: case kDrift: case kTracking: case kBreathing: return gDeck;
         case kHq:                                                           return gQuality;
+        case kNr:                                                           return gNr;
         default:                                                            return 0;   // the two meters
     }
 }
@@ -286,6 +294,136 @@ inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
 {
     return x + (softClip(x * g) * makeup - x) * mix;
 }
+
+// ---------------------------------------------------------------------------
+// NR: B-type noise reduction, the Dolby B that early stereo VHS decks had on their linear
+// (edge) tracks. A model of the circuit, not of its effect: the Signetics NE545 application
+// circuit (datasheet figure 25 and parts list), one processor per channel as in a deck.
+//
+//   main path ------------------------------------------------(+)---> encoded
+//        |                                                      ^
+//        +- C301 -+-- R302 || C303 --+--> amp C --+--> clipper -+        the side chain
+//                 |                  |            |
+//           R301 || C302             F            +--> amp D -> rectifier -> two-stage
+//                                    ^                                       smoothing
+//                                    +---------------------------------------------+
+//
+// The side chain is a high-pass filter. At low levels the variable resistance F is open
+// and the filter is C301 / C302 / R301 alone (turnover 1.5 kHz): added to the main path it
+// lifts the highs by 10 dB. As the side chain's own output grows, F conducts and the
+// turnover of the second section (R302, C303, F) slides upwards, so loud highs are left
+// alone. The decoder is the same side chain in a feedback loop, subtracting.
+//
+// From the datasheets: the network and its values, the 10 dB, the clipper that only works
+// during a sudden jump in level, time constants "of the order of 100 ms" that shorten to
+// "about 2 ms" for a sudden increase. Not given as numbers: the gain of amplifier C, the
+// rise of amplifier D with frequency and the control law of F. Those were fitted (F's
+// conductance rising in a straight line with the control voltage above a threshold, as a
+// junction FET's does) to the record-mode figures of the NE545 and TEA0665 datasheets; the
+// model meets all eight within 0.4 dB (the chips are specified to +/- 2 dB):
+//      1.4 kHz at -20 dB: +4.4 dB, at -30: +7.5      2 kHz at -25 dB: +7.0
+//      5 kHz at -20: +3.2, -30: +8.2, -40: +10.3     10 kHz at -20: +2.6, -30: +6.5
+// The diode threshold of the smoothing and the clip level are estimates. Levels are relative
+// to Dolby level, taken here as kRefLevel.
+//
+// The network has two memories (the charge on C301 + C302, and on C303) and is solved
+// exactly at every sample with the trapezoid rule, F included, so nothing lags: the
+// decoder's loop has no delay in it and undoes the encoder to the last bit of the maths.
+// It costs one reciprocal per sample, followed from the previous one instead of divided.
+// ---------------------------------------------------------------------------
+constexpr float kNrR301 = 3300.0f, kNrC301 = 5600.0e-12f, kNrC302 = 27.0e-9f;   // the fixed section
+constexpr float kNrR302 = 47.0e3f, kNrC303 = 4700.0e-12f;                       // the sliding section
+constexpr float kNrGmin   = 1.0f / 700.0e3f;   // F at rest: about 700 k (US patent 4,068,139)
+constexpr float kNrGmax   = 1.0f / 70.0f;      // and fully on
+constexpr float kNrGain   = 13.8745f;          // amplifier C (fitted: 10.3 dB at 5 kHz, low level)
+constexpr float kNrDzero  = 2232.0f;           // amplifier D: gain 1, rising above this frequency (fitted)
+constexpr float kNrSlope  = 0.005994f;         // F's conductance per unit of control voltage above...
+constexpr float kNrThresh = 0.07719f;          // ...this threshold (both fitted; Dolby level = 1)
+constexpr float kNrDiode  = 0.05f;             // a rise larger than this skips the slow smoothing (estimate)
+constexpr float kNrClip   = 0.12f * kRefLevel; // overshoot suppressor: just above the largest steady side-chain signal
+
+struct NoiseRed
+{
+    float kap = 0.0f, c1 = 1.0f, c2 = 1.0f, c2inv = 1.0f, b1 = 0.0f, d0 = 1.0f, d1 = 0.0f, off = 0.0f;
+    float kd = 0.0f, a1 = 0.0f, aSlow = 0.0f;
+    Stereo sq = {}, su = {};                 // the two memories of the network
+    Stereo g = {}, D = {}, rec = {};         // F's conductance, the network's denominator, 1 / (D + off)
+    Stereo ePrev = {}, v1 = {}, v2 = {};     // amplifier D's last input; the two smoothing stages
+
+    void prepare(float sr, bool decoder)
+    {
+        const float k = 0.5f / sr, ct = kNrC301 + kNrC302;
+        kap = kNrC301 / ct;
+        c1  = 1.0f + k / (kNrR302 * kNrC303);
+        c2  = 1.0f + k / (kNrR301 * ct);
+        c2inv = 1.0f / c2;
+        b1  = k / ct;
+        d0  = c1 * c2;
+        d1  = k * (c2 / kNrC303 + c1 / ct);
+        off = decoder ? kNrGain * c1 * kap : 0.0f;       // the decoder divides by D + this
+        kd  = sr / (2.0f * kPi * kNrDzero);
+        a1    = 1.0f - std::exp(-1.0f / (0.002f * sr));
+        aSlow = 1.0f - std::exp(-1.0f / (0.100f * sr));
+        reset();
+    }
+    void reset()
+    {
+        sq = su = ePrev = v1 = v2 = splat(0.0f);
+        g = splat(kNrGmin);
+        D = splat(d0 + d1 * kNrGmin);
+        rec = splat(1.0f / (d0 + d1 * kNrGmin + off));
+    }
+
+    // The network's memories after this sample, from its input x and its output vB.
+    void step(Stereo x, Stereo vB)
+    {
+        const Stereo u = (sq + kap * x - (c2 + b1 * g) * vB) * c2inv;   // the voltage on C303
+        sq = 2.0f * (vB - kap * x + u) - sq;
+        su = 2.0f * u - su;
+    }
+    // Side chain output -> F for the next sample.
+    void control(Stereo e)
+    {
+        const Stereo d = e + kd * (e - ePrev);                           // amplifier D
+        ePrev = e;
+        v1 += a1 * (vabs(d) * (1.0f / kRefLevel) + 1.0e-20f - v1);       // rectifier, first stage (2 ms)
+        const Stereo up = v1 - v2;
+        v2 += aSlow * up + vmax(up - kNrDiode, splat(0.0f));            // second stage: 100 ms, or at once
+        g = vmin(kNrGmin + kNrSlope * vmax(v2 - kNrThresh, splat(0.0f)), splat(kNrGmax));
+        D = d0 + d1 * g;
+        // 1 / (D + off): one Newton step from the last value while D moves slowly (the error
+        // is the square of the change), a real division when it jumps
+        const Stereo den = D + off, t = den * rec, far = vabs(t - 1.0f);
+        if (far[0] < 0.03f && far[1] < 0.03f) rec = rec * (2.0f - t);
+        else rec = 1.0f / den;
+    }
+
+    Stereo encode(Stereo x)
+    {
+        const Stereo vB = (c1 * (sq + kap * x) - c2 * su) * rec;         // rec = 1 / D
+        step(x, vB);
+        const Stereo e = kNrGain * vB;
+        control(e);
+        return x + vmax(vmin(e, splat(kNrClip)), splat(-kNrClip));
+    }
+    Stereo decode(Stereo y)
+    {
+        // y = x + gain * vB(x), and vB is a straight line in x: solved for x (rec = 1 / (D + off))
+        Stereo x = (y * D - kNrGain * (c1 * sq - c2 * su)) * rec;
+        Stereo e = y - x;
+        const Stereo over = vabs(e);
+        if (over[0] > kNrClip || over[1] > kNrClip)                       // the clipper is working: rare
+            for (int i = 0; i < 2; ++i)
+                if (over[i] > kNrClip)
+                {
+                    x[i] = y[i] - (e[i] > 0.0f ? kNrClip : -kNrClip);
+                    e[i] = kNrGain * (c1 * (sq[i] + kap * x[i]) - c2 * su[i]) / D[i];
+                }
+        step(x, e * (1.0f / kNrGain));
+        control(e);
+        return x;
+    }
+};
 
 // A biquad filter (same maths as dsp/biquad.h) running both channels at once.
 struct PairBiquad
@@ -667,6 +805,7 @@ public:
         addParam(floatParam ("scrape",     "Scrape",       0.0f, 100.0f, 0.0f, "%", 0));
         addParam(floatParam ("whistle",    "Whistle",      0.0f, 100.0f, 0.0f, "%", 0));
         addParam(boolParam  ("hq",         "HQ",         false));
+        addParam(choiceParam("nr",         "NR",         {"Off", "Rec", "Play", "On"}, 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -753,6 +892,8 @@ private:
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
         fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
+        nrEnc_.prepare(sr_, false);
+        nrDec_.prepare(sr_, true);
     }
 
     // HQ on or off: the rate the distorting stages run at, and everything that follows from it.
@@ -794,6 +935,7 @@ private:
         edgeN1_ = edgeN2_ = edgeMuffle_ = 0.0f; edgeGain_ = 1.0f; edgeActive_ = false;
         hsPhase_ = 0.0f; hsLeft_ = 0; hsFrac_ = 0.0f; hsOn_ = false;
         fbState_ = 0; fbTicks_ = 0; staticAmp_ = 0.0f; fbMono_ = 0.0f;
+        nrEnc_.reset(); nrDec_.reset();
 
         for (int i = 0; i < kNumParams; ++i) lastNorm_[i] = getNormalised(i);
         readParams(gAll);
@@ -1026,6 +1168,7 @@ public:
                 x = tiltLp_ * cur_[cTiltLo] + (x - tiltLp_) * cur_[cTiltHi];
             }
             else tiltLp_ = x;   // stays with the sound, so Tone can come in without a click
+            if (nrEncOn_) x = nrEnc_.encode(x);
             // ----- drive, wear, compressor, saturator: the stages that distort ----
             if (hq_)
             {
@@ -1134,6 +1277,7 @@ public:
                 dropLp_ += edgeCoeff_ * (x - dropLp_);
                 x = dropLp_ * (0.25f + 0.75f * dropGain_) + (x - dropLp_) * (dropGain_ * dropGain_);
             }
+            if (nrDecOn_) x = nrDec_.decode(x);
             const float monoAmt = maxf(monoMix, fbMono_);
             if (monoAmt > 0.0f) x += (splat(0.5f * (x[0] + x[1])) - x) * monoAmt;
             if (mix < 1.0f && dryActive_)
@@ -1208,7 +1352,7 @@ private:
         info.name         = "VHS Vibes";
         info.vendor       = "anthonytheinventor";   // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
-        info.version      = 1400;           // 1.4.0.0
+        info.version      = 1500;           // 1.5.0.0
         info.isInstrument = false;
         info.numInputs    = 2;
         info.numOutputs   = 2;
@@ -1336,6 +1480,15 @@ private:
             tgt_[cDrift]  = deck ? pct(kDrift) : 0.0f;
             tgt_[cBreath] = deck ? pct(kBreathing) : 0.0f;
             trackErr_     = deck ? pct(kTracking) : 0.0f;
+        }
+        if (groups & gNr)
+        {
+            // a side that is switched in starts from rest
+            const int mode = getInt(kNr);
+            const bool enc = mode == 1 || mode == 3, dec = mode >= 2;
+            if (enc && !nrEncOn_) nrEnc_.reset();
+            if (dec && !nrDecOn_) nrDec_.reset();
+            nrEncOn_ = enc; nrDecOn_ = dec;
         }
     }
 
@@ -1808,6 +1961,23 @@ private:
             {kWarp, 30}, {kFlutter, 30}, {kScrape, 30}, {kWow, 20}, {kFlutter2, 15}, {kLoCut, 80}, {kHiCut2, 7000},
             {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
             {kAgc, 25}, {kDrift, 45} });
+
+        // Added in 1.5, after the others: no older program uses NR.
+        // An early stereo rental: the narrow linear tracks with noise reduction on both
+        // sides. The tape has aged in between, so the decoder mistracks: dull, the highs
+        // ducking in the quiet parts.
+        program("Stereo Rental", {
+            {kDrive, 20}, {kWear, 30}, {kComp, 25}, {kHiCut, 7000}, {kHiSat, 25},
+            {kWarp, 15}, {kFlutter, 15}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 60}, {kHiCut2, 9000},
+            {kHum, 10}, {kHiss, 60}, {kCrackle, 5}, {kDropouts, 30},
+            {kDrift, 20}, {kNr, 3} });
+        // The same kind of tape on a deck without the switch: recorded with noise reduction,
+        // played without. Bright, airy, a little squashed, all of the hiss.
+        program("Wrong Switch", {
+            {kDrive, 15}, {kComp, 20}, {kHiCut, 11000},
+            {kWarp, 10}, {kFlutter, 10}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 50}, {kHiCut2, 12000},
+            {kHum, 5}, {kHiss, 50}, {kCrackle, 5},
+            {kNr, 1} });
     }
 
     // ----- state ------------------------------------------------------------------
@@ -1828,6 +1998,8 @@ private:
     bool  humOn_ = false, buzzOn_ = false, headOn_ = false, hissOn_ = false, crackleOn_ = false;
     bool  tiltOn_ = false, driveOn_ = false, slewOn_ = false, loSatOn_ = false, hiSatOn_ = false;
     bool  boost_ = false, dropOn_ = false, whistleOn_ = false, scrapeOn_ = false, breathOn_ = false;
+    NoiseRed nrEnc_, nrDec_;                 // noise reduction: record side, playback side
+    bool  nrEncOn_ = false, nrDecOn_ = false;
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill

@@ -137,7 +137,7 @@ PAGES = [
         ("DECK", "デッキ", ["Deck On", "AGC", "Drift", None]),
         ("HI-FI TRACK", "ハイファイ", ["Tracking", "Breathing", None, None]),
         ("SCREEN", "スクリーン", ["Animation", None, None, None]),
-        ("QUALITY", "高音質", ["HQ", None, None, None]),
+        ("QUALITY", "高音質", ["HQ", None, "NR", "<"]),
     ]},
 ]
 
@@ -161,6 +161,7 @@ PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Wear", "Comp"
 SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
+    "NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
 }
 TOGGLE_SIZE = (88, 44)
 TOGGLE_POS = (26, 50)
