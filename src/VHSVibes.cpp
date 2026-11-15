@@ -843,10 +843,10 @@ enum RampIndex { rOut, rMono, rChorus, rMic, rSat, rMix, kNumRamp };
 // its link; the section numbers below are the report's. A value that no source gave is marked
 // "estimate", with the reason.
 //
-//   Camcorder  the camera's record chain: the electret capsule (HF rise -> gate highpass ->
-//              + self-noise -> JFET overload) -> the mic amp's band and overload -> the record
-//              ALC (42 dB of gain, then 1 : 19 over a 22 dB range) -> the cubic after it.
-//              Mono: one built-in mic.
+//   Camcorder  a camera across the room (kCamDistanceDb) and its record chain: the electret
+//              capsule (HF rise -> gate highpass -> + self-noise -> JFET overload) -> the mic
+//              amp's band and overload -> the record ALC (42 dB of gain, then 1 : 19 over a
+//              22 dB range) -> the cubic after it. Mono: one built-in mic.
 //   Dynamic    four filters fitted to the Shure Unidyne B (515) curve at 0.6 m
 //   Phone      carbon transmitter: sensitivity rising with level -> 2nd harmonic -> the CCITT
 //              P.48 IRS sending curve (eight filters) -> + the line's idle noise. Mono: one line.
@@ -1061,6 +1061,17 @@ constexpr float kCamAttackSec   = 0.020f;                    // estimate
 constexpr float kCamRecoverySec = 19.0f;                     // estimate
 // After the ALC: the Boombox's cubic (kAlcCubic, kAlcRail), the report's choice (an estimate:
 // the LA3220's distortion figure belongs to a radio-cassette IC, not a camcorder's).
+//
+// Distance: the camera stands further from the source than a close microphone would. An
+// estimate, chosen by ear for the owner (to be retuned by ear: change this one number). 20 dB is
+// ten times the distance in free field: a microphone close to the source against a camera across
+// the room. It puts a sine of ordinary level (-18 dBFS rms) at Mic Gain 0 near the top of the
+// ALC's range instead of 14 dB past it. It is applied at the very input of the Camcorder's chain,
+// before the capsule, so the capsule and everything after it hear the source that much quieter.
+// The level mapping (a sine peaking at kRefLevel is 104 dB SPL) stays as it is, and the same for
+// all four types: the distance is a property of the Camcorder, not a change of the mapping. Mic
+// Gain still sets how loud the source is, on top of it.
+constexpr float kCamDistanceDb = 20.0f;                      // estimate
 
 struct MicModel
 {
@@ -1068,6 +1079,7 @@ struct MicModel
     int type = -1, n = 0;           // the type in the filters; how many filters it has
     PairBiquad f[8];                // the filters (the mono types run them with both halves alike)
     float capNoise = 0.0f, hiss = 0.0f, line = 0.0f;   // noise amplitudes for this rate (uniform white noise)
+    float camIn = 0.5f;                                // camcorder: the mono sum's 1/2 times the distance (kCamDistanceDb)
     Biquad lineBp;                                     // the phone line's band (mono)
     Xorshift32 rng[2] = { Xorshift32(0x3c6ef372u), Xorshift32(0xa54ff53au) };
     // phone: the level the carbon's sensitivity follows
@@ -1170,6 +1182,7 @@ struct MicModel
             normalise(2, 4, sr);
             alcAtk = 1.0 - std::exp(-1.0 / ((double)kCamAttackSec * sr));
             alcRel = std::exp(-1.0 / ((double)kCamRecoverySec * sr));
+            camIn = 0.5f * std::pow(10.0f, -kCamDistanceDb / 20.0f);
         }
         if (t == kBoombox)
         {
@@ -1258,7 +1271,7 @@ struct MicModel
         {
             case kCamcorder:
             {
-                float m = capsule(0.5f * (x[0] + x[1]), noise);     // one built-in mic
+                float m = capsule((x[0] + x[1]) * camIn, noise);    // one built-in mic, across the room
                 m = micAmp(mono(3, mono(2, m)));                    // the mic amp: its band, its overload
                 return splat(alc<18>(m, kCamRecGain, 1.0f / kCamThresh, kCamMaxAtt));
             }
@@ -2634,13 +2647,12 @@ private:
             {kWow, 40}, {kWowRate, 0.4f}, {kHiss, 25}, {kCrackle, 10},
             {kChorusOn, 1}, {kChoMix, 55}, {kChoSpeed, 0.35f}, {kChoDelay, 18}, {kChoWidth, 90},
             {kDrift, 20} });
-        // The camcorder's level control does the squashing here. Mic Gain at the bottom of its
-        // range: the camcorder's ALC ends 21 dB under kRefLevel, so ordinary material is past it
-        // even there (a sine at -18 dBFS rms by 2 dB), and at the old +2 dB it clipped hard.
+        // The camcorder's level control does the squashing here. With the camera's distance
+        // (kCamDistanceDb) the levels_test tone sits just inside the top of its ALC's range.
         program("Camcorder 89", {
             {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
             {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
-            {kMicOn, 1}, {kMicType, 0}, {kMicGain, -12},
+            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 2},
             {kAgc, 80}, {kDrift, 10} });
         // A tape that will not track: buzz on the music, static, drops to the backup track.
         program("Tracking Error", {
@@ -2707,12 +2719,11 @@ private:
             {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
             {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
             {kAgc, 35}, {kDrift, 25} });
-        // A camcorder at the back of the hall: the level control rides everything. Mic Gain at
-        // the bottom of its range, as in Camcorder 89.
+        // A camcorder at the back of the hall: the level control rides everything.
         program("Wedding Video", {
             {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
             {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
-            {kMicOn, 1}, {kMicType, 0}, {kMicGain, -12},
+            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 1},
             {kAgc, 90}, {kDrift, 20} });
         // The best VHS could do, the Hi-Fi track on a good day: wide, steady, quiet, breathing a little.
         program("Hi-Fi Master", {
