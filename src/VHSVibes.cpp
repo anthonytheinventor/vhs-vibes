@@ -1613,7 +1613,8 @@ private:
             rampT_[rOut]    = dbToGain(get(kOutput));
             rampT_[rMono]   = getBool(kMono) ? 1.0f : 0.0f;
             rampT_[rChorus] = getBool(kChorusOn) ? pct(kChoMix) : 0.0f;
-            rampT_[rMic]    = getBool(kMicOn) ? 1.0f : 0.0f;
+            micOn_          = getBool(kMicOn);
+            rampT_[rMic]    = micOn_ && !micSwap_ ? 1.0f : 0.0f;   // (out while it changes type: see gMic)
             rampT_[rSat]    = getBool(kSatOn) ? 1.0f : 0.0f;
             rampT_[rMix]    = pct(kMix);
             dropAmount_     = pct(kDropouts);
@@ -1723,10 +1724,14 @@ private:
         }
         if (groups & gMic)
         {
-            const MicCurve& mc = kMicCurves[clamp(getInt(kMicType), 0, 3)];
-            micHp_.setCoeffs(BiquadCoeffs::highpass(sr, mc.hpHz, 0.7071f));
-            micPk_.setCoeffs(BiquadCoeffs::peak(sr, mc.peakHz, mc.peakQ, mc.peakDb));
-            micLp_.setCoeffs(BiquadCoeffs::lowpass(sr, mc.lpHz, 0.7071f));
+            // A new Mic Type while the mic is heard would swap three filters under the running
+            // sound (a click at each position a Q-Link passes). So the mic fades out first, the
+            // new curve goes in while it is out, and it fades back in (see controlTick). At a
+            // reset, or while the mic is off and silent, the curve goes in at once.
+            micWant_ = clamp(getInt(kMicType), 0, 3);
+            if (groups == gAll || (!micSwap_ && rampT_[rMic] == 0.0f && ramp_[rMic].v == 0.0f)) { micSwap_ = false; setMicCurve(micWant_); }
+            else micSwap_ = micWant_ != micType_;   // (turned back to the type that is in: no fade)
+            rampT_[rMic] = micOn_ && !micSwap_ ? 1.0f : 0.0f;
             tgt_[cMicGain] = dbToGain(get(kMicGain));
         }
         if (groups & gDeck)
@@ -1751,6 +1756,15 @@ private:
         }
     }
 
+    void setMicCurve(int type)
+    {
+        const MicCurve& mc = kMicCurves[type];
+        micHp_.setCoeffs(BiquadCoeffs::highpass(sr_, mc.hpHz, 0.7071f));
+        micPk_.setCoeffs(BiquadCoeffs::peak(sr_, mc.peakHz, mc.peakQ, mc.peakDb));
+        micLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, mc.lpHz, 0.7071f));
+        micType_ = type;
+    }
+
     // amount 0..1 -> clipper gain, make-up and clean/driven blend.
     void setDrive(float amount, float maxExtraGain, int gIdx, int mkIdx, int mixIdx)
     {
@@ -1767,6 +1781,15 @@ private:
         // the reset come (at the start of the next block). Asked for a tick earlier, a block
         // that ended inside the fade's last step would have cut it short, with a step.
         if (resetNextTick_) { resetNextTick_ = false; resetPending_.store(true); }
+        // Mic Type: the mic has faded out for its new curve (see readParams). Put it in, from
+        // rest, and fade the mic back in.
+        if (micSwap_ && ramp_[rMic].v == 0.0f)
+        {
+            setMicCurve(micWant_);
+            micHp_.reset(); micPk_.reset(); micLp_.reset();
+            micSwap_ = false;
+            rampT_[rMic] = micOn_ ? 1.0f : 0.0f;
+        }
 
         // Smoothed control values land exactly on their targets, so "is this stage doing
         // anything" below is a plain compare.
@@ -2363,6 +2386,8 @@ private:
 
     // mic
     PairBiquad micHp_, micPk_, micLp_;
+    int   micType_ = -1, micWant_ = 0;    // the curve in the filters; the one Mic Type asks for
+    bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of curve
 
     // preamp, wear, compressor
     Stereo tiltLp_ = {0.0f, 0.0f}, slew_ = {0.0f, 0.0f};

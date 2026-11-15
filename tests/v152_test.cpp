@@ -164,6 +164,40 @@ int main()
         check(diff == 0.0f, "and once the Saturator is switched on it is the VHS one, as if it had been chosen first");
     }
 
+    std::printf("4. Mic Type turned with a Q-Link while the mic is on (100 Hz tone at 0.5)\n");
+    {
+        static const char* names[4] = { "Camcorder", "Dynamic", "Phone", "Boombox" };
+        float own = 0.0f;
+        for (int t = 0; t < 4; ++t)
+        {
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
+            std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr); fx.play(0.3f, 0.5f, 100.0f, &out);
+            std::printf("   %-9s alone: largest step %.4f\n", names[t], largestStep(out));
+            own = std::fmax(own, largestStep(out));
+        }
+        // A change of type fades the mic out and back in, as the Mic switch does: so that, done
+        // for each type, is the measure too.
+        for (int t = 0; t < 4; ++t)
+        {
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
+            std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
+            fx.set(kMicOn, 0); fx.play(0.3f, 0.5f, 100.0f, &out);
+            fx.set(kMicOn, 1); fx.play(0.3f, 0.5f, 100.0f, &out);
+            own = std::fmax(own, largestStep(out));
+        }
+        std::printf("   the Mic switch off and on again: largest step %.4f\n", own);
+        Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1);
+        std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
+        for (int b = 0; b < 600; ++b)
+        {
+            if (b >= 100 && b < 500) fx.e->setParameter(fx.e, kMicType, (float)(b - 100) / 399.0f);   // as a Q-Link sends it
+            fx.play(128.0f / 44100.0f, 0.5f, 100.0f, &out);
+        }
+        std::printf("   swept through 400 values: largest step %.4f, the sound's own at most %.4f\n", largestStep(out), own);
+        check(largestStep(out) < 1.3f * own, "no click on the way");
+        check(fx.plug()->getInt(kMicType) == 3, "and it ends on Boombox");
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
