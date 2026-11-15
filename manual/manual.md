@@ -223,24 +223,24 @@ epigraph: What the tape did to the sound.
 
 [[pagebreak]]
 
-## The three knobs with two names
+## The three knobs that change their name
 
-Three knobs in the SATURATOR block carry two names, because the **Type** switch changes what the saturator stage is, and with it what those knobs mean. Lows and Highs keep their names but change their job as well.
+The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, LEVEL and SPEED in VHS. They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
 
-| Printed on screen | Type = 2-Band | Type = VHS |
+| Knob | Type = 2-Band | Type = VHS |
 |---|---|---|
-| ^SPLIT / BIAS^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier. Higher is too much: duller, cleaner lows. |
-| ^LO SAT / LEVEL^ | **Lo Sat.** How hard the low band is clipped. | **Level.** The record level: how hard the tape is driven, 0 to +18 dB. |
-| ^HI SAT / SPEED^ | **Hi Sat.** How hard the high band is clipped. | **Speed.** The tape speed, from SP at 0 % to EP at 100 %. The slower, the sooner the highs give way and the lower the top of the band. |
+| ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. The read-out stays in Hz. |
+| ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. | **Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
+| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Speed.** The tape speed, from SP at 0 % to EP at 100 %. The slower, the sooner the highs give way and the lower the top of the band. |
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. |
 | ^HIGHS^ | Level of the high band into its clipper. | Trims the result above 1 kHz. |
 
 **2-Band** is a crossover with a soft clipper on each side. **VHS** is a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way): quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds.
 
 ::: note What is documented and what is estimated in Type = VHS
-Built to published figures where there are any: the track's two speeds (33.35 and 11.12 mm/s), reference level (100 nWb/m, taken as -8 dBFS), 3 % third-harmonic distortion 10 dB above it (320 nWb/m, the figure for video tape), a band that reaches 10 kHz in SP and about 4.5 kHz in EP, and the direction of the bias effects.
+It follows the figures an Audio Engineering Society tutorial on videotape duplication gives for the VHS linear track in SP: 33.35 mm/s, a record pre-emphasis of 120 microseconds, reference level 100 nWb/m (taken as -8 dBFS) and 3 % third-harmonic distortion at that reference level, a band that reaches about 10 kHz, and the direction of the bias effects. Deck specification sheets give EP's speed (11.12 mm/s) and band (4 to 6 kHz).
 
-No published curve was found for how much less level this track holds at high frequencies. That part is an estimate from audio cassette behaviour scaled by tape speed (a 7 kHz tone in SP reaches its 3 % point about 5 dB below reference level), as are the shape of the curve past the 3 % point and the sizes of the bias effects. There is no head bump: at these tape speeds it lies below 20 Hz.
+Estimates: that EP behaves like SP at a third of every frequency, how far the pre-emphasis keeps rising, the shape of the curve past the 3 % point and the sizes of the bias effects. There is no head bump: at these tape speeds it lies below 20 Hz. Driven hard, the stage clips highs it has just lifted, which folds back into the band without HQ; HQ is on in a new instance for that reason.
 :::
 
 ::: page WOBBLE

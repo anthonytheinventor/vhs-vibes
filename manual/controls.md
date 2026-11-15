@@ -60,14 +60,14 @@ what: Switches the saturator stage on or off, whichever Type is chosen. Off, the
 note: Hi Cut is drawn in the same block but is a stage of its own: it stays in when Power is off.
 
 ## Split
-what: In **2-Band**: the frequency at which the signal is divided into a low band and a high band. In **VHS**: the bias, which is how well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter and grittier. Higher is too much: duller, with cleaner lows.
+what: In **2-Band**: the frequency at which the signal is divided into a low band and a high band. In **VHS** the caption reads BIAS: how well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner.
 note: The read-out stays in Hz or kHz in both types.
 
 ## Lows
 what: In **2-Band**: the level of the low band going into its clipper. In **VHS**: trims the result below 1 kHz.
 
 ## Lo Sat
-what: In **2-Band**: how hard the low band is clipped. In **VHS**: the record level, which is how hard the tape is driven, from 0 dB at 0 % to +18 dB at 100 %.
+what: In **2-Band**: how hard the low band is clipped. In **VHS** the caption reads LEVEL: the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends.
 try: In VHS, SP Tape uses 45 % and EP Tape 50 %.
 
 ## Highs
@@ -75,7 +75,7 @@ what: In **2-Band**: the level of the high band going into its clipper. In **VHS
 try: In 2-Band, lower Highs and raise Hi Sat for "copied again". 3rd Gen Copy has Highs at -8 dB and Hi Sat at 60 %.
 
 ## Hi Sat
-what: In **2-Band**: how hard the high band is clipped. In **VHS**: the tape speed, from SP (0 %) to EP (100 %). The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP and about 4.5 kHz in EP.
+what: In **2-Band**: how hard the high band is clipped. In **VHS** the caption reads SPEED: the tape speed, from SP (0 %) to EP (100 %). The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP and about 4.5 kHz in EP.
 try: In VHS, 0 % is the SP Tape program and 100 % the EP Tape program.
 
 ## Hi Cut
@@ -85,7 +85,7 @@ note: Not the HI CUT on the WOBBLE page, which is a second, later filter.
 
 ## Sat Type
 what: Chooses what the saturator stage is. **2-Band**: the signal is split in two and each band gets its own level and soft clip. **VHS**: a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way). Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does.
-note: In VHS the three knobs with two names change meaning (see the table after this list). Switching Type fades the sound out and back in.
+note: In VHS three knobs change their meaning and their caption (see the table after this list). Switching Type fades the sound out and back in.
 
 <!-- ====================================================================== WOBBLE -->
 

@@ -149,7 +149,7 @@ CAPTIONS = {
     "Flutter": "DEPTH", "Flut Rate": "RATE",
     "Wow Rate": "RATE", "Flutter 2": "FLUTTER", "Flut2 Rate": "RATE",
     "Hi Cut 2": "HI CUT", "Noise": "MASTER", "Noise Pos": "POSITION",
-    "Sat Type": "TYPE", "Split": "SPLIT / BIAS", "Lo Sat": "LO SAT / LEVEL", "Hi Sat": "HI SAT / SPEED",
+    "Sat Type": "TYPE",
     "Wobble On": "WOBBLE", "Noise On": "NOISE",
     "Deck On": "POWER",
 }
@@ -157,6 +157,19 @@ BIPOLAR = {"Tone", "Lows", "Mic Gain"}
 # The 16 parameters on the knobs in Program (track) Q-Link mode, Q-Link 1..16.
 PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Wear", "Comp", "Hi Cut",
                   "Hiss", "Crackle", "Hum", "Noise", "Hi Sat", "Dropouts", "Mix", "Output"]
+
+# Captions that change with a switch: while SWAP_PARAM sits on step SWAP_STEP (of SWAP_STEPS), a small
+# picture with the other caption is shown over the one painted on the background. The control under
+# it stays the same parameter (and the same Q-Link).
+CAPTION_SWAPS = {"Split": "BIAS", "Lo Sat": "LEVEL", "Hi Sat": "SPEED"}
+SWAP_PARAM, SWAP_STEP, SWAP_STEPS = "Sat Type", 1, 2
+CAPTION_H = 25                     # height of the caption strip at the top of a slot
+CAPTION_OVERRIDE = {}              # used while the other captions are being painted
+
+
+def swap_file(name):
+    return "cap_%s_vhs.png" % name.lower().replace(" ", "")
+
 
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
 SEGMENTS = {
@@ -576,7 +589,7 @@ def draw_panel(img, page, params):
             span = 2 if i + 1 < len(cells) and cells[i + 1] == "<" else 1
             cx = bx + i * CELL_W
             sy = by + SLOT_DY
-            cap = CAPTIONS.get(name, name.upper())
+            cap = CAPTION_OVERRIDE.get(name, CAPTIONS.get(name, name.upper()))
             draw_text(d, (cx + span * CELL_W / 2, sy + 4), cap, f_cap, (210, 250, 255), 1.5, "m")
             p = params[name]
             if p.is_discrete:
@@ -831,6 +844,13 @@ def build_tui(params):
         bg = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", page["file"]))
         children = [G.entry("background", "Image", bg, "0 0 %d %d" % (W, H), "No", "Show", "Always")]
         children += animation_entries(page, params)
+        for b, i, span, name in iter_controls(page):
+            if name in CAPTION_SWAPS:
+                pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", swap_file(name)))
+                children.append(G.entry("caption " + name, "Image", pic,
+                                        "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, CAPTION_H),
+                                        "No", "Hide", "Always",
+                                        invalidating=["IndexedEnabling/%d/%d/%s" % (SWAP_STEP, SWAP_STEPS, params[SWAP_PARAM].handle)]))
         groups = []
         for b in range(4):
             if any(c is not None for c in page["blocks"][b][2]):
@@ -965,6 +985,15 @@ def main():
     for n, page in enumerate(PAGES, 1):
         bg = make_background(page, n, params)
         bg.save(os.path.join(SKINS, page["file"]), optimize=True)
+        # the other captions: the same background painted with them, cut out strip by strip
+        swaps = [(b, i, span, name) for b, i, span, name in iter_controls(page) if name in CAPTION_SWAPS]
+        if swaps:
+            CAPTION_OVERRIDE.update(CAPTION_SWAPS)
+            alt = make_background(page, n, params)
+            CAPTION_OVERRIDE.clear()
+            for b, i, span, name in swaps:
+                x, y = cell_x(b, i), block_row(b) + SLOT_DY
+                alt.crop((x, y, x + CELL_W * span, y + CAPTION_H)).save(os.path.join(SKINS, swap_file(name)), optimize=True)
         make_preview(page, bg, params, images).save(os.path.join(PREVIEW, "page_%d_%s.png" % (n, page["name"].lower())))
 
     with open(os.path.join(SKINS, "TUI.json"), "w", encoding="utf-8", newline="\n") as f:

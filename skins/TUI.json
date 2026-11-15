@@ -1441,6 +1441,93 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "caption Split",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_split_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "220 444 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/2/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Lo Sat",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_losat_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "500 444 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/2/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Hi Sat",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_hisat_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "780 444 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/2/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Drive",
                                 "type": "vvKnobUni",
                                 "data": {
