@@ -285,10 +285,14 @@ read-outs under the knobs are live text (Nexa).
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds seven small programs and runs them on the computer: `host_test` (what the plugin tells
+Builds eight small programs and runs them on the computer: `host_test` (what the plugin tells
 the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `nr_test` (the noise reduction
-against the chip makers' figures), `tape_test` (Sat Type = VHS against the figures it is built to), `deck_test` and
-`levels_test` (measurements of each stage to read through). The first five end in PASS or FAIL.
+against the chip makers' figures), `tape_test` (Sat Type = VHS against the figures it is built to), `v152_test`
+(everything that changed in 1.5.2: resets at any block size, Q-Links across every switch, cut-short
+states), `deck_test` and `levels_test` (measurements of each stage to read through). The first six end in
+PASS or FAIL. Then `ab14_test`, built once against the 1.4.0 source from git and once against this one,
+checks that the 25 programs that existed in 1.4 still come out the same, sample for sample from 100 ms on (the git
+tags are fetched if they are missing).
 `race_test` is not run by the script: it hammers the plugin from several threads and is meant
 to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
 
