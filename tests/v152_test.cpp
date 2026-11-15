@@ -234,6 +234,36 @@ int main()
             check(from > 0 && from < 4410 && left == 0.0f, "silence");
         }
 
+    std::printf("6. The output does not depend on how many frames each call brings\n");
+    {
+        // Settings that stay put: 10 s at 128 frames per call and at 1 to 512, bit for bit the
+        // same. Home Recording with the chorus, the mic and Mix 70 %, Vaporwave Mall, Chewed
+        // Tape, Stereo Rental (NR) and two with Sat Type VHS; HQ off and on.
+        int same = 0, cases = 0;
+        for (int prog : {0, 3, 9, 25, 29, 31})
+            for (int hq = 0; hq < 2; ++hq)
+            {
+                std::vector<float> a, ar, b, br;
+                for (int pass = 0; pass < 2; ++pass)
+                {
+                    Fx fx(prog, hq != 0, pass == 0 ? 128 : 0);
+                    if (prog == 0) { fx.set(kChorusOn, 1); fx.set(kMicOn, 1); fx.set(kMix, 70); }
+                    fx.play(10.0f, 0.3f, 220.0f, pass == 0 ? &a : &b, pass == 0 ? &ar : &br, 0.2f);
+                }
+                const size_t len = std::min(a.size(), b.size());   // the last call may run on further in one of them
+                a.resize(len); ar.resize(len); b.resize(len); br.resize(len);
+                ++cases;
+                if (a == b && ar == br) ++same;
+                else
+                {
+                    size_t i = 0; while (i < len && a[i] == b[i] && ar[i] == br[i]) ++i;
+                    std::printf("   program %d, HQ %d: they part at sample %zu\n", prog, hq, i);
+                }
+            }
+        std::printf("   %d of %d the same bit for bit\n", same, cases);
+        check(same == cases, "every one");
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
