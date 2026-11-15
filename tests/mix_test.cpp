@@ -15,6 +15,7 @@ static AEffect* make(int program)
     AEffect* e = VSTPluginMain(hostCb);
     e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
     e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
+    static_cast<mpc::Plugin*>(e->object)->set(kHq, 0);   // HQ is on in a new instance since 1.5; the tests start without it
     e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
     e->dispatcher(e, effSetProgram, 0, program < 0 ? 20 : program, nullptr, 0.0f);
     return e;

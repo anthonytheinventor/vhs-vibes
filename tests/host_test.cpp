@@ -53,6 +53,7 @@ int main()
 
     e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
     e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
+    static_cast<mpc::Plugin*>(e->object)->set(kHq, 0);   // HQ is on in a new instance since 1.5; the tests start without it
     e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
     play(e, 8, 0.0f);
     ms(150);

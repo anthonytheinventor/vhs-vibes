@@ -192,13 +192,16 @@ The Animation switch on the DECK page turns them off.
 - Projects made with 1.3 or 1.4 load with every setting in place. Scrape, Whistle, HQ and NR
   rest at 0 or off, no older program uses them, and the newer programs come after Init so
   every older one keeps its number.
+- HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
+  before HQ existed opens with it off, so it sounds as it did.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
   What the datasheets do not give as numbers was fitted to the figures they publish: the
   record side meets all eight (1.4, 2, 5 and 10 kHz at -20 to -40 dB) within 0.5 dB, where
-  the chips are specified to 2 dB. The playback side undoes the record side to better than
-  -100 dB when nothing lies between them. Dolby level is taken as -8 dBFS.
+  the chips are specified to 2 dB (within 0.6 dB at sample rates up to 192 kHz). The playback
+  side undoes the record side to about -100 dB when nothing lies between them. Switching NR
+  fades it in or out over 8 ms. Dolby level is taken as -8 dBFS.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
   like a chorus. That is the nature of mixing a wobbling signal with a steady one.

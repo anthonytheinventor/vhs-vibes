@@ -52,6 +52,7 @@ struct Fx
         e = VSTPluginMain(hostCb);
         e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
         e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
+        static_cast<mpc::Plugin*>(e->object)->set(kHq, 0);   // HQ is on in a new instance since 1.5; the tests start without it
         e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
         e->dispatcher(e, effSetProgram, 0, 20, nullptr, 0.0f);   // Init
     }
@@ -83,7 +84,7 @@ int main()
     {
         struct { float hz, level, want; } pts[] = { {1400, -20, 4.4f}, {1400, -30, 7.5f}, {2000, -25, 7.0f}, {5000, -20, 3.2f},
                                                     {5000, -30, 8.2f}, {5000, -40, 10.3f}, {10000, -20, 2.6f}, {10000, -30, 6.5f} };
-        for (float sr : {44100.0f, 48000.0f, 96000.0f})
+        for (float sr : {44100.0f, 48000.0f, 88200.0f, 96000.0f, 192000.0f})
         {
             double worst = 0.0;
             std::printf("   %5.0f Hz rate:", sr);
@@ -94,7 +95,7 @@ int main()
                 worst = std::fmax(worst, std::fabs(got - p.want));
             }
             std::printf("  worst error %.2f dB\n", worst);
-            check(worst < (sr == 44100.0f ? 0.6 : 1.0), "all eight published figures met (the chips are specified to +/- 2 dB)");
+            check(worst < (sr == 44100.0f ? 0.5 : 0.7), "all eight published figures met (the chips are specified to +/- 2 dB)");
         }
         std::printf("   low level (-60 dB):");
         for (float hz : {200.0f, 600.0f, 1200.0f, 2400.0f, 5000.0f, 10000.0f, 15000.0f}) std::printf(" %.0f Hz %+.1f", hz, gainOf(44100.0f, false, hz, -60.0f));
@@ -139,9 +140,11 @@ int main()
             diff[i] = dec.decode(y)[0] - in[i];
         }
         const double left = dB(rmsOf(diff, 0) / rmsOf(in, 0));
-        std::printf("   %5.0f Hz rate: what is left after encode + decode %.0f dB below the signal; encoded %.1f dB above it; clipper worked on %d samples\n",
-                    sr, -left, dB(rmsOf(coded, 0) / rmsOf(in, 0)), clipped);
-        check(left < -80.0, "the pair is transparent (better than -80 dB)");
+        float worstSample = 0.0f; for (float v : diff) worstSample = std::fmax(worstSample, std::fabs(v));
+        std::printf("   %5.0f Hz rate: what is left after encode + decode %.0f dB below the signal (largest single sample %.0f dBFS); encoded %.1f dB above it; clipper worked on %d samples\n",
+                    sr, -left, dB(worstSample), dB(rmsOf(coded, 0) / rmsOf(in, 0)), clipped);
+        check(left < -95.0, "the pair is transparent (better than -95 dB)");
+        check(dB(worstSample) < -95.0, "and no single sample is further off than -95 dBFS");
         check(clipped > 0, "also while the overshoot clipper is working");
     }
 
@@ -214,6 +217,31 @@ int main()
         std::printf("   Init, 8 kHz at -50 dB: NR Play %+.2f dB against Off\n", lPlay);
         check(lPlay < -9.0, "Play: the playback side's cut, alone");
 
+        // switching NR while a tone plays: the largest step from one sample to the next, against the tone's own
+        for (float hz : {100.0f, 5000.0f})
+        {
+            const float amp = hz < 1000.0f ? 0.8f : kRefLevel * 0.0316f;
+            Fx sw; float L[128], R[128]; float* io[2] = { L, R }; long pos = 0; float last = 0.0f, own = 0.0f, worst = 0.0f;
+            const int modes[] = { 0, 3, 0, 2, 1, 0, 1, 3, 2, 0 };
+            for (int seg = 0; seg < 10; ++seg)
+            {
+                sw.set(kNr, (float)modes[seg]);
+                for (int b = 0; b < 44100 / 128; ++b)
+                {
+                    for (int i = 0; i < 128; ++i, ++pos) L[i] = R[i] = amp * (float)std::sin(6.283185307179586 * hz * pos / 44100.0);
+                    sw.e->processReplacing(sw.e, io, io, 128);
+                    for (int i = 0; i < 128; ++i)
+                    {
+                        const float stepSize = std::fabs(L[i] - last); last = L[i];
+                        if (seg == 0 && b > 100) own = std::fmax(own, stepSize);
+                        if (seg > 0 && b < 20) worst = std::fmax(worst, stepSize);   // the 58 ms after each switch
+                    }
+                }
+            }
+            std::printf("   %4.0f Hz tone, NR switched nine times: largest step %.4f (the tone's own %.4f)\n", hz, worst, own);
+            check(worst < (hz < 1000.0f ? 1.3f : 3.6f) * own, hz < 1000.0f ? "switching NR under a loud low tone makes no click" : "under a quiet 5 kHz tone the step stays what the boost itself makes it");
+        }
+
         Fx fx; bool clean = true;
         for (int p = 0; p < 25; ++p) { fx.e->dispatcher(fx.e, effSetProgram, 0, p, nullptr, 0.0f); clean = clean && fx.get(kNr) == 0.0f; }
         check(clean, "programs 0 to 24 leave NR off");
@@ -236,6 +264,28 @@ int main()
         loader.e->dispatcher(loader.e, effSetChunk, 0, (VstIntPtr)old.size(), old.data(), 0.0f);
         std::printf("   a 1.4 state (%u of %u values) loaded into an instance with NR On: NR reads %.0f\n", kept, count, loader.get(kNr));
         check(kept == count - 1 && loader.get(kNr) == 0.0f, "a project saved with 1.4 loads with NR off");
+
+        // HQ: on in a new instance; a state keeps the HQ it was saved with; one from before HQ existed gets none
+        AEffect* raw = VSTPluginMain(hostCb);
+        const bool freshOn = raw->getParameter(raw, kHq) > 0.5f;
+        raw->dispatcher(raw, effClose, 0, 0, nullptr, 0.0f);
+        check(freshOn, "a new instance has HQ on");
+        Fx hqOn; hqOn.set(kHq, 1);
+        hqOn.e->dispatcher(hqOn.e, effSetChunk, 0, (VstIntPtr)old.size(), old.data(), 0.0f);   // saved above with HQ off
+        check(hqOn.get(kHq) == 0.0f, "a state saved with HQ off loads with HQ off");
+        std::vector<uint8_t> older(d, d + 12); pos = 12; kept = 0;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const size_t len = 1 + (size_t)d[pos] + 8;
+            const std::string id(reinterpret_cast<const char*>(d) + pos + 1, d[pos]);
+            if (id != "nr" && id != "hq" && id != "scrape" && id != "whistle") { older.insert(older.end(), d + pos, d + pos + len); ++kept; }
+            pos += len;
+        }
+        older.insert(older.end(), d + pos, d + size);
+        for (int i = 0; i < 4; ++i) older[8 + (size_t)i] = (uint8_t)(kept >> (8 * i));
+        Fx from13; from13.set(kHq, 1);
+        from13.e->dispatcher(from13.e, effSetChunk, 0, (VstIntPtr)older.size(), older.data(), 0.0f);
+        check(kept == count - 4 && from13.get(kHq) == 0.0f, "a project saved with 1.3 (no HQ in it) loads with HQ off, as it sounded");
     }
 
     std::printf(fails ? "\nFAIL (%d)\n" : "\nPASS\n", fails);

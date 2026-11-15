@@ -12,8 +12,9 @@
 //      -> CHORUS      short modulated delay, L/R out of phase for width
 //      -> MIC         three-band EQ curve of a cheap microphone ("re-recorded through a mic")
 //      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
-//      -> NR ENCODE   (deck) B-type noise reduction, record side: lifts quiet highs
-//      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage)
+//      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage). Between
+//                     the two: NR ENCODE, (deck) B-type noise reduction, record side: lifts
+//                     quiet highs
 //      -> WEAR        slew limiter: the signal cannot change faster than a set rate
 //      -> COMP        one-knob compressor with make-up gain
 //      -> 2-BAND SAT  crossover at Split; lows and highs get their own level and soft clip
@@ -53,7 +54,7 @@
 // blend is clean, with them on dry and wet drift against each other and it sounds like a
 // chorus. At 100 % (the default) the dry path is not computed.
 //
-// HQ (off unless switched on) runs the stages that distort, from the preamp clip to the
+// HQ (on in a new instance since 1.5) runs the stages that distort, from the preamp clip to the
 // saturator, at twice the sample rate between two half-band filters. Without it, what those
 // stages add above 22 kHz folds back down as tones that were never in the sound (a loud
 // 14 kHz comes back at 2.1 kHz). With it, what the soft part of the distortion adds is
@@ -320,16 +321,21 @@ inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
 // rise of amplifier D with frequency and the control law of F. Those were fitted (F's
 // conductance rising in a straight line with the control voltage above a threshold, as a
 // junction FET's does) to the record-mode figures of the NE545 and TEA0665 datasheets; the
-// model meets all eight within 0.4 dB (the chips are specified to +/- 2 dB):
+// model meets all eight within 0.4 dB at 44.1 kHz and within 0.6 dB at every rate up to
+// 192 kHz (the chips are specified to +/- 2 dB):
 //      1.4 kHz at -20 dB: +4.4 dB, at -30: +7.5      2 kHz at -25 dB: +7.0
 //      5 kHz at -20: +3.2, -30: +8.2, -40: +10.3     10 kHz at -20: +2.6, -30: +6.5
 // The diode threshold of the smoothing and the clip level are estimates. Levels are relative
 // to Dolby level, taken here as kRefLevel.
 //
 // The network has two memories (the charge on C301 + C302, and on C303) and is solved
-// exactly at every sample with the trapezoid rule, F included, so nothing lags: the
-// decoder's loop has no delay in it and undoes the encoder to the last bit of the maths.
-// It costs one reciprocal per sample, followed from the previous one instead of divided.
+// exactly at every sample with the trapezoid rule, F included, so nothing lags and the
+// decoder's loop has no delay in it. (The trapezoid rule bends the frequency scale near
+// half the sample rate: at 44.1 kHz the network follows the analogue one closely up to
+// about 10 kHz.) It costs one reciprocal per sample, followed from the previous one with a
+// Newton step while it moves by less than 0.3 % and divided otherwise; with that the
+// decoder undoes the encoder to about -100 dB (the largest single sample: about -110 dB
+// below full scale).
 // ---------------------------------------------------------------------------
 constexpr float kNrR301 = 3300.0f, kNrC301 = 5600.0e-12f, kNrC302 = 27.0e-9f;   // the fixed section
 constexpr float kNrR302 = 47.0e3f, kNrC303 = 4700.0e-12f;                       // the sliding section
@@ -344,10 +350,11 @@ constexpr float kNrClip   = 0.12f * kRefLevel; // overshoot suppressor: just abo
 
 struct NoiseRed
 {
-    float kap = 0.0f, c1 = 1.0f, c2 = 1.0f, c2inv = 1.0f, b1 = 0.0f, d0 = 1.0f, d1 = 0.0f, off = 0.0f;
-    float kd = 0.0f, a1 = 0.0f, aSlow = 0.0f;
+    float kap = 0.0f, c1 = 1.0f, c2 = 1.0f, c2inv = 1.0f, off = 0.0f, gc1 = 0.0f, gc2 = 0.0f;
+    float mMin = 1.0f, mK = 0.0f, dMin = 1.0f, dK = 0.0f, tMax = 0.0f;   // m and D as straight lines in the control voltage
+    float kd = 0.0f, a1 = 0.0f, a1L = 0.0f, aSlow = 0.0f;
     Stereo sq = {}, su = {};                 // the two memories of the network
-    Stereo g = {}, D = {}, rec = {};         // F's conductance, the network's denominator, 1 / (D + off)
+    Stereo m = {}, D = {}, rec = {};         // c2 + b1 * (F's conductance), the network's denominator, 1 / (D + off)
     Stereo ePrev = {}, v1 = {}, v2 = {};     // amplifier D's last input; the two smoothing stages
 
     void prepare(float sr, bool decoder)
@@ -357,27 +364,34 @@ struct NoiseRed
         c1  = 1.0f + k / (kNrR302 * kNrC303);
         c2  = 1.0f + k / (kNrR301 * ct);
         c2inv = 1.0f / c2;
-        b1  = k / ct;
-        d0  = c1 * c2;
-        d1  = k * (c2 / kNrC303 + c1 / ct);
-        off = decoder ? kNrGain * c1 * kap : 0.0f;       // the decoder divides by D + this
+        // F's conductance is g = gmin + slope * t (t: the control voltage above the threshold,
+        // up to tMax). The two things that depend on it are straight lines in t as well.
+        const float b1 = k / ct, d1 = k * (c2 / kNrC303 + c1 / ct);
+        mMin = c2 + b1 * kNrGmin;        mK = b1 * kNrSlope;
+        dMin = c1 * c2 + d1 * kNrGmin;   dK = d1 * kNrSlope;
+        tMax = (kNrGmax - kNrGmin) / kNrSlope;
+        gc1 = kNrGain * c1; gc2 = kNrGain * c2;
+        off = decoder ? gc1 * kap : 0.0f;                // the decoder divides by D + this
         kd  = sr / (2.0f * kPi * kNrDzero);
         a1    = 1.0f - std::exp(-1.0f / (0.002f * sr));
+        a1L   = a1 / kRefLevel;
         aSlow = 1.0f - std::exp(-1.0f / (0.100f * sr));
         reset();
     }
     void reset()
     {
         sq = su = ePrev = v1 = v2 = splat(0.0f);
-        g = splat(kNrGmin);
-        D = splat(d0 + d1 * kNrGmin);
-        rec = splat(1.0f / (d0 + d1 * kNrGmin + off));
+        m = splat(mMin);
+        D = splat(dMin);
+        rec = splat(1.0f / (dMin + off));
     }
+    // Starts the network where a steady input x would have left it (no start-up thump).
+    void seed(Stereo x) { sq = -kap * x; }
 
     // The network's memories after this sample, from its input x and its output vB.
     void step(Stereo x, Stereo vB)
     {
-        const Stereo u = (sq + kap * x - (c2 + b1 * g) * vB) * c2inv;   // the voltage on C303
+        const Stereo u = (sq + kap * x - m * vB) * c2inv;                // the voltage on C303
         sq = 2.0f * (vB - kap * x + u) - sq;
         su = 2.0f * u - su;
     }
@@ -386,30 +400,32 @@ struct NoiseRed
     {
         const Stereo d = e + kd * (e - ePrev);                           // amplifier D
         ePrev = e;
-        v1 += a1 * (vabs(d) * (1.0f / kRefLevel) + 1.0e-20f - v1);       // rectifier, first stage (2 ms)
+        v1 += a1L * vabs(d) - a1 * v1;                                   // rectifier, first stage (2 ms)
         const Stereo up = v1 - v2;
         v2 += aSlow * up + vmax(up - kNrDiode, splat(0.0f));            // second stage: 100 ms, or at once
-        g = vmin(kNrGmin + kNrSlope * vmax(v2 - kNrThresh, splat(0.0f)), splat(kNrGmax));
-        D = d0 + d1 * g;
-        // 1 / (D + off): one Newton step from the last value while D moves slowly (the error
-        // is the square of the change), a real division when it jumps
-        const Stereo den = D + off, t = den * rec, far = vabs(t - 1.0f);
-        if (far[0] < 0.03f && far[1] < 0.03f) rec = rec * (2.0f - t);
+        const Stereo t = vmin(vmax(v2 - kNrThresh, splat(0.0f)), splat(tMax));
+        m = mMin + mK * t;
+        D = dMin + dK * t;
+        // 1 / (D + off): one Newton step from the last value while D moves by less than 0.3 %
+        // (the error is the square of the change: a millionth), a real division otherwise
+        const Stereo den = D + off, p = den * rec, far = vabs(p - 1.0f);
+        if (maxf(far[0], far[1]) < 0.003f) rec = rec * (2.0f - p);
         else rec = 1.0f / den;
     }
 
-    Stereo encode(Stereo x)
+    // mix: 1 = on; below that the added signal is faded (while NR is switched in or out)
+    Stereo encode(Stereo x, float mix = 1.0f)
     {
         const Stereo vB = (c1 * (sq + kap * x) - c2 * su) * rec;         // rec = 1 / D
         step(x, vB);
         const Stereo e = kNrGain * vB;
         control(e);
-        return x + vmax(vmin(e, splat(kNrClip)), splat(-kNrClip));
+        return x + vmax(vmin(e, splat(kNrClip)), splat(-kNrClip)) * mix;
     }
     Stereo decode(Stereo y)
     {
         // y = x + gain * vB(x), and vB is a straight line in x: solved for x (rec = 1 / (D + off))
-        Stereo x = (y * D - kNrGain * (c1 * sq - c2 * su)) * rec;
+        Stereo x = (y * D - (gc1 * sq - gc2 * su)) * rec;
         Stereo e = y - x;
         const Stereo over = vabs(e);
         if (over[0] > kNrClip || over[1] > kNrClip)                       // the clipper is working: rare
@@ -804,7 +820,7 @@ public:
         // 1.4. Both rest at 0, where the plugin sounds as it did before they existed.
         addParam(floatParam ("scrape",     "Scrape",       0.0f, 100.0f, 0.0f, "%", 0));
         addParam(floatParam ("whistle",    "Whistle",      0.0f, 100.0f, 0.0f, "%", 0));
-        addParam(boolParam  ("hq",         "HQ",         false));
+        addParam(boolParam  ("hq",         "HQ",         true));    // on in a new instance since 1.5
         addParam(choiceParam("nr",         "NR",         {"Off", "Rec", "Play", "On"}, 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
@@ -894,6 +910,7 @@ private:
         fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
         nrEnc_.prepare(sr_, false);
         nrDec_.prepare(sr_, true);
+        nrFade_ = 1.0f / (0.008f * sr_);                                 // NR comes in and goes out over 8 ms
     }
 
     // HQ on or off: the rate the distorting stages run at, and everything that follows from it.
@@ -939,6 +956,8 @@ private:
 
         for (int i = 0; i < kNumParams; ++i) lastNorm_[i] = getNormalised(i);
         readParams(gAll);
+        nrEncMix_ = nrEncOn_ ? 1.0f : 0.0f; nrDecMix_ = nrDecOn_ ? 1.0f : 0.0f;
+        nrEncRun_ = nrEncOn_; nrDecRun_ = nrDecOn_;
         linAmt_ = linTarget_ = 0.0f;
         hissDyn_ = 1.0f;
         headAmp_ = tgt_[cHead];
@@ -1168,7 +1187,16 @@ public:
                 x = tiltLp_ * cur_[cTiltLo] + (x - tiltLp_) * cur_[cTiltHi];
             }
             else tiltLp_ = x;   // stays with the sound, so Tone can come in without a click
-            if (nrEncOn_) x = nrEnc_.encode(x);
+            if (nrEncRun_)
+            {
+                if (nrEncSeed_) { nrEnc_.seed(x); nrEncSeed_ = false; }
+                if (nrEncMix_ != nrEncGoal_)
+                {
+                    nrEncMix_ = clamp(nrEncMix_ + (nrEncOn_ ? nrFade_ : -nrFade_), 0.0f, 1.0f);
+                    nrEncRun_ = nrEncOn_ || nrEncMix_ > 0.0f;      // faded out: done
+                }
+                x = nrEnc_.encode(x, nrEncMix_);
+            }
             // ----- drive, wear, compressor, saturator: the stages that distort ----
             if (hq_)
             {
@@ -1277,7 +1305,18 @@ public:
                 dropLp_ += edgeCoeff_ * (x - dropLp_);
                 x = dropLp_ * (0.25f + 0.75f * dropGain_) + (x - dropLp_) * (dropGain_ * dropGain_);
             }
-            if (nrDecOn_) x = nrDec_.decode(x);
+            if (nrDecRun_)
+            {
+                if (nrDecSeed_) { nrDec_.seed(x); nrDecSeed_ = false; }
+                const Stereo plain = nrDec_.decode(x);
+                if (nrDecMix_ == 1.0f && nrDecOn_) x = plain;
+                else
+                {
+                    nrDecMix_ = clamp(nrDecMix_ + (nrDecOn_ ? nrFade_ : -nrFade_), 0.0f, 1.0f);
+                    nrDecRun_ = nrDecOn_ || nrDecMix_ > 0.0f;
+                    x += (plain - x) * nrDecMix_;
+                }
+            }
             const float monoAmt = maxf(monoMix, fbMono_);
             if (monoAmt > 0.0f) x += (splat(0.5f * (x[0] + x[1])) - x) * monoAmt;
             if (mix < 1.0f && dryActive_)
@@ -1483,12 +1522,15 @@ private:
         }
         if (groups & gNr)
         {
-            // a side that is switched in starts from rest
+            // a side that is switched in starts from rest (unless it was still fading out)
+            // and fades in; one that is switched out fades out (see process)
             const int mode = getInt(kNr);
             const bool enc = mode == 1 || mode == 3, dec = mode >= 2;
-            if (enc && !nrEncOn_) nrEnc_.reset();
-            if (dec && !nrDecOn_) nrDec_.reset();
+            if (enc && !nrEncOn_ && nrEncMix_ == 0.0f) { nrEnc_.reset(); nrEncSeed_ = true; }
+            if (dec && !nrDecOn_ && nrDecMix_ == 0.0f) { nrDec_.reset(); nrDecSeed_ = true; }
             nrEncOn_ = enc; nrDecOn_ = dec;
+            nrEncGoal_ = enc ? 1.0f : 0.0f;
+            nrEncRun_ = enc || nrEncMix_ > 0.0f; nrDecRun_ = dec || nrDecMix_ > 0.0f;
         }
     }
 
@@ -1999,7 +2041,10 @@ private:
     bool  tiltOn_ = false, driveOn_ = false, slewOn_ = false, loSatOn_ = false, hiSatOn_ = false;
     bool  boost_ = false, dropOn_ = false, whistleOn_ = false, scrapeOn_ = false, breathOn_ = false;
     NoiseRed nrEnc_, nrDec_;                 // noise reduction: record side, playback side
-    bool  nrEncOn_ = false, nrDecOn_ = false;
+    bool  nrEncOn_ = false, nrDecOn_ = false, nrEncSeed_ = false, nrDecSeed_ = false;
+    float nrEncMix_ = 0.0f, nrDecMix_ = 0.0f, nrFade_ = 0.0f;   // how far each side is faded in
+    float nrEncGoal_ = 0.0f;
+    bool  nrEncRun_ = false, nrDecRun_ = false;                 // the side is on or still fading out
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
@@ -2119,7 +2164,7 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     p->loading(true);
     if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
-        for (int i = kScrape; i < kNumParams; ++i) p->set(i, p->param(i).def);
+        for (int i = kScrape; i < kNumParams; ++i) p->set(i, i == kHq ? 0.0f : p->param(i).def);   // a state from before HQ existed: off
     const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
     p->loading(false);
     return result;
