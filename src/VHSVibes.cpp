@@ -950,8 +950,20 @@ public:
     // is resumed and has been reset. Any thread.
     void goQuiet() { suspended_.store(true); started_.store(false); }
     void resume()  { suspended_.store(false); resetPending_.store(true); }
-    // The host is about to write a whole program or state (true) or has finished (false).
-    void loading(bool on) { loading_.store(on); }
+    // The host is about to write a whole program or state, and has finished (see process()).
+    // loadState_ holds two counts in one word, so the audio thread reads both at once: in the
+    // low 8 bits the loads under way, above them one that moves at every start and every end.
+    // A load that took (`took`) asks for its reset before it counts as finished.
+    void beginLoad()
+    {
+        loadState_.fetch_add(kLoadEvent + 1u, std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_release);   // before any value of the load is written
+    }
+    void endLoad(bool took)
+    {
+        if (took) reset();
+        loadState_.fetch_add(kLoadEvent - 1u, std::memory_order_release);
+    }
 
     // A program is about to be chosen: it takes over the Animation and HQ switches as they
     // stand, so they do not move. (The host's thread, the same one that then loads the program.)
@@ -1150,6 +1162,10 @@ private:
 public:
     void process(mpc::ProcessContext& ctx) override
     {
+        // Read first: a load that has finished by now has also asked for its reset (endLoad),
+        // and the acquire makes that request visible to the check just below.
+        const uint32_t load = loadState_.load(std::memory_order_acquire);
+
         if (resetPending_.load(std::memory_order_relaxed) && resetPending_.exchange(false))
         {
             resetWanted_.store(false);   // this one serves a waiting request too
@@ -1162,20 +1178,34 @@ public:
         // while the host is writing a program or a state, nor while the output fades out for
         // the reset that follows: the old sound keeps its old settings until then, and the
         // reset reads every parameter.
-        if (fadeOut_ == 0 && !resetNextTick_ && !loading_.load(std::memory_order_relaxed))
+        //
+        // The host's thread may begin or finish writing a program or a state at any moment,
+        // also while this loop reads the values. So what the loop saw counts only if no load
+        // was under way when it began and none began or ended while it ran (loadState_ is the
+        // same after it: see beginLoad / endLoad). Otherwise nothing is taken in and the values
+        // stay "unseen", for the next block or for the reset that follows every load. Without
+        // that, a block could apply half a program, or a whole one, to the old sound before its
+        // fade-out had begun.
+        if (fadeOut_ == 0 && !resetNextTick_ && (load & (kLoadEvent - 1u)) == 0)
         {
+            float seen[kNumParams];
             uint32_t dirty = 0;
             for (int i = 0; i < kNumParams; ++i)
             {
-                const float v = getNormalised(i);
-                if (v == lastNorm_[i]) continue;
+                const float v = seen[i] = getNormalised(i);
                 // A Q-Link turned across a switch sends every value on the way: only a change
                 // of the position counts (or Type and HQ would restart the sound at each one).
-                if (param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
-                lastNorm_[i] = v;
+                if (v != lastNorm_[i] && param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
             }
-            if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
-            if (dirty) readParams(dirty);
+            // If any value read above was written after a load began, this fence makes that
+            // load's start visible below (it pairs with the fence in beginLoad).
+            std::atomic_thread_fence(std::memory_order_acquire);
+            if (loadState_.load(std::memory_order_relaxed) == load)
+            {
+                std::memcpy(lastNorm_, seen, sizeof(lastNorm_));
+                if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
+                if (dirty) readParams(dirty);
+            }
         }
         playing_ = ctx.transport.valid && ctx.transport.playing;
 
@@ -2268,7 +2298,8 @@ private:
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
     std::atomic<bool> resetPending_{false};               // a reset is due at the start of the next block
     std::atomic<bool> resetWanted_{false};                // the host asked for one: fade out first, then reset
-    std::atomic<bool> loading_{false};                    // the host is writing a program or a state right now
+    static constexpr uint32_t kLoadEvent = 1u << 8;
+    std::atomic<uint32_t> loadState_{0};                  // programs or states being written; moves at each start and end
     std::atomic<bool> suspended_{false};                  // the host has suspended us
     std::atomic<float> srWanted_{0.0f};                   // the sample rate the host announced
     std::atomic<bool> tellHost_{false};                   // the host asked for the pending reset: send it the values after
@@ -2407,13 +2438,15 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     if (opcode != effSetProgram && opcode != effSetChunk) return mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
 
     // A program or a state: many values at once, then a reset. The audio thread takes none of
-    // them in until all are written and the reset has been asked for.
-    p->loading(true);
+    // them in until all are written and the reset has been asked for. (The framework asks for
+    // that reset too, at the start of the next block; asked for here, before the load counts as
+    // finished, no block can take the new values in before it.)
+    p->beginLoad();
     if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
         for (int i = kScrape; i < kNumParams; ++i) p->set(i, i == kHq ? 0.0f : p->param(i).def);   // a state from before HQ existed: off
     const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
-    p->loading(false);
+    p->endLoad(opcode == effSetProgram ? value >= 0 && value < e->numPrograms : result != 0);
     return result;
 }
 
