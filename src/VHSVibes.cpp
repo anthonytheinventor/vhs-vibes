@@ -1113,8 +1113,13 @@ private:
 
         // A reset follows the host starting the plugin and every program change and state
         // load: from now on the notifier thread may talk to the host, and after a reset the
-        // host asked for it should send the new values. (Only flags here.)
-        if (!suspended_.load()) started_.store(true);
+        // host asked for it should send the new values. (Only flags here.) The host may suspend
+        // us on its own thread at this very moment (goQuiet: suspended_, then started_). So
+        // started_ is set first and suspended_ looked at after: a goQuiet that comes in between
+        // is seen and undone here, one that comes later clears started_ itself. (Looking first
+        // and setting after could set started_ again just after goQuiet had cleared it.)
+        started_.store(true);
+        if (suspended_.load()) started_.store(false);
         if (tellHost_.exchange(false)) pushPending_.store(true, std::memory_order_relaxed);
     }
 
@@ -2040,12 +2045,14 @@ private:
         int lastReel = -1, lastLevel = -1;
         int latCandidate = 0, latStable = 0, latReported = 0;
         // Every call into the host checks first that the plugin is still running: the host may
-        // have suspended or started closing it since the last look.
-        auto tell = [this](int i) { if (started_.load()) notifyHostParameterChanged(i); };
+        // have suspended or started closing it since the last look. (suspended_ as well as
+        // started_: doReset can set started_ for a moment while a suspend comes in.)
+        auto speaking = [this] { return started_.load() && !suspended_.load(); };
+        auto tell = [&](int i) { if (speaking()) notifyHostParameterChanged(i); };
         while (!quit_.load())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            if (!started_.load()) continue;
+            if (!speaking()) continue;
 
             if (pushPending_.exchange(false))
             {
@@ -2083,7 +2090,7 @@ private:
                 const int want = wantLatency_.load(std::memory_order_relaxed);
                 if (std::abs(want - latCandidate) > 8) { latCandidate = want; latStable = 0; }
                 else if (latStable < 10) ++latStable;
-                if (latStable >= 10 && std::abs(latCandidate - latReported) > 32 && started_.load())
+                if (latStable >= 10 && std::abs(latCandidate - latReported) > 32 && speaking())
                 {
                     latReported = latCandidate;
                     setLatency(latCandidate);
