@@ -275,16 +275,16 @@ epigraph: What it was recorded through.
 
 ## The four microphones
 
-Mic Type does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Boombox the level control of the recorder it sat in.
+Mic Type does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Camcorder and the Boombox the level control of the recorder it sat in.
 
 | Type | Built on | What you hear |
 |---|---|---|
-| ^CAMCORDER^ | an electret capsule: its makers' and reviewers' figures | full range, a little air at the top, a faint hiss, and loud peaks flattened on one side |
+| ^CAMCORDER^ | a camcorder's record chain: the electret capsule, the mic amp and the record ALC, from service manuals, datasheets and one measured camera | everything above a murmur held at one level, the hiss swelling in every pause, crunch on loud sounds and sudden onsets; mono |
 | ^DYNAMIC^ | the Shure 515 stage microphone's published curve | a gentle low cut and a presence peak at 5 kHz |
 | ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with hard edges, a carbon microphone's grit, the line's faint noise; mono |
 | ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up; mono |
 
-All four leave 1 kHz at the level it went in. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+Every type's response is 0 dB at 1 kHz. The Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: note Since 1.6
 The four types were rebuilt in 1.6. A project or program with the Mic on sounds different from before; with the Mic off nothing has changed.
@@ -505,6 +505,8 @@ A microphone overloads and hisses at a sound pressure, not at a digital level, s
 
 **This mapping is an assumption.** No document can fix it for a plugin. It was chosen so that the electret's documented overload lies 6 dB above reference: music played in at reference level passes cleanly, and Mic Gain +6 dB reaches the overload. The same mapping serves all four types. Mic Gain moves the sound along it, as a louder or a closer source would.
 
+The mapping also places the Camcorder's level control. A camera's ALC works from the nominal level of its microphone input up: from 60.8 to 82.8 dB SPL, which is -51 to -29 dBFS peak here. Music played in near reference is 15 to 20 dB louder than the top of that range, as a band is to a camcorder in the same room, so at every setting of Mic Gain the Camcorder works past its range: its level control at its lowest, the loudest sounds crunching, the gaps lifted only once a loud passage has passed. Mic Gain -12 dB, where Camcorder 89 and Wedding Video have it, brings a sine at -18 dBFS rms to 2 dB past the range and its distortion under 0.5 %. Music at -18 dBFS rms, whose peaks stand well above its rms, would have to come in about 26 dB quieter than at Mic Gain 0, 14 dB below the knob's lowest setting, before the level control holds it.
+
 ### The figures they are built on
 
 | Figure | Value | Where it is from |
@@ -514,6 +516,12 @@ A microphone overloads and hisses at a sound pressure, not at a digital level, s
 | Electret: the highs | flat to 5 kHz, +1 dB at 8 kHz, +1.5 to +3 dB at 13 to 17 kHz | ten Panasonic WM-61A capsules measured by J. Neal, read off his plot |
 | Electret: self-noise | 26 dB SPL(A) | a figure quoted for the WM-61A |
 | Electret: sensitivity | -35 dB re 1 V/Pa | WM-61A |
+| Camcorder: the record chain | microphone, mic amp, a voltage-controlled amplifier, an ALC detector on the output feeding back to it | JVC GR-C1 (1984) service manual, audio block diagram |
+| Camcorder: microphone input level | -66 dBs (0.39 mV) | Sony CCD-M8U service manual (1985) and CCD-TR4 instruction manual; the JVC GR-C1's manual says -68 dBs |
+| Camcorder: mic amp band | 20 Hz -12.8, 50 Hz -3.1, 100 Hz -0.6, 200 Hz to 1 kHz 0, 2 kHz -0.2, 5 kHz -0.6, 10 kHz -1.7, 15 kHz -3.6, 20 kHz -4.9 dB | Sony DCR-TRV900E (1998), the microphone input measured by D. Vrančič |
+| Camcorder: ALC curve | full gain up to the knee, then 0.75 dB more output for 14 dB more input (1 : 19) | the same camera and measurements |
+| Camcorder: ALC range | 22 dB with the microphone | Sanyo VM-RZ1P training manual; the Sony CCD-M8U's service manual checks at least 20 dB |
+| Camcorder: mic amp overload | 0.95 V out at 21.5 dB of gain; 1.4 V at 24.3 dB | ROHM BA7780KV and Sanyo LA7471M datasheets, camcorder microphone amplifiers |
 | Dynamic: response at 0.6 m | 50 Hz -16, 100 Hz -8, 200 Hz -4, 500 Hz -1.5, 2 kHz +1, 4 kHz +4, 5 kHz +5, 6.5 kHz +2, 8 kHz +3, 10 kHz 0, 15 kHz -10 dB | Shure 515BSM user guide, figure 1 (the Unidyne B family of the 515SA and 515SB), read off the plot |
 | Phone: sending response | 24 points from 100 Hz to 8 kHz | CCITT Recommendation P.48 (1988), Table 1: the intermediate reference system, "based on the mean characteristics of many commercial circuits" |
 | Phone: carbon microphone | the second harmonic is the main distortion; sensitivity rises with sound pressure | patents on carbon transmitters; White and Louie, The Audio Dictionary |
@@ -528,12 +536,17 @@ A microphone overloads and hisses at a sound pressure, not at a digital level, s
 
 **Camcorder**
 
-1. **The capsule's highs.** One peak filter gives the WM-61A's rise: flat to 5 kHz, a little up at 8 kHz, about 2.5 dB up around 15 kHz.
-2. **The low cut.** The capsule and the gate of its transistor form a first-order low cut at 53 Hz.
-3. **Self-noise.** White noise at 26 dB SPL(A).
-4. **Overload.** The transistor gives way gently above 110 dB SPL, the negative half of the wave first. There it reaches 1 % distortion, second harmonic as well as third.
+A camcorder's built-in microphone was a decent electret. What gave its sound away was the record chain behind it: a mic amp, then a level control with a great deal of fixed gain in front of a short range. The model follows the JVC GR-C1's chain. It is mono: one built-in microphone, one audio track, so left and right are summed first.
 
-There is no top cut in the microphone: the band is the recorder's business, and Hi Cut sets it. There is no level control either: a camcorder's own is the AGC knob on the DECK page.
+1. **The capsule.** The electret's highs: one peak filter gives the WM-61A's rise, flat to 5 kHz, a little up at 8 kHz, about 2.5 dB up around 15 kHz. Its low cut: the capsule and the gate of its transistor form a first-order low cut at 53 Hz. Its self-noise: white noise at 26 dB SPL(A). Its overload: the transistor gives way gently above 110 dB SPL, the negative half of the wave first, reaching 1 % distortion there, second harmonic as well as third.
+2. **The mic amp's band.** A second-order low cut and a first-order top cut, fitted to the TRV900's measured microphone input: 3 dB down at 50 Hz on top of the capsule's own cut, and a soft top, 1.7 dB down at 10 kHz and 3.6 dB at 15 kHz.
+3. **The mic amp's overload.** Both halves alike, 1 % distortion at 107 dB SPL: the level at which the two datasheets' microphone amplifiers reach their maximum output with this capsule. It gives way before the capsule's transistor does.
+4. **The ALC.** A fixed record gain of 42 dB. The camera's nominal microphone level, -66 dBs, is taken as the knee: from this capsule that is 60.8 dB SPL, -51 dBFS here, and the gain brings it to 1.2 dB under reference. Above the knee a peak detector on the output turns the gain down by 18 dB for every dB it sees: 22 dB of input give 1.2 dB of output, so the end of the range, 82.8 dB SPL, comes out at reference. There the gain has come down by 20.8 dB, as far as it goes; past it the output follows the input up again.
+5. **The gain element's distortion.** The Boombox's, after the ALC: 0.3 % at the end of the range, rising quickly past it.
+
+The level control's timing is an estimate. No camcorder of the period has its ALC's time constants in a document that could be read: the JVC's are on its schematic, but not legibly. The detector charges with 20 ms, slower than the Boombox's, because a camcorder's level control is reported to let a sudden loud sound distort before it reacts. It discharges with 19 seconds, which brings the gain back at 8.2 dB a second, the whole 20.8 dB in about 2.5 seconds: faster than the Boombox, because the Sanyo manual says the recovery is shortened for the microphone, and slow enough for the "several seconds" reviewers describe. After a sound louder than the range, the detector holds more than it needs and the gain stays at its lowest until that has drained away: ten seconds or more after a sound 5 dB past the range.
+
+There is no mechanism noise. A camcorder's microphone does pick up its own motors, the makers say so, but no level or spectrum was found for it. The only noise is the capsule's, and the ALC lifts it in every pause: 17 dB down right after a sound in its range, then up with the gain, to the full 42 dB of record gain.
 
 **Dynamic**
 
@@ -550,7 +563,7 @@ A phone line carries one channel, so the Phone sums left and right before step 1
 
 **Boombox**
 
-1. **The capsule.** The camcorder's electret, steps 1 to 4 above, but only one: the built-in microphone of a radio cassette is mono, so the Boombox sums left and right first.
+1. **The capsule.** The Camcorder's electret, its step 1 above, and only one: the built-in microphone of a radio cassette is mono, so the Boombox sums left and right first.
 2. **The ALC.** A fixed record gain of 37 dB brings the bottom of the ALC's range (-60 dBm from the capsule, 66.8 dB SPL, -45 dBFS here) up to reference level. Above it, a peak detector on the output turns the gain down by 14 dB for every dB it sees above reference: 45 dB of input give 3 dB of output, to the end of the range 45 dB up. The detector charges within milliseconds and lets go through 22 uF and 1 MOhm: a time of 22 seconds, of which the loop needs only the first third, so the gain comes back at 5.5 dB a second.
 3. **The gain element's distortion.** 0.5 % at the level of the LA3220's measurement, a little less at the start of the range.
 4. **The tape.** Its hiss, 45 dB under the level the ALC records at, and its band, 50 Hz to 10 kHz.
@@ -568,10 +581,19 @@ At 44.1 kHz; the responses hold at every rate from 44.1 to 192 kHz.
 | Phone, 20 dB under reference | comes out 25 dB lower; never more than 10 dB under a plain microphone |
 | Phone, silence | line noise -65.0 dBm0 |
 | Dynamic against the Shure points | within 0.8 dB at all twelve, worst at 500 Hz |
-| Camcorder, the low cut | 3.0 dB down at 53 Hz, 0.5 dB at 150 Hz |
-| Camcorder, the highs | +0.3 dB at 5 kHz, +0.8 dB at 8 kHz, +2.3 dB at 15 kHz |
-| Camcorder, 1 kHz at 104, 110 and 116 dB SPL | 0.25 %, 1.0 % and 4.2 % distortion; the negative peak always the lower |
-| Camcorder, silence | 25.9 dB SPL(A) |
+| Camcorder, the capsule | 3.0 dB down at 53 Hz; +0.3 dB at 5 kHz, +0.7 dB at 8 kHz, +2.5 dB at 15 kHz |
+| Camcorder, the mic amp against the TRV900 | within 0.2 dB at every point from 20 Hz to 20 kHz |
+| Camcorder, the capsule's transistor at 110 dB SPL | 1.0 % distortion, the negative peak the lower |
+| Camcorder, the mic amp at 107 dB SPL | 1.0 % distortion, both halves alike |
+| Camcorder, 1 kHz from 20 dB under the knee to the end of the range | on the curve within 0.13 dB; above the knee 0.053 dB more output per dB of input (1 : 19) |
+| Camcorder, the end of the range | out at reference (+0.1 dB), 0.3 % distortion |
+| Camcorder, 9 dB past it | 8.3 dB more output, 2.3 % distortion |
+| Camcorder, a sound 20 dB louder than the one before | 11.4 dB over at once, back within 1 dB after 8 ms |
+| Camcorder, after a loud passage | the gain comes back at 8.23 dB a second (the 19 s detector gives 8.23) and is back in full 2.1 s later |
+| Camcorder, silence | the capsule's hiss through the full record gain: -48 dB(A), 37 dB under a reference sine |
+| Camcorder, silence right after a sound in its range | 17 dB lower, rising with the gain |
+| Camcorder, music at -18 dBFS rms, Mic Gain -12 dB | the peaks 2.2 dB lower against the rest (past the range) |
+| Camcorder, the same music 26 dB quieter (as Mic Gain -26 dB would make it) | the loud and the quiet part 3 dB apart instead of 15; the hiss in a 2 s gap 28 dB under the loud part |
 | Boombox, 1 kHz from -70 to -45 dBFS | 37.2 dB of gain, straight |
 | Boombox, 1 kHz from -45 to 0 dBFS | out at -8.0 to -5.0 dBFS: 45 dB in, 3.05 dB out |
 | Boombox, under ALC at -20 dBm | 0.9 % distortion, the capsule's share included |
@@ -584,12 +606,13 @@ At 44.1 kHz; the responses hold at every rate from 44.1 to 192 kHz.
 
 - **The level mapping** above.
 - **Camcorder and Boombox:** that "begins overloading" means 1 % distortion; that the positive half gives way 6 dB later than the negative (no figure was found); the middle of the spread of the ten measured capsules.
+- **Camcorder:** the timing of its level control, both its attack (20 ms) and its recovery (19 s, 8.2 dB a second); that the camera's nominal microphone level is the ALC's knee; that the camera's capsule is as sensitive as the WM-61A (with a less sensitive one the knee moves up by as much); that the mic amp overloads on both halves alike; the distortion after the gain element, taken from the Boombox's radio-cassette IC; and that a 1980s camera's microphone input had the band measured on a 1998 one. The ALC's knee is hard; the TRV900's is soft, so just above the knee the model comes out up to 1.7 dB lower than that camera.
 - **Phone:** both carbon effects are documented only in kind, so their amounts are estimates, kept modest: 3 % second harmonic, a quarter of a dB per dB down to 10 dB, following the level within 1 ms up and 50 ms down. For the line noise: the limit taken as the level, the reference junction taken as 0 dBr in 600 Ohm, the band edges as gentle ones, no psophometric weighting.
 - **Boombox:** the ALC's attack (no charging current is published): 5 ms; that its range starts at the capsule level the WM-61A's sensitivity gives; that it starts where the output reaches -8 dBFS; the cassette's band edges taken as -3 dB points; its hiss measured in that band without weighting.
 - **Left out, for want of figures:** a camcorder's wind filter, its motor noise, how a microphone's housing colours it, the proximity effect at ordinary distances, the carbon's own noise, and the 8-bit coding of digital phone lines.
 
 ::: note Hear it
-Load **Bootleg Concert** and stop the music: within seconds the hiss and the room climb up as the ALC lets go, and the next note slams them down. Load **Answer Machine** and play a voice that goes from loud to soft: the soft words sink further than they should. In **Camcorder 89**, turn ^MIC GAIN^ up to +10 dB and listen to loud peaks harden. For the Dynamic, choose Init, switch the Mic on and pick it: a presence lift, nothing more.
+Load **Bootleg Concert** and stop the music: within seconds the hiss and the room climb up as the ALC lets go, and the next note slams them down. Load **Answer Machine** and play a voice that goes from loud to soft: the soft words sink further than they should. In **Camcorder 89**, turn ^MIC GAIN^ up and listen to kicks and loud chords crunch; stop the music and, some seconds later, the hiss and the room come up behind the camera's level control. For the Dynamic, choose Init, switch the Mic on and pick it: a presence lift, nothing more.
 :::
 
 ::: aside

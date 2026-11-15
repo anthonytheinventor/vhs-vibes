@@ -121,8 +121,8 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
 | Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. Adds the microphone's own noise (silenced by the Noise switch). |
-| Mic Type | Camcorder: an electret capsule, its faint hiss and its one-sided overload above 110 dB SPL. Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
-| Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. |
+| Mic Type | Camcorder: a camcorder's record chain, mono: the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output; past that range loud sounds crunch; in every pause the hiss comes up). Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
+| Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. The Camcorder's ALC works from 61 to 83 dB SPL, so ordinary material is past its range at every setting; lower means less crunch. |
 
 ### ＤＥＣＫ　デッキ
 
@@ -157,7 +157,7 @@ Thirty-four programs. The labels are handwritten.
 | Fresh Rental | Friday night, new release. Clean, a trace of breathing, loses lock once in a long while. |
 | 3rd Gen Copy | A copy of a copy of a copy: dull, clipped highs, deep wobble, plenty of noise. |
 | Vaporwave Mall | Slow warble and a wide chorus under dimmed lights. |
-| Camcorder 89 | Built-in microphone, level control squashing everything, noise recorded with the picture. |
+| Camcorder 89 | Built-in microphone, level control squashing everything, noise recorded with the picture. The camera's own level control on the mic, the deck's AGC after it. |
 | Tracking Error | Buzz on the music, static, and the sound dropping to the backup track. |
 | Late Night TV | Mono, narrow, hum from the studio. |
 | Clean Widener | No tape at all: only the chorus, used as a stereo widener. |
@@ -168,7 +168,7 @@ Thirty-four programs. The labels are handwritten.
 | Subtle Glue | Just a little tape: gentle clipping, the faintest wobble, no noise. |
 | Bad Tracking | A good tape in a deck that cannot quite follow it. |
 | Six Hour Tape | Recorded at the slowest speed: about 100 Hz to 6 kHz, more hiss, more wobble. |
-| Wedding Video | A camcorder at the back of the hall; the level control rides everything. |
+| Wedding Video | A camcorder at the back of the hall; the level control rides everything. The camera's own level control on the mic, the deck's AGC after it. |
 | Hi-Fi Master | The best VHS could do: wide, steady, quiet, breathing a little. |
 | Edge Damage | The top edge of the tape is creased: the sound comes and goes. |
 | Bootleg Concert | Taped from the crowd on a boombox and copied a few times. |
@@ -229,7 +229,11 @@ The Animation switch on the DECK page turns them off.
   has the table). Camcorder and Boombox: J. Kean's account of electret capsules (first-order
   low cut, 100 MOhm and 30 pF; overload above 110 dB SPL, negative peaks first), J. Neal's
   measurements of ten Panasonic WM-61A capsules (the rise at 13 to 17 kHz) and its 26 dB SPL(A)
-  self-noise. Dynamic: figure 1 of the Shure 515BSM guide at 0.6 m, read at twelve points.
+  self-noise. Camcorder: the JVC GR-C1 service manual's audio chain (mic amp, VCA, ALC detector
+  on the output), the Sony CCD-M8U and CCD-TR4 microphone input level (-66 dBs, taken as the
+  ALC's knee), D. Vrančič's measurements of a Sony DCR-TRV900E (its microphone input's band, and
+  its ALC: 1 : 19 above the knee), the Sanyo VM-RZ1P's 22 dB ALC range, and the ROHM BA7780KV and
+  Sanyo LA7471M mic amps' maximum output (overload at 107 dB SPL). Dynamic: figure 1 of the Shure 515BSM guide at 0.6 m, read at twelve points.
   Phone: all 24 points of Table 1 of CCITT P.48 (1988), the intermediate reference system,
   with the G.712 line noise limit of -65 dBm0p. Boombox: the Sanyo LA3220's ALC (45 dB of input
   from -60 dBm give 3 dB of output, 0.5 % distortion), ROHM BA3308's 22 uF and 1 MOhm recovery
@@ -237,7 +241,8 @@ The Animation switch on the DECK page turns them off.
   per sample rate and holds from 44.1 to 192 kHz. Estimates: the mapping of digital level to sound
   pressure (-8 dBFS peak = 104 dB SPL), the amounts of the carbon microphone's distortion and
   level-dependence (documented only in kind), how much later the electret's positive half
-  overloads, and the ALC's attack (5 ms). With the Mic off the plugin is exactly as before.
+  overloads, the Boombox ALC's attack (5 ms), and the Camcorder ALC's attack (20 ms) and recovery
+  (8.2 dB a second). With the Mic off the plugin is exactly as before.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
