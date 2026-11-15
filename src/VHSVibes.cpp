@@ -31,7 +31,8 @@
 //      -> HEAD BUZZ   besides its steady rasp (a noise), Head Buzz also holds the signal for a
 //                     few samples at every head switch, which makes a buzz that rides on bright
 //                     sounds and vanishes on bass
-//      -> WHISTLE     the TV set's line whistle, added here so no filter or wobble touches it
+//      -> WHISTLE     the TV set's line whistle, added here, after every filter and wobble, so
+//                     it never wavers; only the dropouts still dip it
 //      -> DROPOUTS    short random dips that take the highs first
 //      -> NR DECODE   (deck) B-type noise reduction, playback side: cuts quiet highs, and the
 //                     hiss with them. Whatever the tape did in between makes it mistrack.
@@ -64,9 +65,11 @@
 // drives them goes further up than twice the rate can hold, and that part comes down by
 // 6 to 20 dB only. It costs about a quarter more CPU.
 //
-// Compatibility: parameters are only ever appended, and a new one rests at 0 where the plugin
-// sounds as it did without it. Programs 0 to 20 keep their numbers and leave the 1.4 knobs at
-// 0, so a project saved with an older version loads with every setting in place.
+// Compatibility: parameters are only ever appended, and a new one rests where the plugin
+// sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type 2-Band). Programs keep
+// their numbers: 0 to 20 leave Scrape and Whistle at 0, 0 to 24 (the 1.4 set) leave NR and
+// Sat Type at rest, 25 to 33 are the 1.5 programs. So a project saved with an older version
+// loads with every setting in place.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -196,11 +199,14 @@ constexpr float kSmooth    = 0.05f;       // per-tick smoothing of control value
 constexpr int   kTapeDelaySamples   = 8192;   // per wobble stage (186 ms at 44.1 kHz)
 constexpr int   kChorusDelaySamples = 2048;
 constexpr float kMaxExcursionSec    = 0.045f; // largest wobble swing we allow, in seconds of delay
-#ifndef VHS_VIBES_SWING_ROOM            // (the test bench overrides these two to compare against 1.2)
+// VHS_VIBES_SWING_ROOM=3.0f and VHS_VIBES_NO_FADE_IN (in doReset) put back 1.2's resting delay
+// and its lack of a fade-in after a reset, for builds that are compared with 1.2 (as 1.3 was,
+// by a script outside the repo). They are never set in a release; tests/run.sh compares
+// against 1.4, with neither set.
+#ifndef VHS_VIBES_SWING_ROOM
 #define VHS_VIBES_SWING_ROOM 2.2f
 #endif
 constexpr float kSwingRoom          = VHS_VIBES_SWING_ROOM;   // resting delay = this many times the slow wobble's own swing
-constexpr bool  kReportLatency      = true;   // tell the host how late the output is (see notifierMain)
 constexpr float kGlideStep          = 0.25f;  // most a delay's resting length moves per control tick, in
                                               // samples: a knob move bends the pitch by 1.6 % at most
 constexpr float kJumpMin            = 96.0f;  // a resting length further away than this many samples is
@@ -1103,7 +1109,7 @@ private:
 
         // The delays were just emptied. Keep the output shut until the sound has come through
         // them (their resting length), then fade in over about 20 ms instead of letting it cut in.
-#ifndef VHS_VIBES_NO_FADE_IN
+#ifndef VHS_VIBES_NO_FADE_IN   // (set for comparison builds only: see VHS_VIBES_SWING_ROOM)
         rampS_[rOut] = 0.0f;
         ramp_[rOut].snap(0.0f);
         fadeHold_ = (int)((wf1_.base + wf2_.base + (choActive_ ? choBase_ : 0.0f)) * kCtrlInv) + 1;
@@ -1732,7 +1738,9 @@ private:
             noisePre_ = getInt(kNoisePos) == 1;
 
             // head switching: how long the signal is held at each switch, in samples. It follows
-            // the Head Buzz knob and the noise master like the rasp does.
+            // the Head Buzz knob and the noise master too, but not as the rasp does: in a straight
+            // line with the knob (the rasp goes with its square), and with the master only up to
+            // 50 %, where it reaches its full length (the rasp goes on rising, to +12 dB at 100 %).
             const float headHold = getBool(kNoiseOn) ? pct(kHeadBuzz) * minf(2.0f * pct(kNoise), 1.0f) : 0.0f;
             hsLen_[0] = headHold * 6.0f;
             hsLen_[1] = headHold * 3.75f;   // the two heads are not quite alike
@@ -2103,16 +2111,13 @@ private:
             // the host once that length has been steady for half a second and is more than
             // 32 samples (0.7 ms) away from what it was told last, so turning a knob does not
             // send a stream of updates.
-            if (kReportLatency)
+            const int want = wantLatency_.load(std::memory_order_relaxed);
+            if (std::abs(want - latCandidate) > 8) { latCandidate = want; latStable = 0; }
+            else if (latStable < 10) ++latStable;
+            if (latStable >= 10 && std::abs(latCandidate - latReported) > 32 && speaking())
             {
-                const int want = wantLatency_.load(std::memory_order_relaxed);
-                if (std::abs(want - latCandidate) > 8) { latCandidate = want; latStable = 0; }
-                else if (latStable < 10) ++latStable;
-                if (latStable >= 10 && std::abs(latCandidate - latReported) > 32 && speaking())
-                {
-                    latReported = latCandidate;
-                    setLatency(latCandidate);
-                }
+                latReported = latCandidate;
+                setLatency(latCandidate);
             }
         }
     }
