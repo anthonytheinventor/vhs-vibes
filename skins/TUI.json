@@ -1586,7 +1586,7 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "Wear",
+                                "name": "Slew",
                                 "type": "vvKnobUni",
                                 "data": {
                                     "version": 1,

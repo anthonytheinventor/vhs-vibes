@@ -15,7 +15,7 @@
 //      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage). Between
 //                     the two: NR ENCODE, (deck) B-type noise reduction, record side: lifts
 //                     quiet highs
-//      -> WEAR        slew limiter: the signal cannot change faster than a set rate
+//      -> SLEW        slew limiter: the signal cannot change faster than a set rate
 //      -> COMP        one-knob compressor with make-up gain
 //      -> 2-BAND SAT  crossover at Split; lows and highs get their own level and soft clip.
 //                     Or, with Sat Type = VHS, a model of the linear track's tape (see TapeSat)
@@ -60,7 +60,7 @@
 // saturator, at twice the sample rate between two half-band filters. Without it, what those
 // stages add above 22 kHz folds back down as tones that were never in the sound (a loud
 // 14 kHz comes back at 2.1 kHz). With it, what the soft part of the distortion adds is
-// filtered off almost entirely; what hard clipping and Wear add when a full-level high tone
+// filtered off almost entirely; what hard clipping and Slew add when a full-level high tone
 // drives them goes further up than twice the rate can hold, and that part comes down by
 // 6 to 20 dB only. It costs about a quarter more CPU.
 //
@@ -844,7 +844,7 @@ public:
 
         addParam(floatParam ("drive",     "Drive",        0.0f, 100.0f, 25.0f, "%", 0));
         addParam(floatParam ("tone",      "Tone",      -100.0f, 100.0f,  0.0f, "",  0));
-        addParam(floatParam ("wear",      "Wear",         0.0f, 100.0f, 20.0f, "%", 0));
+        addParam(floatParam ("wear",      "Slew",         0.0f, 100.0f, 20.0f, "%", 0));
         addParam(floatParam ("comp",      "Comp",         0.0f, 100.0f, 40.0f, "%", 0));
         addParam(logParam   ("hicut",     "Hi Cut",    1000.0f, 18000.0f, 9000.0f, "Hz", 0));
 
@@ -1090,7 +1090,7 @@ private:
         if (tellHost_.exchange(false)) pushPending_.store(true, std::memory_order_relaxed);
     }
 
-    // The stages that distort: preamp clip, Wear, the compressor with the clip on its boost,
+    // The stages that distort: preamp clip, Slew, the compressor with the clip on its boost,
     // and the 2-band saturator. Once per sample, or twice per sample in HQ (their per-sample
     // values are then set for the doubled rate: see setQuality, slewStep_, splitCoeff_).
     __attribute__((always_inline)) Stereo shape(Stereo x, float satMix)
@@ -1449,7 +1449,7 @@ public:
             if (tick) { const Stereo outMag = vabs(x); outPeak_ = 0.5f * (outMag[0] + outMag[1]); }
         }
 
-        // A NaN or an infinity from the host would go round in the filters for ever (and Wear
+        // A NaN or an infinity from the host would go round in the filters for ever (and Slew
         // can turn one into a stuck silence that looks healthy). The sum of the input shows
         // either: such a block comes out silent and the next one starts clean.
         if (!(std::fabs(inSum[0] + inSum[1]) < 1.0e30f))
@@ -1534,7 +1534,7 @@ private:
         info.name         = "VHS Vibes";
         info.vendor       = "anthonytheinventor";   // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
-        info.version      = 1501;           // 1.5.1
+        info.version      = 1502;           // 1.5.2
         info.isInstrument = false;
         info.numInputs    = 2;
         info.numOutputs   = 2;

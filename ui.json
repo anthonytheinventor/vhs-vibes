@@ -6,7 +6,7 @@
       "controls": [
         { "param": "Drive",     "widget": "knob" },
         { "param": "Tone",      "widget": "knob", "polarity": "bipolar" },
-        { "param": "Wear",      "widget": "knob" },
+        { "param": "Slew",      "widget": "knob" },
         { "param": "Comp",      "widget": "knob" },
         { "param": "Hi Cut",    "widget": "knob" },
         { "param": "Dropouts",  "widget": "knob" },

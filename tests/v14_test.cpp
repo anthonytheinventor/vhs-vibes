@@ -320,7 +320,7 @@ int main()
     }
 
     std::printf("8. A NaN from the host does not stay\n");
-    for (int program : {4, 8, 20, 22})   // Camcorder 89 and Training Video (mic, Wear, tone), Init, Tube TV
+    for (int program : {4, 8, 20, 22})   // Camcorder 89 and Training Video (mic, Slew, tone), Init, Tube TV
     {
         Fx fx; fx.e->dispatcher(fx.e, effSetProgram, 0, program, nullptr, 0.0f);
         fx.set(kNoiseOn, 0);
@@ -424,7 +424,7 @@ int main()
         // Everything that folds back, not one line of it (noise, wobble and deck off).
         //  - highs at an ordinary level: only the soft part of the distortion is at work, its
         //    third harmonic lands below twice the rate, and HQ removes it;
-        //  - a full-level high tone: the clippers and Wear square it off, the harmonics run far
+        //  - a full-level high tone: the clippers and Slew square it off, the harmonics run far
         //    beyond twice the rate, and HQ can only take some of it away.
         struct Case { const char* name; int program; float hz, amp; double atLeast; };
         for (const Case& c : { Case{"Home Recording, 12 kHz at -15 dBFS", 0, 12000.0f, 0.18f, 30.0},

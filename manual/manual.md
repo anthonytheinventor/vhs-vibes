@@ -186,7 +186,7 @@ AGC | DECK | level control, seconds |
 Tone | TAPE | tilt |
 NR record | DECK | lifts quiet highs |
 Drive | TAPE | preamp soft clip | hq
-Wear | TAPE | slew limit | hq
+Slew | TAPE | rate limit | hq
 Comp | TAPE | compressor | hq
 Saturator | TAPE | 2-Band or VHS | hq
 Hi Cut | TAPE | 4-pole lowpass |
@@ -290,7 +290,7 @@ NR is B-type noise reduction. On the record side it lifts quiet highs by up to 1
 | ^OFF^ | recorded without, played without | No noise reduction. |
 | ^REC^ | recorded with it, played without | Bright, airy, a little squashed, all the hiss. |
 | ^PLAY^ | recorded without, played with it | Dull, the highs ducking in quiet passages. |
-| ^ON^ | recorded with it, played with it | On a clean tape it only removes hiss. The more the tape has lost in between (Hi Cut, Wear, Dropouts, Drift), the more the playback side mistracks, and the duller and more unsteady the top end gets. |
+| ^ON^ | recorded with it, played with it | On a clean tape it only removes hiss. The more the tape has lost in between (Hi Cut, Slew, Dropouts, Drift), the more the playback side mistracks, and the duller and more unsteady the top end gets. |
 
 The programs Wrong Switch (REC) and Stereo Rental (ON) are built on it. Switching NR fades it in or out over 8 ms.
 
@@ -300,7 +300,7 @@ It is a model of the circuit early stereo VHS decks had on their linear tracks, 
 
 ## HQ
 
-HQ runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate.
+HQ runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate.
 
 - **Off:** bright sounds that hit those stages fold back into the midrange as tones that were never played. The plugin sounds as it did before HQ existed.
 - **On:** that is gone for highs at ordinary levels. A full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter.
@@ -458,7 +458,7 @@ The playback side decides how much to cut from the level it sees. If the tape gi
 | The tape plays 2 dB quiet (5 kHz, 30 dB under reference) | 2 dB down | 4.3 dB down |
 | The tape has lost its highs from 4 kHz (8 kHz, 25 dB under reference) | 6.5 dB down | 12.2 dB down |
 
-In the plugin everything from Drive to Dropouts lies between the two sides. So with NR on ^ON^, Hi Cut, Wear, the saturator, Drift and Dropouts all become stronger in the highs, and unsteady, because the cut moves with the music. That is the sound of a worn tape in a deck with the switch on.
+In the plugin everything from Drive to Dropouts lies between the two sides. So with NR on ^ON^, Hi Cut, Slew, the saturator, Drift and Dropouts all become stronger in the highs, and unsteady, because the cut moves with the music. That is the sound of a worn tape in a deck with the switch on.
 
 ### What it means for the knobs
 

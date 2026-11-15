@@ -52,7 +52,7 @@ VHS Vibes is free. If it ends up on your tracks, you can leave a tip at
 The sound goes through the machine in this order:
 
 ```
-in -> Chorus -> Mic -> AGC -> Preamp (Tone, NR record side, Drive) -> Wear -> Comp
+in -> Chorus -> Mic -> AGC -> Preamp (Tone, NR record side, Drive) -> Slew -> Comp
    -> Saturator (2-Band or VHS) -> Hi Cut
    -> Wobble 1 (Warp, Flutter, Scrape) -> Noise -> Wobble 2 (Wow, Flutter) -> Lo Cut / Hi Cut
    -> Drift -> Tracking -> Head Buzz -> Whistle -> Dropouts -> NR playback side -> Mono -> Mix -> Output
@@ -69,7 +69,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 |---|---|
 | Drive | Preamp soft clipping. 0 % is clean. |
 | Tone | Tilt: left is darker, right is brighter (about 6 dB each way). |
-| Wear | Limits how fast the signal can change: dulls and smears, like an old or copied tape. |
+| Slew | Limits how fast the signal can change: dulls and smears, like an old or copied tape. |
 | Comp | One-knob compressor. Past about a third it squashes and brings quiet sound (and noise) up. |
 | Dropouts | Short random dips, as when the tape lifts off the head: the highs go first and furthest, the lows only sag. 0 % is off. |
 | Mono | Sums left and right. |
@@ -134,8 +134,8 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
-| HQ | Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate. Without it, bright sounds that hit those stages fold back into the midrange as tones that were never played. With it, that is gone for highs at ordinary levels; a full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it fades the sound out and back in at the other rate. Choosing a program does not change it. |
-| B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. **Off**: none. **Rec**: recorded with it, played without: bright, airy, a little squashed, all the hiss. **Play**: the opposite: dull, the highs ducking in quiet passages. **On**: both, which on a clean tape only removes hiss; the more the tape has lost in between (Hi Cut, Wear, Dropouts, Drift), the more the decoder mistracks and the duller and more unsteady the top end gets. Loud sounds pass untouched. |
+| HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate. Without it, bright sounds that hit those stages fold back into the midrange as tones that were never played. With it, that is gone for highs at ordinary levels; a full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it fades the sound out and back in at the other rate. Choosing a program does not change it. |
+| B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. **Off**: none. **Rec**: recorded with it, played without: bright, airy, a little squashed, all the hiss. **Play**: the opposite: dull, the highs ducking in quiet passages. **On**: both, which on a clean tape only removes hiss; the more the tape has lost in between (Hi Cut, Slew, Dropouts, Drift), the more the decoder mistracks and the duller and more unsteady the top end gets. Loud sounds pass untouched. |
 
 In 2-Band, tape speed has no control of its own. For a slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut
 near 100 Hz and raise Hiss; SP is about 10 kHz and 50 Hz. With Sat Type on VHS (TAPE page),

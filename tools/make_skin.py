@@ -110,7 +110,7 @@ def font(spec, px, scale=S):
 # --------------------------------------------------------------------------------------------
 PAGES = [
     {"name": "TAPE", "jp": "テープ", "file": "bg_tape.png", "blocks": [
-        ("PREAMP", "プリアンプ", ["Drive", "Tone", "Wear", "Comp"]),
+        ("PREAMP", "プリアンプ", ["Drive", "Tone", "Slew", "Comp"]),
         ("OUTPUT", "アウトプット", ["Dropouts", "Mono", "Mix", "Output"]),
         ("SATURATOR", "サチュレーター", ["Saturator", "Split", "Lows", "Lo Sat"]),
         ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
@@ -155,7 +155,7 @@ CAPTIONS = {
 }
 BIPOLAR = {"Tone", "Lows", "Mic Gain"}
 # The 16 parameters on the knobs in Program (track) Q-Link mode, Q-Link 1..16.
-PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Wear", "Comp", "Hi Cut",
+PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Slew", "Comp", "Hi Cut",
                   "Hiss", "Crackle", "Hum", "Noise", "Hi Sat", "Dropouts", "Mix", "Output"]
 
 # Captions that change with a switch: while SWAP_PARAM sits on step SWAP_STEP (of SWAP_STEPS), a small

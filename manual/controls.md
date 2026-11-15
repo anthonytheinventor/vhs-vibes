@@ -29,7 +29,7 @@ try: 25 % is Home Recording. Subtle Glue uses 20 %, Bootleg Concert 60 %.
 what: A tilt in front of the Drive clipper. Left of centre is darker, right of centre is brighter, about 6 dB each way. 0 is flat.
 try: Training Video sits at -15, Dream Sequence at +10.
 
-## Wear
+## Slew
 what: Limits how fast the signal can change. That dulls and smears the sound, like an old tape or a copy of one. At 0 % the stage is skipped.
 listen: The top end dulls and the detail smears.
 try: 20 % is Home Recording. 3rd Gen Copy uses 45 %, Chewed Tape 50 %.
@@ -235,7 +235,7 @@ what: The moving reels, grid and sun on or off. Off saves the work of updating t
 note: Choosing a program does not change it. It makes no difference to the sound.
 
 ## HQ
-what: Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played.
+what: Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played.
 listen: With HQ off, loud bright sounds grow extra, unrelated tones underneath. With it on, they are gone for highs at ordinary levels.
 note: On takes about a quarter more CPU. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
 
