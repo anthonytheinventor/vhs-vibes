@@ -1202,8 +1202,21 @@ public:
             std::atomic_thread_fence(std::memory_order_acquire);
             if (loadState_.load(std::memory_order_relaxed) == load)
             {
+                const auto plain = [&](int i) { return param(i).toPlain(seen[i]); };
+                // Sat Type alone, while the Saturator is off and has faded out completely: none
+                // of the stage is heard, so the type changes in place (the stage starts from rest
+                // when it comes back in) and the sound plays on.
+                if ((dirty & gQuality) && plain(kHq) == param(kHq).toPlain(lastNorm_[kHq])
+                    && plain(kSatOn) < 0.5f && rampT_[rSat] == 0.0f && ramp_[rSat].v == 0.0f)
+                {
+                    tape_ = std::lround(plain(kSatType)) == 1;
+                    tapeSat_.reset();
+                    splitLp_ = splat(0.0f);
+                    dirty = (dirty & ~gQuality) | gSat;
+                    pushPending_.store(true);   // the three read-outs change: have the host ask again
+                }
                 std::memcpy(lastNorm_, seen, sizeof(lastNorm_));
-                if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
+                if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ or Sat Type switched: fade out, then start again
                 if (dirty) readParams(dirty);
             }
         }
@@ -1633,8 +1646,9 @@ private:
             setDrive(pct(kLoSat), 9.0f, cLoG, cLoMk, cLoMix);
             setDrive(pct(kHiSat), 9.0f, cHiG, cHiMk, cHiMix);
             splitCoeff_ = lpCoeff(get(kSplit), nlSr_);
-            // The type itself only changes at a restart (a switch of it fades out first):
-            // until then the stage that is sounding keeps its own settings.
+            // The type itself only changes at a restart (a switch of it fades out first), or in
+            // place while the stage is off (see process): until then the stage that is sounding
+            // keeps its own settings.
             if (groups == gAll)
             {
                 const bool tape = getInt(kSatType) == 1;

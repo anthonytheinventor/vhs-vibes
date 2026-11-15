@@ -139,6 +139,31 @@ int main()
         }
     }
 
+    std::printf("3. Sat Type switched while the Saturator is off\n");
+    {
+        // A and B play the same tone; A switches Sat Type to VHS while the Saturator is off and
+        // later switches the Saturator on, B had VHS from the start. Nothing may differ.
+        Fx a, b; a.set(kNoiseOn, 0); b.set(kNoiseOn, 0); b.set(kSatType, 1);
+        a.set(kLoSat, 90); b.set(kLoSat, 90);
+        std::vector<float> oa, ob;
+        a.play(0.5f, 0.5f, 300.0f, &oa); b.play(0.5f, 0.5f, 300.0f, &ob);
+        a.set(kSatType, 1);
+        a.play(0.5f, 0.5f, 300.0f, &oa); b.play(0.5f, 0.5f, 300.0f, &ob);
+        a.set(kSatOn, 1); b.set(kSatOn, 1);
+        a.play(0.5f, 0.5f, 300.0f, &oa); b.play(0.5f, 0.5f, 300.0f, &ob);
+        float diff = 0.0f, quiet = 1.0f;
+        for (size_t i = 0; i < oa.size() && i < ob.size(); ++i) diff = std::fmax(diff, std::fabs(oa[i] - ob[i]));
+        for (size_t i = 22050; i + 128 <= 44100; i += 128)   // the half second after the switch
+        {
+            float pk = 0.0f;
+            for (size_t k = i; k < i + 128; ++k) pk = std::fmax(pk, std::fabs(oa[k]));
+            quiet = std::fmin(quiet, pk);
+        }
+        std::printf("   quietest 128 samples after the switch %.3f (the tone is at 0.5); largest difference from an instance set to VHS from the start %.2e\n", quiet, diff);
+        check(quiet > 0.45f, "the sound plays on: no fade");
+        check(diff == 0.0f, "and once the Saturator is switched on it is the VHS one, as if it had been chosen first");
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
