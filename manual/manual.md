@@ -210,7 +210,7 @@ Output | TAPE | level |
 - **Noise has two doors.** With Position on Pre the noise goes in at the very start and is compressed, clipped and wobbled with the music. On Post it is added after the first wobble and stays clean.
 - **The stages marked HQ are the ones that distort.** With the HQ switch on they run at twice the sample rate.
 - **Two wobbles.** Wobble 1 is the tape. Wobble 2 is the tape after one more copy, with its own two filters behind it.
-- **The Whistle comes late**, so that no filter and no wobble touches it. It never wavers.
+- **The Whistle comes late**, after every filter and both wobbles, so it never wavers. Dropouts dip it with the rest of the sound, unless the NR playback side is on: then it comes after that, at the very end.
 - **NR is in two halves.** The record side sits between Tone and Drive, the playback side just before Mono. Everything between them is the tape, and whatever the tape does there makes the playback side mistrack.
 - **Breathing is not a stage.** It makes the hiss rise and fall with the signal and holds the head buzz down in the pauses.
 - **Mix blends the untouched input back in** at the end. The dry signal is delayed by the resting length of the two wobble delays so that it lines up with the tape path. At 100 % the dry path is not computed at all.

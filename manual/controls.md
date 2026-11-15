@@ -37,7 +37,7 @@ try: 20 % is Home Recording. 3rd Gen Copy uses 45 %, Chewed Tape 50 %.
 ## Comp
 what: A one-knob compressor with make-up gain. Turning it up lowers the threshold (down to -36 dB at 100 %, ratio 4:1) and raises the make-up. Past about a third it squashes and brings quiet sound, and noise, up.
 listen: Quiet passages rise. With Position on Pre (NOISE page) the noise rises with them whenever the music stops.
-note: Comp works in milliseconds. For a level control that works over seconds, use AGC on the DECK page.
+note: At 0 % the threshold is at full scale: only peaks above 0 dBFS are still compressed. Comp works in milliseconds. For a level control that works over seconds, use AGC on the DECK page.
 
 ## Dropouts
 what: Short random dips, as when the tape lifts off the head. The highs go first and furthest; the lows only sag. The knob sets both how often they come and how deep they go. 0 % is off.
@@ -95,7 +95,7 @@ listen: The pitch swims up and down once per reel turn (set by RPM).
 try: 35 % is Home Recording. Fresh Rental uses 15 %, Chewed Tape 90 %.
 
 ## RPM
-what: Speed of the slow wobble, as reel turns per minute: one lurch per turn. Below about 30 rpm the depth is limited.
+what: Speed of the slow wobble, as reel turns per minute: one lurch per turn. With Warp high, the slowest speeds hold the depth back so the swing fits the tape delay: at Warp 100 % below about 23 rpm, at 70 % below about 11 rpm. Below Warp 50 % it never happens.
 try: 33 rpm is Home Recording. Vaporwave Mall slows to 20 rpm, Tracking Error runs at 90 rpm.
 
 ## Shape
@@ -122,7 +122,7 @@ note: With Wobble off, Mix below 100 % blends cleanly.
 what: Depth of a second, independent slow pitch wobble: the tape after one more copy. Up to about 3 % of pitch at 100 %.
 
 ## Wow Rate
-what: Speed of the second slow wobble.
+what: Speed of the second slow wobble. With Wow high, the slowest rates hold the depth back so the swing fits the tape delay: at Wow 100 % below about 0.23 Hz, at 80 % below about 0.15 Hz. Below Wow 65 % it never happens.
 
 ## Flutter 2
 what: Depth of the second fast pitch wobble, up to about 1 % of pitch at 100 %.
@@ -170,7 +170,7 @@ what: Turns all noise off or on: Hum, Buzz, Head Buzz, Hiss, Crackle and Whistle
 note: The effect makes noise even with no input. Switch this off, or set Master to 0 %, for a silent background.
 
 ## Whistle
-what: The line whistle of the TV set, 15.7 kHz, steady, never wobbling. It is added late in the path so that no filter or wobble touches it. At 50 % it is about where a real deck has it.
+what: The line whistle of the TV set, 15.7 kHz, steady, never wobbling. It is added late in the path, after every filter and both wobbles. Dropouts dip it with the rest of the sound, unless the NR playback side is on: then it is added after that, at the very end. At 50 % it is about where a real deck has it.
 listen: A very high, thin tone. Not everyone can hear it.
 note: It follows Master and the Noise switch like the other noises.
 
