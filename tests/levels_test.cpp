@@ -68,7 +68,8 @@ int main()
     const double inRms = 0.25 / std::sqrt(2.0);
     std::printf("Input: 1 kHz sine, peak 0.25 (-12 dBFS), rms %.1f dBFS\n\n", db(inRms));
     std::printf("%-16s %8s %8s %8s | %9s | %7s %7s (cents, noise off)\n", "program", "rmsL", "rmsR", "peak", "silence", "min", "max");
-    for (int p = 0; p < 8; ++p)
+    // the first eight, and the five that use the mic (Camcorder 89 is one of the eight)
+    for (int p : {0, 1, 2, 3, 4, 5, 6, 7, 10, 15, 18, 22})
     {
         char name[64] = {0};
         AEffect* e = make();
