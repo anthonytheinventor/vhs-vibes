@@ -1667,7 +1667,6 @@ private:
             tgt_[cHighsG] = dbToGain(get(kHighs));
             setDrive(pct(kLoSat), 9.0f, cLoG, cLoMk, cLoMix);
             setDrive(pct(kHiSat), 9.0f, cHiG, cHiMk, cHiMix);
-            splitCoeff_ = lpCoeff(get(kSplit), nlSr_);
             // The type itself only changes at a restart (a switch of it fades out first), or in
             // place while the stage is off (see process): until then the stage that is sounding
             // keeps its own settings.
@@ -1686,6 +1685,7 @@ private:
                 tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(getNormalised(kSplit)));
                 splitCoeff_ = lpCoeff(1000.0f, nlSr_);
             }
+            else splitCoeff_ = lpCoeff(get(kSplit), nlSr_);   // the 2-band crossover
         }
         if (groups & gHiCut)
         {
