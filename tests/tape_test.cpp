@@ -262,7 +262,11 @@ int main()
             std::printf("   Lo Sat | Hi Sat | Split read: 2-Band \"%s\"; VHS \"%s\", \"%s\", \"%s\"\n", a.c_str(), b.c_str(), c.c_str(), d2.c_str());
             check(a == "56 % | 0 % | 2.5 kHz", "2-Band: per cent and Hz, as before");
             check(b == "0.0 dB | SP | right", "VHS at the deck's reference settings: 0.0 dB, SP, right");
-            check(c == "+8.0 dB | EP | -100 %" && d2 == "-10.0 dB | 35% EP | +100 %", "VHS at the ends: record level in dB, speed towards EP, bias signed");
+            check(c == "+8.0 dB | EP | -100 %" && d2 == "-10.0 dB | 23 mm/s | +100 %", "VHS at the ends: record level in dB, speed in mm/s between the named ones, bias signed");
+            rd.set(kHiSat, 63); const std::string lp = shown(kHiSat);
+            rd.set(kHiSat, 80); const std::string slow = shown(kHiSat);
+            std::printf("   Tape Speed at 63 %% and 80 %% reads \"%s\" and \"%s\"\n", lp.c_str(), slow.c_str());
+            check(lp == "LP" && slow == "14 mm/s", "LP, half of SP's speed, is named where the knob reaches it");
         }
 
         // a state saved by 1.4 has no Sat Type: 2-Band

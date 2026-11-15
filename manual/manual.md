@@ -226,13 +226,13 @@ epigraph: What the tape did to the sound.
 
 ## The three knobs that change their name
 
-The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS. The numbers under them change too: REC LEVEL reads in dB, TAPE SPEED reads SP, EP or how far towards EP, BIAS reads "right" or a signed percentage (minus is too little bias, plus too much). They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
+The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS. The numbers under them change too: REC LEVEL reads in dB, TAPE SPEED reads SP, LP or EP at those three speeds and the speed in mm/s between them, BIAS reads "right" or a signed percentage (minus is too little bias, plus too much). They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
 
 | Knob | Type = 2-Band | Type = VHS |
 |---|---|---|
 | ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. |
 | ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. | **Rec Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
-| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Tape Speed.** The tape speed, from SP at 0 % to EP at 100 %. The slower, the sooner the highs give way and the lower the top of the band. |
+| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Tape Speed.** The tape speed, from SP (33.35 mm/s) through LP (16.67 mm/s, at 63 % of the knob) to EP (11.12 mm/s). The slower, the sooner the highs give way and the lower the top of the band. |
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. |
 | ^HIGHS^ | Level of the high band into its clipper. | Trims the result above 1 kHz. |
 
@@ -373,7 +373,7 @@ The figures hold at every sample rate from 44.1 to 192 kHz.
 ### The three knobs, in the model's terms
 
 - ^REC LEVEL^ is step 1. At 0 dB a tone at -8 dBFS sits exactly at the deck's reference level.
-- ^TAPE SPEED^ moves steps 2, 4 and 6 together, from SP to EP.
+- ^TAPE SPEED^ moves steps 2, 4 and 6 together, from SP through LP to EP.
 - ^BIAS^ at "right" does nothing. Towards too little, the tape's ceiling drops by up to 6 dB and the highs come up by up to 3 dB: bright and gritty. Towards too much, the highs lose headroom sooner and are cut by up to 6 dB: dull.
 
 ### What is estimated

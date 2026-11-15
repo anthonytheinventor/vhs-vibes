@@ -77,7 +77,7 @@ what: In **2-Band**: the level of the high band going into its clipper. In **VHS
 try: In 2-Band, lower Highs and raise Hi Sat for "copied again". 3rd Gen Copy has Highs at -8 dB and Hi Sat at 60 %.
 
 ## Hi Sat
-what: In **2-Band**: how hard the high band is clipped. In **VHS** the caption reads TAPE SPEED: the tape speed, from SP (0 %) to EP (100 %). The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP and about 4.5 kHz in EP.
+what: In **2-Band**: how hard the high band is clipped. In **VHS** the caption reads TAPE SPEED: the tape speed, from SP (33.35 mm/s, at 0 %) through LP (16.67 mm/s, at 63 %) to EP (11.12 mm/s, at 100 %). The read-out names those three and gives the speed in mm/s between them. The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP, about 6 kHz in LP and about 4.5 kHz in EP.
 try: In VHS, 0 % is the SP Tape program and 100 % the EP Tape program.
 
 ## Hi Cut

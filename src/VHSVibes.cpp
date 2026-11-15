@@ -1586,9 +1586,13 @@ public:
             }
             else if (index == kHiSat)
             {
+                // The knob runs the tape speed from SP (33.35 mm/s) down to EP, a third of it, in equal
+                // ratios (TapeSat::set: 3^-speed). LP, half of SP, therefore lies at log 2 / log 3 of
+                // the way: 63.1 %. The three speeds are named; between them the speed is given.
                 if (v < 0.5f) std::snprintf(buf, sizeof(buf), "SP");
                 else if (v > 99.5f) std::snprintf(buf, sizeof(buf), "EP");
-                else std::snprintf(buf, sizeof(buf), "%.0f%% EP", (double)v);   // that far from SP towards EP
+                else if (std::fabs(v - 63.09f) < 0.75f) std::snprintf(buf, sizeof(buf), "LP");
+                else std::snprintf(buf, sizeof(buf), "%.0f mm/s", 33.35 * std::pow(3.0, -0.01 * (double)v));
             }
             else
             {
