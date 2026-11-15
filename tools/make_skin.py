@@ -161,7 +161,7 @@ PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Wear", "Comp"
 # Captions that change with a switch: while SWAP_PARAM sits on step SWAP_STEP (of SWAP_STEPS), a small
 # picture with the other caption is shown over the one painted on the background. The control under
 # it stays the same parameter (and the same Q-Link).
-CAPTION_SWAPS = {"Split": "BIAS", "Lo Sat": "LEVEL", "Hi Sat": "SPEED"}
+CAPTION_SWAPS = {"Split": "BIAS", "Lo Sat": "REC LEVEL", "Hi Sat": "TAPE SPEED"}
 SWAP_PARAM, SWAP_STEP, SWAP_STEPS = "Sat Type", 1, 2
 CAPTION_H = 25                     # height of the caption strip at the top of a slot
 CAPTION_OVERRIDE = {}              # used while the other captions are being painted

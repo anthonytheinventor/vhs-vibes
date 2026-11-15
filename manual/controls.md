@@ -67,7 +67,7 @@ note: The read-out stays in Hz or kHz in both types.
 what: In **2-Band**: the level of the low band going into its clipper. In **VHS**: trims the result below 1 kHz.
 
 ## Lo Sat
-what: In **2-Band**: how hard the low band is clipped. In **VHS** the caption reads LEVEL: the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends.
+what: In **2-Band**: how hard the low band is clipped. In **VHS** the caption reads REC LEVEL: the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends.
 try: In VHS, SP Tape uses 45 % and EP Tape 50 %.
 
 ## Highs
@@ -75,7 +75,7 @@ what: In **2-Band**: the level of the high band going into its clipper. In **VHS
 try: In 2-Band, lower Highs and raise Hi Sat for "copied again". 3rd Gen Copy has Highs at -8 dB and Hi Sat at 60 %.
 
 ## Hi Sat
-what: In **2-Band**: how hard the high band is clipped. In **VHS** the caption reads SPEED: the tape speed, from SP (0 %) to EP (100 %). The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP and about 4.5 kHz in EP.
+what: In **2-Band**: how hard the high band is clipped. In **VHS** the caption reads TAPE SPEED: the tape speed, from SP (0 %) to EP (100 %). The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP and about 4.5 kHz in EP.
 try: In VHS, 0 % is the SP Tape program and 100 % the EP Tape program.
 
 ## Hi Cut

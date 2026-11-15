@@ -225,13 +225,13 @@ epigraph: What the tape did to the sound.
 
 ## The three knobs that change their name
 
-The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, LEVEL and SPEED in VHS. They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
+The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS. They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
 
 | Knob | Type = 2-Band | Type = VHS |
 |---|---|---|
 | ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. The read-out stays in Hz. |
-| ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. | **Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
-| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Speed.** The tape speed, from SP at 0 % to EP at 100 %. The slower, the sooner the highs give way and the lower the top of the band. |
+| ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. | **Rec Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
+| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Tape Speed.** The tape speed, from SP at 0 % to EP at 100 %. The slower, the sooner the highs give way and the lower the top of the band. |
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. |
 | ^HIGHS^ | Level of the high band into its clipper. | Trims the result above 1 kHz. |
 

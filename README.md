@@ -70,7 +70,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Lows / Lo Sat | Level and clipping of the low band. |
 | Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
 | Hi Cut | 4-pole lowpass after the saturator. |
-| Sat Type | **2-Band**: the saturator described above. **VHS**: a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way). Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. In VHS three knobs change their meaning, and their captions on the screen change with them (the MPC still lists them as Split, Lo Sat and Hi Sat): **Lo Sat** becomes **Level**, the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. **Hi Sat** becomes **Speed**, the tape speed from SP (0 %) to EP (100 %): the slower, the sooner the highs give way and the lower the top of the band; **Split** becomes **Bias**, how well the deck is set up for the tape: 2.5 kHz (where the knob rests) is right, lower is too little bias (brighter, grittier, distorting sooner), higher is too much (duller, the highs giving way sooner). Lows and Highs still trim the result, below and above 1 kHz. |
+| Sat Type | **2-Band**: the saturator described above. **VHS**: a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way). Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. In VHS three knobs change their meaning, and their captions on the screen change with them (the MPC still lists them as Split, Lo Sat and Hi Sat): **Lo Sat** becomes **Rec Level**, the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. **Hi Sat** becomes **Tape Speed**, the tape speed from SP (0 %) to EP (100 %): the slower, the sooner the highs give way and the lower the top of the band; **Split** becomes **Bias**, how well the deck is set up for the tape: 2.5 kHz (where the knob rests) is right, lower is too little bias (brighter, grittier, distorting sooner), higher is too much (duller, the highs giving way sooner). Lows and Highs still trim the result, below and above 1 kHz. |
 
 ### ＷＯＢＢＬＥ　ゆらぎ
 
@@ -129,7 +129,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 
 Tape speed has no switch of its own. For a slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut
 near 100 Hz and raise Hiss; SP is about 10 kHz and 50 Hz. With Sat Type on VHS (TAPE page),
-the Hi Sat knob (captioned SPEED there) runs the tape itself from SP to EP. For a clean Hi-Fi sound keep the wobbles and the noise low.
+the Hi Sat knob (captioned TAPE SPEED there) runs the tape itself from SP to EP. For a clean Hi-Fi sound keep the wobbles and the noise low.
 
 <p align="center">
   <img src="docs/page_5_deck.png" alt="The DECK page" width="640">
