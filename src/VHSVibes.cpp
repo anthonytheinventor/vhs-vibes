@@ -18,7 +18,7 @@
 //      -> WEAR        slew limiter: the signal cannot change faster than a set rate
 //      -> COMP        one-knob compressor with make-up gain
 //      -> 2-BAND SAT  crossover at Split; lows and highs get their own level and soft clip.
-//                     Or, with Sat Type = Tape, a model of the linear track's tape (see TapeSat)
+//                     Or, with Sat Type = VHS, a model of the linear track's tape (see TapeSat)
 //      -> HI CUT      4-pole lowpass
 //      -> WOBBLE 1    pitch wobble (Warp + Flutter): a delay line whose length follows the
 //                     integrated tape-speed error. Scrape shakes the same delay with noise.
@@ -176,7 +176,7 @@ enum ParamIndex
     // added in 1.5
     kNr,           // choice B-type noise reduction on the linear track: Off, Rec (recorded with it,
                    //        played without), Play (the opposite), On (both)
-    kSatType,      // choice the saturator stage: 2-Band (as before) or Tape (the linear track's tape;
+    kSatType,      // choice the saturator stage: 2-Band (as before) or VHS (the linear track's tape;
                    //        Lo Sat = record level, Hi Sat = tape speed SP..EP, Split = bias)
     kNumParams
 };
@@ -469,39 +469,43 @@ inline float lpCoeff(float hz, float sr)
 }
 
 // ---------------------------------------------------------------------------
-// Tape: what the linear (edge) track's tape does to the sound, in the saturator's place
-// (Sat Type = Tape).
+// VHS: what the linear (edge) track's tape does to the sound, in the saturator's place
+// (Sat Type = VHS).
 //
-//   record level -> [highs lifted] -> tape curve -> [highs lowered again] -> band edge -> bias
+//   record level -> pre-emphasis -> tape curve -> de-emphasis -> band edge -> bias
 //
-// Documented (AES tutorial "Consumer Video Tape Duplication Techniques", J. Brown; deck
-// specifications): the track runs at 33.35 mm/s (SP) or 11.12 mm/s (EP); reference level is
-// 100 nWb/m (taken as kRefLevel, the same as the NR's Dolby level) and video tape reaches
-// 3 % third-harmonic distortion at about 320 nWb/m, 10 dB above it; the response reaches
-// 10 kHz in SP and about 4.5 kHz in EP; too much bias sounds dull, too little bright and
-// distorted. The curve below is set to that 3 % point.
+// From the AES tutorial "Consumer Video Tape Duplication Techniques" (J. Brown), table
+// "Standards and performance of selected audio recording formats", column VHS (SP):
+// tape speed 33.35 mm/s, pre-emphasis 3180 and 120 microseconds, reference level
+// 100 nWb/m, and 3 % third-harmonic distortion AT that reference level (the thin video
+// coating; an audio cassette has 7 dB to spare, a studio machine 10). The band reaches
+// about 10 kHz. From the text: too much bias sounds dull, too little bright and distorted.
+// From deck specification sheets: EP runs at 11.12 mm/s and reaches 4 to 6 kHz.
 //
-// Estimates (no published curve found for this track): how much less level the tape holds
-// at short wavelengths. Taken from audio cassette behaviour scaled by tape speed and by the
-// lower reference level: little lost up to about 1 kHz in SP, then 6 dB per octave (about
-// 9 dB at 3.5 kHz, 15 dB at 7 kHz), and the same at a third of those frequencies in EP, so
-// a 7 kHz tone in SP reaches its 3 % point about 5 dB below reference level. The shape of the curve above the 3 %
-// point (saturation 4 dB higher) and the sizes of the bias effects are estimates as well.
+// So in SP the lift before the curve is the format's own 120 microsecond pre-emphasis
+// (6 dB per octave from 1.33 kHz), and the curve is set for 3 % at reference level
+// (kRefLevel, the same level the NR takes as Dolby level) when the record level stands at
+// 0 dB. Estimates: that the lift levels off 20 dB up; that EP behaves like SP at a third
+// of every frequency (no figures found for EP's equalisation or headroom); the shape of the
+// curve past the 3 % point (saturation 4 dB higher); the sizes of the bias effects.
 //
-// The lift before the curve and the cut after it are exact inverses, so a quiet sound
-// passes unchanged; a loud one meets the curve with its highs lifted, and they give way
-// first. There is no head bump: at these speeds it lies below 20 Hz.
+// The lift and the cut after the curve are exact inverses, so a quiet sound passes
+// unchanged at any record level; a loud one meets the curve with its highs lifted, and
+// they give way first. There is no head bump: at these speeds it lies below 20 Hz.
+// Driven hard without HQ the stage folds a good deal back into the band (it clips lifted
+// highs); HQ, on in a new instance, is the remedy.
 // ---------------------------------------------------------------------------
-// The curve alone reaches 3 % at 0.636 of its scale; the cut after it lowers the third
-// harmonic of a low tone further, so the scale is set for 3 % at the output (441 Hz, SP).
-constexpr float kTapeCeil = 3.2f * kRefLevel / 0.743f;
+// The curve alone reaches 3 % a little above 0.636 of its scale; the cut after it lowers the
+// third harmonic of a low tone further. Set for 3 % at the output (441 Hz, SP, level 0 dB).
+constexpr float kTapeCeil = kRefLevel / 0.746f;
+constexpr float kTapeLevelMin = -10.0f, kTapeLevelSpan = 18.0f;   // record level, dB: knob at 0 % and its travel
 
 struct TapeSat
 {
     float gRec = 1.0f, makeup = 1.0f, invS = 1.0f, s = 1.0f;
-    float k = 0.0f, inv1k = 1.0f;                                // the lift (x + k * its change) and its inverse
+    float b0 = 1.0f, b1 = 0.0f, a1 = 0.0f, invB0 = 1.0f;         // pre-emphasis (b0 + b1 z^-1) / (1 + a1 z^-1), and its inverse
     float aEdge = 1.0f, aBias = 1.0f, gBias = 1.0f;
-    Stereo uP = {}, yP = {}, edge = {}, biasLp = {};
+    Stereo uP = {}, wP = {}, vP = {}, yP = {}, edge = {}, biasLp = {};
 
     // x (27 + x^2) / (27 + 9 x^2): a soft curve that is level at +/-3 and reaches 1 there
     static Stereo curve(Stereo t)
@@ -510,29 +514,40 @@ struct TapeSat
         const Stereo t2 = t * t;
         return t * (27.0f + t2) / (27.0f + 9.0f * t2);
     }
-    // level 0..1: record level, 0 to +18 dB. speed 0..1: SP to EP. bias -1..+1: under, right, over.
+    // One-pole lowpass (y += a (x - y)) coefficient that is exactly 3 dB down at hz.
+    static float edgeCoeff(float hz, float sr)
+    {
+        const float c = 2.0f - std::cos(kTwoPi * minf(hz, 0.45f * sr) / sr);
+        return 1.0f - (c - std::sqrt(c * c - 1.0f));
+    }
+    // level 0..1: record level, -10 to +8 dB. speed 0..1: SP to EP. bias -1..+1: under, right, over.
     void set(float sr, float level, float speed, float bias)
     {
-        const float fz = 1250.0f * std::pow(3.0f, -speed) * (bias > 0.0f ? 1.0f - 0.3f * bias : 1.0f);
-        k = sr / (kTwoPi * fz);                                 // rises 6 dB per octave above fz
-        inv1k = 1.0f / (1.0f + k);
-        s = kTapeCeil * dbToGain(bias < 0.0f ? 6.0f * bias : 2.0f * bias);   // too little bias: the tape gives way sooner
+        // 120 microseconds in SP; three times that in EP; too much bias costs the highs more headroom
+        const float fz = 1326.3f * std::pow(3.0f, -speed) * (bias > 0.0f ? 1.0f - 0.3f * bias : 1.0f);
+        const float kz = std::tan(kPi * fz / sr), kp = std::tan(kPi * minf(10.0f * fz, 0.45f * sr) / sr);
+        const float norm = 1.0f / (1.0f + 1.0f / kp);
+        b0 = (1.0f + 1.0f / kz) * norm;
+        b1 = (1.0f - 1.0f / kz) * norm;
+        a1 = (1.0f - 1.0f / kp) * norm;
+        invB0 = 1.0f / b0;
+        s = kTapeCeil * dbToGain(bias < 0.0f ? 6.0f * bias : 0.0f);      // too little bias: the tape gives way sooner
         invS = 1.0f / s;
-        gRec = dbToGain(18.0f * level);
-        const float t = minf(gRec * kRefLevel * invS, 3.0f);
-        makeup = kRefLevel / (s * t * (27.0f + t * t) / (27.0f + 9.0f * t * t));   // reference level stays as loud
-        aEdge = lpCoeff(10000.0f * std::pow(0.45f, speed), sr);
+        gRec = dbToGain(kTapeLevelMin + kTapeLevelSpan * level);
+        makeup = 1.0f / gRec;                                            // played back as much quieter as it was recorded louder
+        aEdge = edgeCoeff(10000.0f * std::pow(0.45f, speed), sr);
         aBias = lpCoeff(2.4f * fz, sr);
-        gBias = dbToGain(bias < 0.0f ? -3.0f * bias : -6.0f * bias);         // too much bias: dull
+        gBias = dbToGain(bias < 0.0f ? -3.0f * bias : -6.0f * bias);     // too little: bright; too much: dull
     }
-    void reset() { uP = yP = edge = biasLp = splat(0.0f); }
+    void reset() { uP = wP = vP = yP = edge = biasLp = splat(0.0f); }
     Stereo process(Stereo x)
     {
         const Stereo u = x * gRec;
-        const Stereo v = curve((u + k * (u - uP)) * invS) * s;
-        uP = u;
-        const Stereo y = (v + k * yP) * inv1k;                  // the lift undone, exactly
-        yP = y;
+        const Stereo w = b0 * u + b1 * uP - a1 * wP;            // pre-emphasis
+        uP = u; wP = w;
+        const Stereo v = curve(w * invS) * s;
+        const Stereo y = (v + a1 * vP - b1 * yP) * invB0;       // de-emphasis: the exact inverse
+        vP = v; yP = y;
         edge += aEdge * (y * makeup - edge);
         biasLp += aBias * (edge - biasLp);
         return biasLp + (edge - biasLp) * gBias;
@@ -897,7 +912,7 @@ public:
         addParam(floatParam ("whistle",    "Whistle",      0.0f, 100.0f, 0.0f, "%", 0));
         addParam(boolParam  ("hq",         "HQ",         true));    // on in a new instance since 1.5
         addParam(choiceParam("nr",         "NR",         {"Off", "Rec", "Play", "On"}, 0));
-        addParam(choiceParam("sat_type",   "Sat Type",   {"2-Band", "Tape"}, 0));
+        addParam(choiceParam("sat_type",   "Sat Type",   {"2-Band", "VHS"}, 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -1530,10 +1545,13 @@ private:
             setDrive(pct(kLoSat), 9.0f, cLoG, cLoMk, cLoMix);
             setDrive(pct(kHiSat), 9.0f, cHiG, cHiMk, cHiMix);
             splitCoeff_ = lpCoeff(get(kSplit), nlSr_);
-            tape_ = getInt(kSatType) == 1;
+            // The type itself only changes at a restart (a switch of it fades out first):
+            // until then the stage that is sounding keeps its own settings.
+            if (groups == gAll) tape_ = getInt(kSatType) == 1;
             if (tape_)
             {
-                // Lo Sat: record level. Hi Sat: tape speed. Split: bias, right at its default
+                // Lo Sat: record level, -10 to +8 dB (0 dB, where a reference-level tone has
+                // its 3 %, at 56 %). Hi Sat: tape speed. Split: bias, right at its default
                 // (2.5 kHz), too little below, too much above. Lows and Highs trim the two
                 // halves of the result around 1 kHz.
                 const float n = getNormalised(kSplit), n0 = 0.68468f;
@@ -2097,7 +2115,7 @@ private:
             {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
             {kAgc, 25}, {kDrift, 45} });
 
-        // Added in 1.5, after the others: no older program uses NR or Sat Type = Tape.
+        // Added in 1.5, after the others: no older program uses NR or Sat Type = VHS.
         // An early stereo rental: the narrow linear tracks with noise reduction on both
         // sides. The tape has aged in between, so the decoder mistracks: dull, the highs
         // ducking in the quiet parts.
@@ -2150,7 +2168,7 @@ private:
     float nrEncMix_ = 0.0f, nrDecMix_ = 0.0f, nrFade_ = 0.0f;   // how far each side is faded in
     float nrEncGoal_ = 0.0f;
     bool  nrEncRun_ = false, nrDecRun_ = false;                 // the side is on or still fading out
-    TapeSat tapeSat_;                                           // Sat Type = Tape
+    TapeSat tapeSat_;                                           // Sat Type = VHS
     bool  tape_ = false;
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset

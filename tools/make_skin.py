@@ -161,7 +161,7 @@ PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Wear", "Comp"
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
 SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
-    "Sat Type": ((64, 40), [(4, 50), (72, 50)], ["2-BAND", "TAPE"]),
+    "Sat Type": ((64, 40), [(4, 50), (72, 50)], ["2-BAND", "VHS"]),
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
     "NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
 }
