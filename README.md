@@ -121,8 +121,8 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
 | Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. Adds the microphone's own noise (silenced by the Noise switch). |
-| Mic Type | Camcorder: a camcorder's record chain, mono: the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output; past that range loud sounds crunch; in every pause the hiss comes up). Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
-| Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. The Camcorder's ALC works from 61 to 83 dB SPL, so ordinary material is past its range at every setting; lower means less crunch. |
+| Mic Type | Camcorder: a camcorder's record chain, mono, the camera across the room (20 dB further off): the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output; past that range loud sounds crunch; in every pause the hiss comes up). Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
+| Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. For the Camcorder, -12 to -6 dB keeps ordinary material inside its ALC's range, 0 puts a -18 dBFS rms sine just inside the top, +6 to +12 dB is past it and crunches. |
 
 ### ＤＥＣＫ　デッキ
 
@@ -241,8 +241,8 @@ The Animation switch on the DECK page turns them off.
   per sample rate and holds from 44.1 to 192 kHz. Estimates: the mapping of digital level to sound
   pressure (-8 dBFS peak = 104 dB SPL), the amounts of the carbon microphone's distortion and
   level-dependence (documented only in kind), how much later the electret's positive half
-  overloads, the Boombox ALC's attack (5 ms), and the Camcorder ALC's attack (20 ms) and recovery
-  (8.2 dB a second). With the Mic off the plugin is exactly as before.
+  overloads, the Boombox ALC's attack (5 ms), the Camcorder ALC's attack (20 ms) and recovery
+  (8.2 dB a second), and the Camcorder's distance from the source (20 dB). With the Mic off the plugin is exactly as before.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
