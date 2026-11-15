@@ -1023,7 +1023,7 @@ private:
         if (sr != sr_) { sr_ = sr; setRate(); }
         setQuality();
         hbUp_.reset(); hbDown_.reset(); hbDry_.reset();
-        fadeOut_ = 0;
+        fadeOut_ = 0; resetNextTick_ = false;
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
         micHp_.reset(); micPk_.reset(); micLp_.reset();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
@@ -1150,7 +1150,7 @@ public:
         // while the host is writing a program or a state, nor while the output fades out for
         // the reset that follows: the old sound keeps its old settings until then, and the
         // reset reads every parameter.
-        if (fadeOut_ == 0 && !loading_.load(std::memory_order_relaxed))
+        if (fadeOut_ == 0 && !resetNextTick_ && !loading_.load(std::memory_order_relaxed))
         {
             uint32_t dirty = 0;
             for (int i = 0; i < kNumParams; ++i)
@@ -1706,6 +1706,11 @@ private:
     // ----- every 16 samples: smoothing, modulation, compressor gain -----------
     void controlTick()
     {
+        // The fade-out before a reset reached 0 over the interval that ends here: only now may
+        // the reset come (at the start of the next block). Asked for a tick earlier, a block
+        // that ended inside the fade's last step would have cut it short, with a step.
+        if (resetNextTick_) { resetNextTick_ = false; resetPending_.store(true); }
+
         // Smoothed control values land exactly on their targets, so "is this stage doing
         // anything" below is a plain compare.
         for (int i = 0; i < kNumCtl; ++i)
@@ -1733,7 +1738,7 @@ private:
             --fadeOut_;
             rampS_[rOut] = ramp_[rOut].v * (float)fadeOut_ / (float)(fadeOut_ + 1);
             ramp_[rOut].to(rampS_[rOut]);
-            if (fadeOut_ == 0) { fadeHold_ = 1 << 20; resetPending_.store(true); }
+            if (fadeOut_ == 0) { fadeHold_ = 1 << 20; resetNextTick_ = true; }   // shut; the reset follows
         }
 
         // Which stages have anything to do for the next 16 samples.
@@ -2266,6 +2271,7 @@ private:
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
     int   fadeOut_ = 0;                                   // ticks left of the fade-out before a reset
+    bool  resetNextTick_ = false;                         // the fade-out is at its end: ask for the reset at the next tick
 
     // what the screen shows (audio thread)
     bool  playing_ = false;
