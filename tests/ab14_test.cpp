@@ -1,5 +1,6 @@
 // The 1.4 comparison: the 25 programs that existed in 1.4.0 must come out exactly as 1.4.0 made
-// them, with every switch added since at rest (HQ off, B-Type NR off, Sat Type 2-Band). This file
+// them, with every switch added since at rest (HQ off, B-Type NR off, Sat Type 2-Band) and the
+// Mic off (1.6 rebuilt the four microphones, so with the Mic on the sound differs). This file
 // is built twice, against two sources (run.sh takes the 1.4.0 one from git):
 //
 //   ab14_test write -              renders and writes the raw output to stdout (the 1.4.0 build)
@@ -7,7 +8,8 @@
 //                                  and compares them sample by sample; ends with PASS or FAIL
 //
 // Each program: a fresh instance, 20 s of a test signal (two tones and a little noise per
-// channel) in 128-frame calls, the chorus and the mic switched on for every third program.
+// channel) in 128-frame calls, the chorus switched on for every third program and the Mic switched
+// off in all of them (five programs have it on; until 1.6 every third program had it switched on).
 // The first 100 ms are not compared: since 1.5.2, after a reset with the chorus on, the output
 // waits a few ms longer for the chorus swing before it fades in (the fade-in keeps its timing,
 // so from about 50 ms on the output is the same again).
@@ -47,7 +49,8 @@ int main(int argc, char** argv)
         e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
         e->dispatcher(e, effSetProgram, 0, prog, nullptr, 0.0f);
         e->setParameter(e, kHq, 0.0f);   // on in a new instance since 1.5 (1.4 has the switch, off)
-        if (prog % 3 == 1) { e->setParameter(e, kChorusOn, 1.0f); e->setParameter(e, kMicOn, 1.0f); }
+        if (prog % 3 == 1) e->setParameter(e, kChorusOn, 1.0f);
+        e->setParameter(e, kMicOn, 0.0f);   // the microphones are new in 1.6
         std::vector<float> L = srcL, R = srcR;
         for (int pos = 0; pos < total; pos += 128)
         {
