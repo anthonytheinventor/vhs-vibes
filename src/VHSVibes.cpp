@@ -127,7 +127,8 @@ enum ParamIndex
     kHiSat,        // %     high band clip amount
     // wobble 1 (tracking / speed instability)
     kWarp,         // %     slow pitch wobble depth
-    kRpm,          // rpm   slow wobble rate (one lurch per reel turn)
+    kRpm,          // rpm   slow wobble rate (shown as "Warp Rate" and read out in Hz; the value itself
+                   //       stays in turns per minute, as projects and programs have it)
     kShape,        // %     0 = smooth sine, 100 = lumpy, uneven lurch
     kFlutter,      // %     fast pitch wobble depth
     kFlutRate,     // Hz    fast wobble rate
@@ -865,7 +866,7 @@ public:
         addParam(floatParam ("hisat",     "Hi Sat",       0.0f, 100.0f, 35.0f, "%", 0));
 
         addParam(floatParam ("warp",      "Warp",         0.0f, 100.0f, 35.0f, "%", 0));
-        addParam(logParam   ("rpm",       "RPM",          6.0f, 300.0f, 33.0f, "rpm", 0));
+        addParam(logParam   ("rpm",       "Warp Rate",    6.0f, 300.0f, 33.0f, "rpm", 0));
         addParam(floatParam ("shape",     "Shape",        0.0f, 100.0f, 30.0f, "%", 0));
         addParam(floatParam ("flutter",   "Flutter",      0.0f, 100.0f, 30.0f, "%", 0));
         addParam(logParam   ("flut_hz",   "Flut Rate",    2.0f, 30.0f,  9.0f, "Hz", 1));
@@ -1555,7 +1556,7 @@ public:
         return n < n0 ? (n - n0) / n0 : (n - n0) / (1.0f - n0);
     }
 
-    // Value text with its unit, at most 8 characters: "25 %", "+3.0 dB", "9.0 kHz", "33 rpm".
+    // Value text with its unit, at most 8 characters: "25 %", "+3.0 dB", "9.0 kHz", "0.55 Hz".
     bool formatValue(int index, float v, std::string& out) override
     {
         if (index < 0 || index >= kNumParams || !isSetting(index) || param(index).kind != mpc::Param::Kind::Float) return false;
@@ -1612,7 +1613,7 @@ public:
                 else                  std::snprintf(buf, sizeof(buf), "%.2f Hz", (double)v);
                 break;
             case 4: std::snprintf(buf, sizeof(buf), "%.1f ms", (double)v); break;
-            case 5: std::snprintf(buf, sizeof(buf), "%.0f rpm", (double)v); break;
+            case 5: std::snprintf(buf, sizeof(buf), "%.2f Hz", (double)v * (1.0 / 60.0)); break;   // Warp Rate: 0.10 to 5.00 Hz
             default:   // Tone: a signed amount, no unit
                 if (std::fabs(v) < 0.5f) std::snprintf(buf, sizeof(buf), "0");
                 else std::snprintf(buf, sizeof(buf), "%+.0f", (double)v);
@@ -1629,7 +1630,7 @@ private:
         info.name         = "VHS Vibes";
         info.vendor       = "anthonytheinventor";   // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
-        info.version      = 1502;           // 1.5.2
+        info.version      = 1503;           // 1.5.3
         info.isInstrument = false;
         info.numInputs    = 2;
         info.numOutputs   = 2;
@@ -2420,7 +2421,7 @@ private:
     float sr_ = 0.0f;
     int   ctrlCount_ = 0;
     float lastNorm_[kNumParams] = {};   // parameter values readParams() last saw
-    int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 rpm (see formatValue)
+    int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 turns per minute, shown in Hz (see formatValue)
 
     float tgt_[kNumCtl] = {}, cur_[kNumCtl] = {};
     float rampT_[kNumRamp] = {}, rampS_[kNumRamp] = {};

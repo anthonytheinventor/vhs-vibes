@@ -215,6 +215,17 @@ int main()
             check(std::fabs(dB) < 0.5, "the clip after the compressor does not depend on Rec Level or Tape Speed");
         }
 
+        // Warp Rate reads in Hz like the other three wobble rates (its value is kept in turns per minute)
+        {
+            Fx wr;
+            auto shown = [&](float rpm) { wr.set(kRpm, rpm); char t[64] = {0}; wr.e->dispatcher(wr.e, effGetParamDisplay, kRpm, 0, t, 0.0f); return std::string(t); };
+            const std::string r = shown(6) + " | " + shown(33) + " | " + shown(90) + " | " + shown(300);
+            char name[64] = {0};
+            wr.e->dispatcher(wr.e, effGetParamName, kRpm, 0, name, 0.0f);
+            std::printf("   %s reads \"%s\"\n", name, r.c_str());
+            check(r == "0.10 Hz | 0.55 Hz | 1.50 Hz | 5.00 Hz" && std::string(name) == "Warp Rate", "Warp Rate reads in Hz, from 0.10 to 5.00");
+        }
+
         // Slew reads as the time a swing from silence to full level takes, and that is what it does
         {
             Fx sl;

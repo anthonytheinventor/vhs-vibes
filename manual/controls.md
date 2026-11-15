@@ -93,12 +93,13 @@ note: In VHS three knobs change their meaning and their caption (see the table a
 
 ## Warp
 what: Depth of the slow pitch wobble, up to about 5 % of pitch at 100 %. The low end of the knob is fine: small settings are small.
-listen: The pitch swims up and down once per reel turn (set by RPM).
+listen: The pitch swims slowly up and down, at the speed Warp Rate sets.
 try: 35 % is Home Recording. Fresh Rental uses 15 %, Chewed Tape 90 %.
 
-## RPM
-what: Speed of the slow wobble, as reel turns per minute: one lurch per turn. With Warp high, the slowest speeds hold the depth back so the swing fits the tape delay: at Warp 100 % below about 23 rpm, at 70 % below about 11 rpm. Below Warp 50 % it never happens.
-try: 33 rpm is Home Recording. Vaporwave Mall slows to 20 rpm, Tracking Error runs at 90 rpm.
+## Warp Rate
+what: Speed of the slow wobble, in swings per second. With Warp high, the slowest speeds hold the depth back so the swing fits the tape delay: at Warp 100 % below about 0.38 Hz, at 70 % below about 0.18 Hz. Below Warp 50 % it never happens.
+try: 0.55 Hz is Home Recording. Vaporwave Mall slows to 0.33 Hz, Tracking Error runs at 1.50 Hz.
+range: 0.10 to 5.00 Hz
 
 ## Shape
 what: The form of the slow wobble. 0 % is a smooth, even wobble; 100 % is a lumpy, uneven lurch.

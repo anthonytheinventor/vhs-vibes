@@ -24,7 +24,7 @@
       "name": "WOBBLE",
       "controls": [
         { "param": "Warp",       "widget": "knob" },
-        { "param": "RPM",        "widget": "knob" },
+        { "param": "Warp Rate",  "widget": "knob" },
         { "param": "Shape",      "widget": "knob" },
         "empty",
         { "param": "Flutter",    "widget": "knob" },

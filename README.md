@@ -89,7 +89,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Control | What it does |
 |---|---|
 | Warp | Depth of the slow pitch wobble (up to about 5 % of pitch). |
-| RPM | Speed of the slow wobble, as reel turns per minute. With Warp high, the slowest speeds hold the depth back (at Warp 100 % below about 23 rpm; below Warp 50 % never). |
+| Warp Rate | Speed of the slow wobble, 0.10 to 5.00 Hz. With Warp high, the slowest speeds hold the depth back (at Warp 100 % below about 0.38 Hz; below Warp 50 % never). |
 | Shape | 0 % is a smooth wobble, 100 % an uneven lurch. |
 | Flutter Depth / Rate | Fast pitch wobble. |
 | Scrape | Scrape flutter: the tape sticking and slipping along its path, far faster than any wobble. A roughness that clings to bright sounds and is silent in silence. 0 % is off. |

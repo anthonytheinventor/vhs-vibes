@@ -2192,7 +2192,7 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "RPM",
+                                "name": "Warp Rate",
                                 "type": "vvKnobUni",
                                 "data": {
                                     "version": 1,

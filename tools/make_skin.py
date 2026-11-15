@@ -116,7 +116,7 @@ PAGES = [
         ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
     ]},
     {"name": "WOBBLE", "jp": "ゆらぎ", "file": "bg_wobble.png", "blocks": [
-        ("TRACKING", "トラッキング", ["Warp", "RPM", "Shape", None]),
+        ("TRACKING", "トラッキング", ["Warp", "Warp Rate", "Shape", None]),
         ("FLUTTER", "フラッター", ["Flutter", "Flut Rate", "Scrape", "Wobble On"]),
         ("RE-RECORD", "ダビング", ["Wow", "Wow Rate", "Flutter 2", "Flut2 Rate"]),
         ("FILTER", "フィルター", ["Lo Cut", "Hi Cut 2", None, None]),
