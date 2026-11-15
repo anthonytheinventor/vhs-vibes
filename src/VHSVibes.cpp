@@ -860,9 +860,8 @@ enum RampIndex { rOut, rMono, rChorus, rMic, rSat, rMix, kNumRamp };
 //
 // Every type is set to 0 dB at 1 kHz, where microphones are specified. Its noise is added only
 // while the Mic is on, at the model's own level: the Noise switch silences it, the Noise knob
-// does not scale it. Only the selected type's filters run. The two mono types run their filters
-// two at a time, one in each half of the two-float vector (LanePair: the pair is a sample late,
-// the response the same), so the Phone's eight cost what four stereo ones would.
+// does not scale it. Only the selected type's filters run. Everything that follows the level
+// (the carbon's sensitivity, the ALC's detector) is worked out at every sample.
 // ---------------------------------------------------------------------------
 constexpr float kPaPeak = kRefLevel * 0.316228f;   // the peak of a 1 Pa (94 dB SPL) sine: 10 dB under kRefLevel
 constexpr float kPaRms  = kPaPeak * 0.707107f;     // and its rms
@@ -986,43 +985,21 @@ constexpr float kAlcAttackSec   = 0.005f;                    // estimate
 // kRefLevel sine), measured in that band.
 constexpr float kTapeHissRms = kRefLevel * 0.707107f * 5.6234e-3f;   // -45 dB
 
-// Two biquads in a row on one mono signal, as one step on the two-float vector: lane 0 runs the
-// first on this sample, lane 1 the second on what the first gave a sample ago. So the pair is one
-// sample late and its response is that of the two in a row; it costs what one stereo biquad does.
-struct LanePair
-{
-    Stereo b0 = {}, b1 = {}, b2 = {}, a1 = {}, a2 = {}, z1 = {}, z2 = {};
-    float held = 0.0f;   // the first filter's last output
-    void set(const PairBiquad& p, const PairBiquad& q)
-    {
-        b0 = stereo(p.b0, q.b0); b1 = stereo(p.b1, q.b1); b2 = stereo(p.b2, q.b2);
-        a1 = stereo(p.a1, q.a1); a2 = stereo(p.a2, q.a2);
-    }
-    void reset() { z1 = z2 = splat(0.0f); held = 0.0f; }
-    float process(float x)
-    {
-        const Stereo in = stereo(x, held);
-        const Stereo y = b0 * in + z1;
-        z1 = b1 * in - a1 * y + z2;
-        z2 = b2 * in - a2 * y;
-        held = y[0];
-        return y[1];
-    }
-};
-
 struct MicModel
 {
     enum { kCamcorder = 0, kDynamic, kPhone, kBoombox };
     int type = -1, n = 0;           // the type in the filters; how many filters it has
-    PairBiquad f[8];                // the filters (the stereo types run these)
-    LanePair q[4];                  // the same filters two by two (the mono types run these)
+    PairBiquad f[8];                // the filters (the mono types run them with both halves alike)
     float capNoise = 0.0f, hiss = 0.0f, line = 0.0f;   // noise amplitudes for this rate (uniform white noise)
     Biquad lineBp;                                     // the phone line's band (mono)
     Xorshift32 rng[2] = { Xorshift32(0x3c6ef372u), Xorshift32(0xa54ff53au) };
-    // phone: the carbon's level-dependent sensitivity
-    float env = kRefLevel, envAtk = 0.0f, envRel = 0.0f, cg = 1.0f, cgInc = 0.0f;
-    // boombox: the ALC's detector (vc), 1 / (vc / threshold) and the gain it sets
-    float vc = 0.0f, u = 1.0f, alcG = 1.0f, alcAtk = 0.0f, alcRel = 1.0f;
+    // phone: the level the carbon's sensitivity follows
+    float env = kRefLevel, envAtk = 0.0f, envRel = 0.0f;
+    // boombox: the ALC's detector voltage (double: its 22 s discharge is a change of about one
+    // part in a million a sample, which a float would round to a few percent), 1 / (vc /
+    // threshold), the gain it sets, the detector's charge and discharge per sample
+    double vc = 0.0, alcAtk = 0.0, alcRel = 1.0;
+    float u = 1.0f, alcG = 1.0f;
 
     static BiquadCoeffs design(const MicSec& s, float sr)
     {
@@ -1096,10 +1073,8 @@ struct MicModel
             PairBiquad a = f[2], b = f[3];
             a.reset(); b.reset();
             hiss = noiseAmp(kTapeHissRms, powerGain([&](float x) { return b.process(a.process(splat(x)))[0]; }, sr));
-            q[0].set(f[0], f[1]);   // the capsule
-            q[1].set(f[2], f[3]);   // the tape
-            alcAtk = 1.0f - std::exp(-1.0f / (kAlcAttackSec * sr));
-            alcRel = std::exp(-(float)kCtrl / (kAlcRecoverySec * sr));   // per control tick
+            alcAtk = 1.0 - std::exp(-1.0 / ((double)kAlcAttackSec * sr));
+            alcRel = std::exp(-1.0 / ((double)kAlcRecoverySec * sr));
         }
         if (t == kDynamic)
         {
@@ -1110,7 +1085,6 @@ struct MicModel
         {
             for (const MicSec& s : kPhoneSecs) add(s);
             normalise(0, n, sr);
-            for (int i = 0; i < 4; ++i) q[i].set(f[2 * i], f[2 * i + 1]);
             lineBp.setCoeffs(BiquadCoeffs::bandpass(sr, kLineBpHz, kLineBpQ));
             Biquad bp = lineBp;
             bp.reset();
@@ -1122,24 +1096,10 @@ struct MicModel
     void reset()
     {
         for (PairBiquad& b : f) b.reset();
-        for (LanePair& b : q) b.reset();
         lineBp.reset();
-        env = kRefLevel; cg = 1.0f; cgInc = 0.0f;
-        vc = 0.0f; u = 1.0f; alcG = 1.0f;
+        env = kRefLevel;
+        vc = 0.0; u = 1.0f; alcG = 1.0f;
     }
-    // Every control tick: the carbon's sensitivity follows the level (two square roots), and the
-    // ALC's detector discharges.
-    void tick()
-    {
-        if (type == kPhone)
-        {
-            const float r = env * (1.0f / kRefLevel);
-            const float target = r >= 1.0f ? 1.0f : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);   // r ^ (1/4): 1 : 1.25
-            cgInc = (target - cg) * kCtrlInv;
-        }
-        else if (type == kBoombox) vc *= alcRel;
-    }
-
     // The negative half of the capsule's JFET gives way first.
     static Stereo jfet(Stereo x)
     {
@@ -1154,6 +1114,8 @@ struct MicModel
         const float t = clamp(x * (x < 0.0f ? 1.0f / kJfetNeg : 1.0f / kJfetPos), -1.5f, 1.5f);
         return s * (t - (4.0f / 27.0f) * t * t * t);
     }
+    // one filter on a mono signal (both halves of the pair alike)
+    float mono(int i, float x) { return f[i].process(splat(x))[0]; }
     // noise: 1 while the Noise switch is on, 0 off (smoothed)
     Stereo capsule(Stereo x, float noise)
     {
@@ -1175,23 +1137,26 @@ struct MicModel
                 float m = 0.5f * (x[0] + x[1]);                // one line
                 const float pk = std::fabs(m);
                 env += (pk > env ? envAtk : envRel) * (pk - env);
-                cg += cgInc;
-                m = clamp(m * cg, -kCarbonClip, kCarbonClip);
+                // sensitivity: r ^ (1/4) below reference (1 : 1.25), at most 10 dB down
+                const float r = env * (1.0f / kRefLevel);
+                const float g = r >= 1.0f ? 1.0f : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);
+                m = clamp(m * g, -kCarbonClip, kCarbonClip);
                 m += kCarbonH2 * m * m;                       // its DC goes in the highpasses that follow
-                m = q[3].process(q[2].process(q[1].process(q[0].process(m))));
+                for (int i = 0; i < 8; ++i) m = mono(i, m);
                 if (noise > 0.0f) m += lineBp.process(rng[0].nextBipolar()) * (line * noise);
                 return splat(m);
             }
             default:   // kBoombox
             {
-                float m = q[0].process(0.5f * (x[0] + x[1]));   // the capsule (one built-in mic)
+                float m = mono(1, mono(0, 0.5f * (x[0] + x[1])));   // the capsule (one built-in mic)
                 if (noise > 0.0f) m += rng[0].nextBipolar() * (capNoise * noise);
                 m = clamp(jfet(m) * (kAlcRecGain * alcG), -kAlcRail, kAlcRail);
                 m -= kAlcCubic * m * m * m;
-                // the detector: charges from the output's peaks, discharges in tick()
-                const float pk = std::fabs(m);
+                // the detector: discharges through 1 Mohm, charges from the output's peaks
+                const double pk = std::fabs(m);
+                vc *= alcRel;
                 if (pk > vc) vc += alcAtk * (pk - vc);
-                const float r = vc * (1.0f / kRefLevel);
+                const float r = (float)vc * (1.0f / kRefLevel);
                 if (r > 1.0f)
                 {
                     // the gain for the next sample: r ^ -14, with 1 / r followed by one Newton
@@ -1202,7 +1167,7 @@ struct MicModel
                 }
                 else { u = 1.0f; alcG = 1.0f; }
                 if (noise > 0.0f) m += rng[1].nextBipolar() * (hiss * noise);
-                return splat(q[1].process(m));               // the tape
+                return splat(mono(3, mono(2, m)));           // the tape
             }
         }
     }
@@ -2331,7 +2296,6 @@ private:
         if (micWant && !micRun_) { mic_.reset(); micRun_ = true; micHold_ = micHoldTicks_; }
         else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
         if (micHold_ > 0) { --micHold_; rampS_[rMic] = 0.0f; ramp_[rMic].snap(0.0f); }
-        if (micRun_) mic_.tick();
         if (choActive_)
         {
             // L and R LFOs up to half a cycle apart. A jump of Cho Delay is followed at a
