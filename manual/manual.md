@@ -52,15 +52,6 @@ toc: -
 
 [[toc]]
 
-## How to read this manual
-
-Each of the {{pages}} pages of the plugin has a chapter. It opens with a picture of the page, with a number on every control; the same numbers run down the pages that follow, where each control gets its printed name, its place, its range, its default and a plain account of what it does.
-
-The **default** given for a control is its value in a new instance of the plugin, which opens on the program Home Recording.
-
-Titles and the lines under them are allowed to be strange. The explanations are not.
-
-
 ::: chapter
 id: play
 title: ＰＬＡＹ
