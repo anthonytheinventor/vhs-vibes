@@ -52,7 +52,7 @@ what: Sums left and right into one. It sits near the end of the path, after ever
 
 ## Mix
 what: Dry / wet. 100 % is all effect; lower lets the untouched input back in. The dry signal is delayed to line up with the tape path.
-listen: With the wobbles off the blend is clean. With them on, dry and wet drift against each other and it sounds like a chorus. That is the nature of mixing a wobbling signal with a steady one.
+listen: With the wobbles off the blend is clean. With them on, dry and wet drift against each other and it sounds like a chorus.
 
 ## Output
 what: Output level. The last stage.
@@ -200,7 +200,12 @@ what: Plays the sound into one of four period microphones before it reaches the 
 note: While the Mic is on it adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. The Noise switch silences it; the Master knob does not change it.
 
 ## Mic Type
-what: Which microphone. **Camcorder**: a camcorder's built-in microphone and the record chain behind it, the camera across the room (it hears the source 16 dB quieter). Mono, as the camera was. The electret capsule (3 dB down at 53 Hz, a rise of about 2.5 dB around 15 kHz, its own faint hiss), the mic amp's band (a further low cut near 40 Hz, 3.6 dB down at 15 kHz) and its overload above about 107 dB SPL, then the camera's record level control: 42 dB of gain, everything from 61 to 83 dB SPL held within 1.2 dB of one level, and in every pause the hiss lifted by up to 21 dB. Louder than that range, the level control is at its lowest and loud sounds and sudden onsets crunch. Its timing (20 ms to catch a sound, 8 dB a second back) is an estimate. **Dynamic**: a moving-coil stage microphone of the Shure 515 kind: a gentle low cut (8 dB down at 100 Hz), a presence peak of 5 dB at 5 kHz, a smaller one at 8 kHz, falling away above 10 kHz. **Phone**: the CCITT P.48 reference telephone: 300 Hz to 3.4 kHz with a broad rise to 3 kHz and steep edges, the second harmonic of a carbon microphone, its sensitivity that falls with the level (quiet sound comes through weaker still), and the line's faint noise. Mono, as a phone line is. **Boombox**: the same electret, a record level control (ALC) that turns everything from a whisper to a shout into nearly the same level, and the cassette's 50 Hz to 10 kHz with its hiss. Mono, as a radio cassette's built-in microphone was.
+what: Which microphone.
+**Camcorder**: a camcorder's built-in microphone and the record chain behind it, with the camera across the room (it hears the source 16 dB quieter). The camera's record level control holds everything from 61 to 83 dB SPL within 1.2 dB of one level, and in every pause lifts the hiss by up to 21 dB. Louder than that range, loud sounds and sudden onsets crunch. Its timing (20 ms to catch a sound, 8 dB a second back) is an estimate. Mono, as the camera was.
+**Dynamic**: a moving-coil stage microphone of the Shure 515 kind: a gentle low cut (8 dB down at 100 Hz), a presence peak of 5 dB at 5 kHz, a smaller one at 8 kHz, falling away above 10 kHz.
+**Phone**: the CCITT P.48 reference telephone: 300 Hz to 3.4 kHz with steep edges, the grit of a carbon microphone, and the line's faint noise. The carbon grows less sensitive as the sound gets quieter, so quiet words come through weaker still. Mono, as a phone line is.
+**Boombox**: the same electret as the Camcorder, a record level control (ALC) that turns everything from a whisper to a shout into nearly the same level, and the cassette's 50 Hz to 10 kHz with its hiss. Mono, as a radio cassette's built-in microphone was.
+The capsule's and the mic amp's own figures are in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 listen: Boombox: after a loud passage the ALC lets go over about seven seconds and the room, the hiss and every quiet sound come up with it. Camcorder: the same in about two and a half seconds, but after a sound louder than its range it first holds the gain down for longer, ten seconds or more. Phone: quiet words sink further than loud ones.
 try: Camcorder 89 and Wedding Video use Camcorder, Answer Machine uses Phone, Bootleg Concert and Tube TV use Boombox.
 note: Changing the type fades the mic out, puts the new one in and fades it back in.

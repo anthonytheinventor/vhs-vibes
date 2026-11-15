@@ -72,10 +72,6 @@ epigraph: Press it. What comes back is almost your song.
 
 [[screenshot TAPE | The first of the five pages, as the MPC shows it.]]
 
-## The five pages
-
-[[pages]]
-
 ::: chapter
 id: insert
 title: ＩＮＳＥＲＴ　ＴＡＰＥ
@@ -97,10 +93,6 @@ VHS Vibes needs **MPC OS 3.10.1 or later**.
 
 `INSTALL.txt` in the zip says the same at more length.
 
-::: note The two switches
-Both preference switches must be on: **Enable Enhancements** and **External Plugin Support**. Restart the MPC after switching them.
-:::
-
 ## First sound
 
 1. Load VHS Vibes as an insert effect on a track and play something through it.
@@ -118,6 +110,10 @@ word: SCREEN
 toc: How the screen and the Q-Links are organised
 epigraph: A cassette with a window. Behind the window, two wheels and all the time in the world.
 :::
+
+## The five pages
+
+[[pages]]
 
 ## The cassette
 
@@ -143,7 +139,7 @@ There are three kinds of control:
 
 The name printed above a control is sometimes shorter than the name the MPC uses for the same parameter elsewhere, for example in automation: the knob printed ^RATE^ in the FLUTTER block is the parameter `Flut Rate`. This manual gives both for every control.
 
-The screens in this manual are drawn by the plugin's skin script with every control at its default; they are not photos of an MPC.
+The screens shown here have every control at its default.
 
 ## The Q-Links
 
@@ -226,7 +222,12 @@ epigraph: What the tape did to the sound.
 
 ## The three knobs that change their name
 
-The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS. The numbers under them change too: REC LEVEL reads in dB, TAPE SPEED reads SP, LP or EP at those three speeds and the speed in mm/s between them, BIAS reads "right" or a signed percentage (minus is too little bias, plus too much). They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
+The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean.
+
+- **The captions change.** SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS.
+- **The read-outs change.** REC LEVEL reads in dB. TAPE SPEED reads SP, LP or EP at those three speeds, and the speed in mm/s between them. BIAS reads "right", or a percentage: minus is too little bias, plus too much.
+- **The knobs stay.** They are the same three knobs on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat.
+- **Lows and Highs** keep their names but change their job as well.
 
 | Knob | Type = 2-Band | Type = VHS |
 |---|---|---|
@@ -239,7 +240,7 @@ The **Type** switch changes what the saturator stage is, and with it what three 
 **2-Band** is a crossover with a soft clipper on each side. **VHS** is a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way): quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds, and the five programs whose names begin with VHS are older programs with this saturator in place of the 2-Band one.
 
 ::: note Where Type = VHS comes from
-It is built on the published figures of the VHS linear track: its tape speeds, its record pre-emphasis, its reference level and its 3 % distortion at that level. How it works, what it measures and what is estimated is in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ. Driven hard, the stage clips highs it has just lifted, which folds back into the band without HQ; HQ is on in a new instance for that reason.
+It is built on the published figures of the VHS linear track: its tape speeds, its record pre-emphasis, its reference level and its 3 % distortion at that level. How it works, what it measures and what is estimated is in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ. Driven hard, the stage clips highs it has just lifted; without HQ part of that folds back into the band. Keep HQ on.
 :::
 
 ::: page WOBBLE
@@ -248,10 +249,6 @@ epigraph: The motor is tired.
 :::
 
 [[controls WOBBLE]]
-
-## Turning a wobble knob while sound plays
-
-Turning a wobble depth or rate changes the plugin's own delay. A small move is followed at a limited pace, so the pitch bends by a couple of percent at most. After a big jump, once the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend is over.
 
 ::: page NOISE
 toc: Hum, buzz, hiss, crackle and the whistle
@@ -285,10 +282,6 @@ Mic Type does not choose an EQ curve. Each type is a model of one kind of microp
 | ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up; mono |
 
 Every type's response is 0 dB at 1 kHz. The Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
-
-::: note Since 1.6
-The four types were rebuilt in 1.6. A project or program with the Mic on sounds different from before; with the Mic off nothing has changed.
-:::
 
 ::: page DECK
 toc: The machine's faults, B-Type NR and HQ
@@ -505,13 +498,15 @@ A microphone overloads and hisses at a sound pressure, not at a digital level, s
 
 **This mapping is an assumption.** No document can fix it for a plugin. It was chosen so that the electret's documented overload lies 6 dB above reference: music played in at reference level passes cleanly, and Mic Gain +6 dB reaches the overload. The same mapping serves all four types. Mic Gain moves the sound along it, as a louder or a closer source would.
 
-The Camcorder stands further off. The mapping is the same for it, but its camera is taken to be across the room, 16 dB further from the source than a close microphone (about six times the distance in free field), so it hears everything 16 dB quieter before Mic Gain's own change. Its level control works from 60.8 to 82.8 dB SPL at the microphone, which with the distance is -35 to -13 dBFS peak coming in at Mic Gain 0. So Mic Gain spans, for ordinary material (music at -18 dBFS rms, and a sine at that level):
+The Camcorder stands further off. The mapping is the same for it, but its camera is taken to be across the room, 16 dB further from the source than a close microphone (about six times the distance in free field). So it hears everything 16 dB quieter, before Mic Gain's own change.
 
-- **-12 to -6 dB:** inside the range. Loud and quiet parts 15 dB apart come out 3 to 4 dB apart; in a gap the hiss rises to within 28 dB of the music.
-- **0 dB:** at the top of the range. The sine sits 1.8 dB inside it, the levels_test tone (-12 dBFS peak) 1.2 dB past. Music's loud passages hold the level control at its lowest, so they keep their 15 dB over the quiet ones, with a little crunch; after the music stops the hiss comes up some seconds later (7 seconds after this music).
-- **+6 to +12 dB:** past the range. Loud sounds crunch (the sine: 0.7 % distortion at +6 dB, 3.1 % at +12 dB, the music's peaks 4 to 9 dB lower against the rest), and after the music stops the gap stays quiet for about 22 seconds before the hiss comes up.
+Its level control works from 60.8 to 82.8 dB SPL at the microphone. With the distance, that is -35 to -13 dBFS peak coming in at Mic Gain 0. Here is what Mic Gain does to ordinary material: music at -18 dBFS rms, and a sine at that level.
 
-Camcorder 89 (Mic Gain +2 dB) and Wedding Video (+1 dB) put the levels_test tone 3 and 2 dB past the top of the range: squashed, with a little crunch (0.6 and 0.5 % distortion).
+- **-12 to -6 dB: inside the range.** Loud and quiet parts 15 dB apart come out 3 to 4 dB apart. In a gap the hiss rises to within 28 dB of the music.
+- **0 dB: at the top of the range.** The sine sits 1.8 dB inside it; a tone peaking at -12 dBFS sits 1.2 dB past it. The music's loud passages hold the level control at its lowest, so they keep their 15 dB over the quiet ones, with a little crunch. After the music stops, the hiss comes up some seconds later (7 seconds after this music).
+- **+6 to +12 dB: past the range.** Loud sounds crunch. The sine has 0.7 % distortion at +6 dB and 3.1 % at +12 dB; the music's peaks come out 4 to 9 dB lower against the rest. After the music stops, the gap stays quiet for about 22 seconds before the hiss comes up.
+
+Camcorder 89 (Mic Gain +2 dB) and Wedding Video (+1 dB) put that -12 dBFS tone 3 and 2 dB past the top of the range: squashed, with a little crunch (0.6 and 0.5 % distortion).
 
 ### The figures they are built on
 
@@ -551,7 +546,7 @@ A camcorder's built-in microphone was a decent electret. What gave its sound awa
 5. **The ALC.** A fixed record gain of 42 dB. The camera's nominal microphone level, -66 dBs, is taken as the knee: from this capsule that is 60.8 dB SPL at the microphone, -35 dBFS peak coming in at Mic Gain 0, and the gain brings it to 1.2 dB under reference. Above the knee a peak detector on the output turns the gain down by 18 dB for every dB it sees: 22 dB of input give 1.2 dB of output, so the end of the range, 82.8 dB SPL, comes out at reference. There the gain has come down by 20.8 dB, as far as it goes; past it the output follows the input up again.
 6. **The gain element's distortion.** The Boombox's, after the ALC: 0.3 % at the end of the range, rising quickly past it.
 
-The level control's timing is an estimate. No camcorder of the period has its ALC's time constants in a document that could be read: the JVC's are on its schematic, but not legibly. The detector charges with 20 ms, slower than the Boombox's, because a camcorder's level control is reported to let a sudden loud sound distort before it reacts. It discharges with 19 seconds, which brings the gain back at 8.2 dB a second, the whole 20.8 dB in about 2.5 seconds: faster than the Boombox, because the Sanyo manual says the recovery is shortened for the microphone, and slow enough for the "several seconds" reviewers describe. After a sound louder than the range, the detector holds more than it needs and the gain stays at its lowest until that has drained away. At Mic Gain 0 the gain starts back 2 seconds after the levels_test tone stops and 7 seconds after the music; at +12 dB, 22 to 24 seconds after.
+The level control's timing is an estimate. No camcorder of the period has its ALC's time constants in a document that could be read: the JVC's are on its schematic, but not legibly. The detector charges with 20 ms, slower than the Boombox's, because a camcorder's level control is reported to let a sudden loud sound distort before it reacts. It discharges with 19 seconds, which brings the gain back at 8.2 dB a second, the whole 20.8 dB in about 2.5 seconds: faster than the Boombox, because the Sanyo manual says the recovery is shortened for the microphone, and slow enough for the "several seconds" reviewers describe. After a sound louder than the range, the detector holds more than it needs and the gain stays at its lowest until that has drained away. At Mic Gain 0 the gain starts back 2 seconds after the -12 dBFS tone stops and 7 seconds after the music; at +12 dB, 22 to 24 seconds after.
 
 There is no mechanism noise. A camcorder's microphone does pick up its own motors, the makers say so, but no level or spectrum was found for it. The only noise is the capsule's, and the ALC lifts it in every pause: 17 dB down right after a sound in its range, then up with the gain, to the full 42 dB of record gain.
 
@@ -641,16 +636,14 @@ Every section of the machine has its own switch, so a part can be taken out with
 
 [[switches]]
 
+**Animation** and **HQ** are not part of the programs: choosing a program leaves them as you set them.
+
 ## What a switch leaves in
 
 - **Saturator Power** off: Hi Cut stays in.
 - **Wobble** off: the two filters of the WOBBLE page stay in.
 - **Noise** off: silences every noise, the Whistle, the head-switching buzz and the microphones' own noise included.
-- **Deck Power** off: NR, HQ and Animation are not affected.
-
-## Two switches the programs leave alone
-
-**Animation** and **HQ** are not part of the programs. Choosing a program does not change either; they stay as you set them.
+- **Deck Power** off: B-Type NR, HQ and Animation are not affected.
 
 ::: chapter
 id: programs
@@ -667,8 +660,8 @@ Choosing a program fades the sound out, starts the new tape and fades it in.
 
 ## Three recipes
 
-- **A slow-speed (EP) tape:** set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss.
-- **A standard-speed (SP) tape:** Hi Cut about 10 kHz, Lo Cut about 50 Hz.
+- **A slow-speed (EP) tape:** set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss. Or set Type to VHS and turn TAPE SPEED to EP.
+- **A standard-speed (SP) tape:** Hi Cut about 10 kHz, Lo Cut about 50 Hz. Or set Type to VHS with TAPE SPEED at SP.
 - **A clean Hi-Fi sound:** keep the wobbles and the noise low.
 
 ::: chapter
@@ -682,12 +675,8 @@ epigraph: Written in pencil on the back of the box, by someone who knew the mach
 
 ## How it behaves
 
-- **Program changes.** Choosing a program fades the sound out, starts the new tape and fades it in.
-- **Wobble knobs.** Turning a wobble depth or rate changes the plugin's own delay. A small move bends the pitch by a couple of percent at most; after a big jump the sound crossfades to the new delay in 25 ms.
+- **Turning a wobble knob while sound plays.** A wobble depth or rate changes the plugin's own delay. A small move is followed at a limited pace, so the pitch bends by a couple of percent at most. After a big jump, once the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend is over.
 - **Timing.** The wobble delays hold the sound back by their resting length, a few milliseconds on most programs. That length is reported to the host as the plugin's latency, half a second after it stops changing, so a host that compensates keeps the track in time.
-- **Mix below 100 %.** The dry signal is delayed to line up with the tape path. With the wobbles off the blend is clean; with them on, dry and wet drift against each other and it sounds like a chorus.
-- **Noise with no input.** The effect makes noise even with nothing playing. Set Master to 0 %, or switch Noise off, for a silent background.
-- **Noise that swells.** With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops. Turn Master down if it is too much.
 - **Skipped stages.** A stage whose amount is zero is skipped.
 
 ## What is taken from real machines

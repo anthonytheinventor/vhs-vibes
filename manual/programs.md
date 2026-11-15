@@ -22,7 +22,7 @@ A copy of a copy of a copy: dull, clipped highs, deep wobble, plenty of noise.
 Slow warble and a wide chorus under dimmed lights.
 
 ## Camcorder 89
-Built-in microphone, level control squashing everything, noise recorded with the picture. The camera's own level control on the mic, the deck's AGC after it.
+Built-in microphone, the camera's level control squashing everything and the deck's AGC after it, noise recorded with the picture.
 
 ## Tracking Error
 Buzz on the music, static, and the sound dropping to the backup track.
@@ -55,7 +55,7 @@ A good tape in a deck that cannot quite follow it.
 Recorded at the slowest speed: about 100 Hz to 6 kHz, more hiss, more wobble.
 
 ## Wedding Video
-A camcorder at the back of the hall; the level control rides everything. The camera's own level control on the mic, the deck's AGC after it.
+A camcorder at the back of the hall: the camera's level control rides everything, and the deck's AGC rides it again.
 
 ## Hi-Fi Master
 The best VHS could do: wide, steady, quiet, breathing a little.
