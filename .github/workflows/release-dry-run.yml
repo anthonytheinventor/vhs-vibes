@@ -1,0 +1,24 @@
+# A trial of Open MPC's shared release workflow on this plugin: build both CPUs from this repo with the Akai SDK
+# they pin, package the catalog zips, run their checker. dry_run: nothing is released; the zips are run artifacts.
+name: Open MPC release workflow (dry run)
+
+on:
+  push:
+    branches: [ci-release-dry-run]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    uses: open-mpc/mpc-vst-plugins/.github/workflows/vst-release.yml@00a45bd95ec9d030ec3b4752a6c2ccef070cc216
+    with:
+      tag: v1.5.3-dry-run
+      version: 1.5.3
+      tools_ref: 00a45bd95ec9d030ec3b4752a6c2ccef070cc216
+      sdk_project: .
+      plugin_id: vhs-vibes
+      license: MIT
+      about: "VHS Vibes: a VHS tape degradation effect (pitch wobble, saturation, generation loss, hum, hiss and crackle) for the MPC."
+      dry_run: true
