@@ -305,6 +305,89 @@ int main()
         }
     }
 
+    std::printf("8. A Q-Link turned across each switch: no click, and a fade only where the switch needs one\n");
+    {
+        // Every on/off and choice parameter, swept from 0 to 1 in 400 normalised values (one per
+        // 128-frame call, as a Q-Link sends them) under a 300 Hz tone, 0.5 left and 0.25 right.
+        // Each one with something for it to switch: the mic on for Mic Type, hum for Noise Pos
+        // and Noise On, and so on. The measure is the sound at each position, settled: its
+        // largest step and its quietest call. HQ restarts the sound (one fade), and so does Sat
+        // Type with the Saturator on; nothing else may fade.
+        struct Case { int param; std::vector<std::pair<int, float>> setup; int fades; };
+        std::vector<Case> cases;
+        Fx probe;
+        for (int i = 0; i < kNumParams; ++i)
+        {
+            const mpc::Param::Kind k = probe.plug()->param(i).kind;
+            if (k != mpc::Param::Kind::Bool && k != mpc::Param::Kind::Choice) continue;
+            Case c{ i, {}, i == kHq ? 1 : 0 };
+            switch (i)
+            {
+                case kMicType:   c.setup = { {kMicOn, 1} }; break;
+                case kNoisePos:  case kNoiseOn: c.setup = { {kHum, 50} }; break;
+                case kChorusOn:  c.setup = { {kChoWidth, 50} }; break;
+                case kWobbleOn:  c.setup = { {kWarp, 35}, {kFlutter, 30} }; break;
+                case kDeckOn:    c.setup = { {kAgc, 50} }; break;
+                case kSatOn:     c.setup = { {kLoSat, 50}, {kHiSat, 50} }; break;
+                case kHq:        c.setup = { {kDrive, 50} }; break;
+                default: break;
+            }
+            cases.push_back(c);
+            if (i == kSatType) cases.push_back({ i, { {kSatOn, 1} }, 1 });
+        }
+        for (const Case& c : cases)
+        {
+            const mpc::Param& p = probe.plug()->param(c.param);
+            const int positions = p.kind == mpc::Param::Kind::Bool ? 2 : (int)p.choices.size();
+            float own = 0.0f, low = 1.0f;
+            for (int k = 0; k < positions; ++k)
+            {
+                Fx fx;
+                for (const auto& s : c.setup) fx.set(s.first, s.second);
+                fx.set(c.param, (float)k);
+                std::vector<float> o; fx.play(0.6f, 0.5f, 300.0f, nullptr, nullptr, 0.25f); fx.play(0.4f, 0.5f, 300.0f, &o, nullptr, 0.25f);
+                own = std::fmax(own, largestStep(o));
+                for (size_t i = 0; i + 128 <= o.size(); i += 128)
+                {
+                    float pk = 0.0f; for (size_t j = i; j < i + 128; ++j) pk = std::fmax(pk, std::fabs(o[j]));
+                    low = std::fmin(low, pk);
+                }
+            }
+            Fx fx;
+            for (const auto& s : c.setup) fx.set(s.first, s.second);
+            fx.set(c.param, 0.0f);
+            fx.play(0.6f, 0.5f, 300.0f, nullptr, nullptr, 0.25f);
+            std::vector<float> out;
+            int fades = 0; bool inFade = false;
+            for (int b = 0; b < 600; ++b)
+            {
+                if (b >= 100 && b < 500) fx.e->setParameter(fx.e, c.param, (float)(b - 100) / 399.0f);
+                const size_t at = out.size();
+                fx.play(128.0f / 44100.0f, 0.5f, 300.0f, &out, nullptr, 0.25f);
+                float pk = 0.0f; for (size_t j = at; j < out.size(); ++j) pk = std::fmax(pk, std::fabs(out[j]));
+                const bool quiet = pk < 0.5f * low;
+                if (quiet && !inFade) ++fades;
+                inFade = quiet;
+            }
+            const float step = largestStep(out);
+            const bool withSat = c.param == kSatType && !c.setup.empty();
+            std::printf("   %-10s%s %d fade%s, largest step %.4f (the sound's own %.4f)\n", p.name.c_str(), withSat ? " (Sat on)" : "         ",
+                        fades, fades == 1 ? " " : "s", step, own);
+            char what[96];
+            if (c.param == kNoisePos)
+            {
+                // The noise moves between the input and the place after wobble 1 in one sample,
+                // so for the delay's length it is heard twice or not at all: a small step that is
+                // measured here but not judged (not changed in 1.5.2).
+                std::snprintf(what, sizeof(what), "%s: no fade", p.name.c_str());
+                check(fades == c.fades, what);
+                continue;
+            }
+            std::snprintf(what, sizeof(what), "%s%s: %s, and no click", p.name.c_str(), withSat ? " with the Saturator on" : "", c.fades ? "one fade" : "no fade");
+            check(fades == c.fades && step < 1.5f * own, what);
+        }
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
