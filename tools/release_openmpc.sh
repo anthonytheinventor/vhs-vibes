@@ -30,7 +30,13 @@ T=${OMP_TOOLS:-$W/omp/tools}          # (OMP_TOOLS: only to prove that the check
 
 grep '^{"plugin"' "$BENCH" | tail -1 > "$W/bench.json"
 [ -s "$W/bench.json" ] || { echo "no JSON line in $BENCH: run the bench with -j" >&2; exit 1; }
-(cd "$P/build" && zip -q -r "$W/in.zip" "$F")
+# The plugin folder for these zips gets a second copy of each binary at its top, beside the one in VST/.
+# After an install on MPC OS 3.10.1 the Plugin Manager rewrites plugin.json, and up to at least its 1.3.0 it
+# names the binary by its bare file name (open-mpc/plugin-manager#12), which for the SDK layout points at
+# nothing: the plugin installs and is not listed. With a copy at the top that name is a real file, and a
+# manager that keeps the path works as well. (Loaded from there on an MPC One+, 3.10.1.12, 2026-11-15.)
+mkdir -p "$W/src" && cp -a "$P/build/$F" "$W/src/" && cp "$W/src/$F/VST/"*.so "$W/src/$F/"
+(cd "$W/src" && zip -q -r "$W/in.zip" "$F")
 python3 "$T/sdk_release.py" "$W/in.zip" --version "$V" --id vhs-vibes --repo anthonytheinventor/vhs-vibes --license MIT -o "$W/out" -- --bench "$W/bench.json" | tail -1
 python3 "$T/sdk_zip.py" "$W/out/VHS-Vibes-$V-mpc-sdk.zip" "$W/out"/*-mpc-armv7.zip "$W/out"/*-mpc-aarch64.zip
 
@@ -80,6 +86,19 @@ printf '<VALUE name="pluginList-arm">\n</VALUE>\n' > "$W/settings"
 $AWK -v mode=add -v file=/x/a.so -v alt=/x/b.so -v uid=41596c4d -v entryfile="$W/entry" -v listkey=pluginList-arm -f "$X/plugin_list.awk" "$W/settings" > /dev/null \
     || { echo "FAIL  plugin_list.awk does not run ($AWK)"; fail=1; }
 echo "scripts: parsed with '$SH', helper run with '$AWK'"
+
+# 4. what the Plugin Manager does after an install: its script rewrites plugin.json, and the binary it names
+#    must be in the folder, on both kinds of MPC
+for a in armv7:armv7l:file32 aarch64:aarch64:file64; do
+    zipname=${a%%:*}; rest=${a#*:}; arch=${rest%%:*}; key=${rest#*:}
+    rm -rf "$W/m" && mkdir -p "$W/m/z" "$W/m/root/nvme/VST2 Plugins"
+    unzip -q "$W/out/VHS-Vibes-$V-mpc-$zipname.zip" -d "$W/m/z"
+    cp -a "$W/m/z/VHS-Vibes-$V/portable/$F" "$W/m/root/nvme/VST2 Plugins/"
+    ARCH=$arch ROOT="$W/m/root" sh "$W/omp/tools/vst2_migrate.sh" --json "/nvme/VST2 Plugins/$F" > /dev/null || { echo "FAIL  the manager's step did not run ($zipname)"; fail=1; continue; }
+    so=$(sed -n "s/.*\"$key\": \"\(.*\)\".*/\1/p" "$W/m/root/nvme/VST2 Plugins/$F/plugin.json")
+    if [ -n "$so" ] && [ -f "$W/m/root/nvme/VST2 Plugins/$F/$so" ]; then echo "manager step ($zipname): $key = $so, in the folder"
+    else echo "FAIL  manager step ($zipname): $key = \"$so\" is not in the folder"; fail=1; fi
+done
 
 [ $fail = 0 ] || { echo "NOT RELEASED: a check failed, nothing was written to dist/" >&2; exit 1; }
 mkdir -p "$P/dist" && cp "$W/out"/*.zip "$P/dist/"
