@@ -388,6 +388,26 @@ int main()
         }
     }
 
+    std::printf("9. A state cut short is not half loaded\n");
+    {
+        Fx fx(25, true);                     // Stereo Rental, HQ on, with Scrape and Whistle up
+        fx.set(kScrape, 40); fx.set(kWhistle, 25);
+        Fx other(9);                         // Chewed Tape, HQ off
+        const std::vector<uint8_t> s = other.state();
+        float before[kNumParams];
+        for (int i = 0; i < kNumParams; ++i) before[i] = fx.plug()->getNormalised(i);
+        for (size_t cut : { s.size() / 2, s.size() - 5, (size_t)13 })
+        {
+            const VstIntPtr r = fx.load(s, cut);
+            int changed = 0;
+            for (int i = 0; i < kNumParams; ++i) if (isSetting(i) && fx.plug()->getNormalised(i) != before[i]) ++changed;
+            std::printf("   the first %zu of %zu bytes: the load returns %d, %d settings changed, HQ %s\n", cut, s.size(), (int)r, changed, fx.get(kHq) > 0.5f ? "on" : "off");
+            check(r == 0 && changed == 0, "the load fails and leaves every setting as it was");
+        }
+        const VstIntPtr whole = fx.load(s);
+        check(whole == 1 && fx.get(kWarp) == other.get(kWarp) && fx.get(kHq) == other.get(kHq), "and the whole state still loads");
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }

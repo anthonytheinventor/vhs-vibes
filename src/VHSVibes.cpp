@@ -2470,13 +2470,14 @@ private:
     int   dropTicks_ = 0;
 };
 
-// The framework's dispatcher with four additions:
+// The framework's dispatcher with five additions:
 //  - Choosing a program leaves the Animation and HQ switches as they were. The framework sets
 //    every value a program lists, and the parameters added after Animation have to be in that
 //    list, so the program is first told the present position of the two switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
 //    their resting values before any state is loaded, so such a state sounds as it was saved
 //    whatever this instance was doing before; a newer state then sets them.
+//  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was.
 //  - While a program or a state is being written, the audio thread takes in none of the new
 //    values: they arrive with the reset, after the old sound has faded out.
 //  - When the host suspends the plugin, the notifier thread stops calling the host.
@@ -2492,10 +2493,17 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     // that reset too, at the start of the next block; asked for here, before the load counts as
     // finished, no block can take the new values in before it.)
     p->beginLoad();
+    // A state the framework turns down part of the way (cut short, or damaged) has set some
+    // values by then, and the resting values above are in too. Every setting goes back to what
+    // it was, before the load counts as finished: the audio thread sees none of it.
+    float before[kNumParams];
+    for (int i = 0; i < kNumParams; ++i) before[i] = p->getNormalised(i);
     if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
         for (int i = kScrape; i < kNumParams; ++i) p->set(i, i == kHq ? 0.0f : p->param(i).def);   // a state from before HQ existed: off
     const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
+    if (opcode == effSetChunk && result == 0)
+        for (int i = 0; i < kNumParams; ++i) if (isSetting(i)) p->setNormalised(i, before[i]);
     p->endLoad(opcode == effSetProgram ? value >= 0 && value < e->numPrograms : result != 0);
     return result;
 }
