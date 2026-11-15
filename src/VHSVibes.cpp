@@ -1063,15 +1063,16 @@ constexpr float kCamRecoverySec = 19.0f;                     // estimate
 // the LA3220's distortion figure belongs to a radio-cassette IC, not a camcorder's).
 //
 // Distance: the camera stands further from the source than a close microphone would. An
-// estimate, chosen by ear for the owner (to be retuned by ear: change this one number). 20 dB is
-// ten times the distance in free field: a microphone close to the source against a camera across
-// the room. It puts a sine of ordinary level (-18 dBFS rms) at Mic Gain 0 near the top of the
-// ALC's range instead of 14 dB past it. It is applied at the very input of the Camcorder's chain,
+// estimate, set by ear by the owner (to be retuned by ear: change this one number; 20 dB was
+// "ever so slightly too clean"). 16 dB is about six times the distance in free field: a
+// microphone close to the source against a camera across the room. At Mic Gain 0 it puts a sine
+// of ordinary level (-18 dBFS rms) 1.8 dB inside the top of the ALC's range instead of 14.2 dB
+// past it. It is applied at the very input of the Camcorder's chain,
 // before the capsule, so the capsule and everything after it hear the source that much quieter.
 // The level mapping (a sine peaking at kRefLevel is 104 dB SPL) stays as it is, and the same for
 // all four types: the distance is a property of the Camcorder, not a change of the mapping. Mic
 // Gain still sets how loud the source is, on top of it.
-constexpr float kCamDistanceDb = 20.0f;                      // estimate
+constexpr float kCamDistanceDb = 16.0f;                      // estimate
 
 struct MicModel
 {
@@ -2648,7 +2649,8 @@ private:
             {kChorusOn, 1}, {kChoMix, 55}, {kChoSpeed, 0.35f}, {kChoDelay, 18}, {kChoWidth, 90},
             {kDrift, 20} });
         // The camcorder's level control does the squashing here. With the camera's distance
-        // (kCamDistanceDb) the levels_test tone sits just inside the top of its ALC's range.
+        // (kCamDistanceDb) the levels_test tone sits 3 dB past the top of its ALC's range (in
+        // Wedding Video 2 dB): squashed, with a little crunch.
         program("Camcorder 89", {
             {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
             {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
