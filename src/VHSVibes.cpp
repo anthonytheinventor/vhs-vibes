@@ -1849,15 +1849,17 @@ private:
             if (fadeOut_ == 0) { fadeHold_ = 1 << 20; resetNextTick_ = true; }   // shut; the reset follows
         }
 
-        // Which stages have anything to do for the next 16 samples.
-        humOn_     = cur_[cHum] > 0.0f     || tgt_[cHum] > 0.0f;
-        buzzOn_    = cur_[cBuzz] > 0.0f    || tgt_[cBuzz] > 0.0f;
-        headOn_    = cur_[cHead] > 0.0f    || tgt_[cHead] > 0.0f;
-        hissOn_    = cur_[cHiss] > 0.0f    || tgt_[cHiss] > 0.0f;
-        crackleOn_ = cur_[cCrackle] > 0.0f || tgt_[cCrackle] > 0.0f;
+        // Which stages have anything to do for the next 16 samples. (live: the amount is up, or
+        // on its way up or down.)
+        const auto live = [this](int c) { return cur_[c] > 0.0f || tgt_[c] > 0.0f; };
+        humOn_     = live(cHum);
+        buzzOn_    = live(cBuzz);
+        headOn_    = live(cHead);
+        hissOn_    = live(cHiss);
+        crackleOn_ = live(cCrackle);
         noiseActive_ = humOn_ || buzzOn_ || headOn_ || hissOn_ || crackleOn_;
-        whistleOn_ = cur_[cWhistle] > 0.0f || tgt_[cWhistle] > 0.0f;
-        scrapeOn_  = cur_[cScrape] > 0.0f  || tgt_[cScrape] > 0.0f;
+        whistleOn_ = live(cWhistle);
+        scrapeOn_  = live(cScrape);
         tiltOn_    = cur_[cTiltLo] != 1.0f || cur_[cTiltHi] != 1.0f;
         driveOn_   = cur_[cDrvMix] > 0.0f;
         slewOn_    = cur_[cSlew] < 2.0f;
@@ -2024,7 +2026,7 @@ private:
         // pauses, back to its set level when the sound is at reference level. On the backup
         // track the hiss is twice as loud.
         const float breath = cur_[cBreath];
-        breathOn_ = breath > 0.0f || tgt_[cBreath] > 0.0f;
+        breathOn_ = live(cBreath);
         const float lvl = maxf(inMax_[0], inMax_[1]);
         inMax_ = splat(0.0f);
         breathEnv_ += (lvl > breathEnv_ ? breathAtk_ : breathRel_) * (lvl - breathEnv_);
