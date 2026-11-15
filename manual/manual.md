@@ -712,9 +712,9 @@ toc: Projects made with older versions
 epigraph: Nothing you recorded is lost. It only waits.
 :::
 
-**Projects made with 1.3 or 1.4 load with every setting in place.**
+**Projects made with an older version load with every setting in place.**
 
-- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, NR at Off, Sat Type at 2-Band.
+- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band.
 - No older program uses the newer controls.
 - The newer programs come after Init, so every older program keeps its number.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
@@ -728,7 +728,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.2 | The deck: Power, AGC, Drift, Tracking, Breathing. Mix | Bad Tracking, Six Hour Tape, Wedding Video, Hi-Fi Master, Edge Damage, Bootleg Concert, Public Access |
 | 1.3 | Animation | |
 | 1.4 | Scrape, Whistle, HQ | Sticky Tape, Tube TV, Worn Heads, Dirty Heads |
-| 1.5 | NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
+| 1.5 | B-Type NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
 | 1.6 | The four Mic Types rebuilt from published figures (the same controls) | |
 
 ::: chapter
@@ -746,13 +746,13 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 |---|---|
 | VHS Vibes is not in the plugin browser. | Check that the MPC runs MPC OS 3.10.1 or later; that **Enable Enhancements** and **External Plugin Support** are both on under Preferences > Enhancements (Beta); that the MPC was restarted afterwards; and that the folder `{{vendor}} - VST - VHS Vibes` sits inside a folder named `VST2 Plugins` at the top of the drive. Look under **External Plugins**. |
 | It hisses and hums with nothing playing. | That is the tape noise. Switch **Noise** off on the NOISE page, or set **Master** to 0 %. |
-| The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on with Type **Boombox**: its ALC turns the gain up in every pause, as the real one did. |
+| The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on with Type **Camcorder** or **Boombox**: its level control turns the gain up in every pause, as the real one did. |
 | With Mix below 100 % it sounds like a chorus. | The dry input is steady and the tape path wobbles. Switch **Wobble** off for a clean blend, or keep Mix at 100 %. |
 | The pitch bends or blurs when I turn a wobble knob. | The knob changes the plugin's own delay. It settles as soon as the knob rests. |
 | The sound dips for a moment when I choose a program, or switch HQ or Sat Type. | Each of these fades the sound out and back in. |
 | AGC, Drift, Tracking and Breathing do nothing. | **Power** on the DECK page is off. The programs Init and Clean Widener switch it off. |
 | Split, Lows, Lo Sat, Highs and Hi Sat do nothing. | **Power** in the SATURATOR block is off. |
-| Split, Lo Sat and Hi Sat do not do what their names say. | **Type** is on VHS, where they are Bias, Rec Level and Tape Speed, and are captioned so on the screen. See the table in the chapter ＴＡＰＥ. |
+| Split, Lo Sat and Hi Sat do not do what their names say. | **Type** is on VHS, where they are Bias, Rec Level and Tape Speed, and are captioned so on the screen. See the table on the TAPE page. |
 | Head Buzz, Whistle or Breathing cannot be heard. | Head Buzz and Whistle follow **Master** and the **Noise** switch. The Whistle is at 15.7 kHz; not everyone can hear it. Breathing shapes Hiss and Head Buzz, so it needs one of them turned up. |
 | A new program did not change HQ or Animation. | Those two switches are not part of the programs. |
 | The reels stand still. | They turn only while sound comes in or the song is playing. Or **Animation** is off. |
