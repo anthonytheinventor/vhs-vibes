@@ -95,3 +95,18 @@ Sat Type = VHS at standard speed, recorded a little hot: loud parts lose their t
 
 ## EP Tape
 Sat Type = VHS at the six-hour speed: the highs give way three times sooner and the top of the band is gone.
+
+## VHS - 3rd Gen Copy
+3rd Gen Copy on the tape model: every pass recorded hot on a dubbing deck with too much bias. The loud parts go soft and the top is gone.
+
+## VHS - Training Video
+Training Video on the tape model: the linear track of a worn SP tape, recorded hot, dull from too much bias.
+
+## VHS - Six Hour Tape
+Six Hour Tape on the tape model: EP speed, with the wear, hiss and wobble that EP Tape leaves out.
+
+## VHS - Sticky Tape
+Sticky Tape on the tape model: too little bias, so it is brighter and grittier as it drags.
+
+## VHS - Dirty Heads
+Dirty Heads on the tape model: too much bias, so the highs give way sooner still.

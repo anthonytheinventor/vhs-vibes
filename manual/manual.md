@@ -235,7 +235,7 @@ The **Type** switch changes what the saturator stage is, and with it what three 
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. |
 | ^HIGHS^ | Level of the high band into its clipper. | Trims the result above 1 kHz. |
 
-**2-Band** is a crossover with a soft clipper on each side. **VHS** is a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way): quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds.
+**2-Band** is a crossover with a soft clipper on each side. **VHS** is a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way): quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds, and the five programs whose names begin with VHS are older programs with this saturator in place of the 2-Band one.
 
 ::: note What is documented and what is estimated in Type = VHS
 It follows the figures an Audio Engineering Society tutorial on videotape duplication gives for the VHS linear track in SP: 33.35 mm/s, a record pre-emphasis of 120 microseconds, reference level 100 nWb/m (taken as -8 dBFS) and 3 % third-harmonic distortion at that reference level, a band that reaches about 10 kHz, and the direction of the bias effects. Deck specification sheets give EP's speed (11.12 mm/s) and band (4 to 6 kHz).
@@ -410,7 +410,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.2 | The deck: Power, AGC, Drift, Tracking, Breathing. Mix | Bad Tracking, Six Hour Tape, Wedding Video, Hi-Fi Master, Edge Damage, Bootleg Concert, Public Access |
 | 1.3 | Animation | |
 | 1.4 | Scrape, Whistle, HQ | Sticky Tape, Tube TV, Worn Heads, Dirty Heads |
-| 1.5 | NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape |
+| 1.5 | NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
 
 ::: chapter
 id: trouble

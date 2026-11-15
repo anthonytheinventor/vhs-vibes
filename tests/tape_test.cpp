@@ -138,7 +138,15 @@ int main()
         char name[64] = {0};
         fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 27, 0, name, 0.0f);
         fx.e->dispatcher(fx.e, effSetProgram, 0, 27, nullptr, 0.0f);
-        check(std::strcmp(name, "SP Tape") == 0 && fx.get(kSatType) == 1.0f && fx.e->numPrograms == 29, "29 programs; SP Tape is number 27 and uses the tape");
+        check(std::strcmp(name, "SP Tape") == 0 && fx.get(kSatType) == 1.0f && fx.e->numPrograms == 34, "34 programs; SP Tape is number 27 and uses the tape");
+        bool sib = true;
+        for (int p = 29; p < 34; ++p)
+        {
+            fx.e->dispatcher(fx.e, effGetProgramNameIndexed, p, 0, name, 0.0f);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, p, nullptr, 0.0f);
+            sib = sib && std::strncmp(name, "VHS - ", 6) == 0 && std::strlen(name) <= 24 && fx.get(kSatType) == 1.0f && fx.get(kSatOn) == 1.0f;
+        }
+        check(sib, "programs 29 to 33 are the VHS siblings: named VHS - ..., saturator on, the tape");
 
         // switching the type while a tone plays, with the saturator on and both HQ settings
         for (int hq = 0; hq < 2; ++hq)

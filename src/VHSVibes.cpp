@@ -2188,6 +2188,48 @@ private:
             {kDrive, 10}, {kComp, 20}, {kHiCut, 8000}, {kSatType, 1}, {kLoSat, 50}, {kHiSat, 100}, {kHighs, 0},
             {kWarp, 20}, {kFlutter, 25}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 90}, {kHiCut2, 8000},
             {kHum, 8}, {kHiss, 55}, {kCrackle, 8}, {kDropouts, 15} });
+
+        // Older programs again, with the tape model as their saturator (Sat Type = VHS: Lo Sat
+        // is the record level, Hi Sat the tape speed, Split the bias). Everything else is as
+        // in the program they are named after, which stays as it was.
+        // Every pass recorded hot on a dubbing deck with too much bias.
+        program("VHS - 3rd Gen Copy", {
+            {kDrive, 45}, {kWear, 45}, {kComp, 45}, {kHiCut, 6000},
+            {kSatType, 1}, {kLoSat, 80}, {kHiSat, 30}, {kSplit, 4000}, {kHighs, -4},
+            {kWarp, 50}, {kFlutter, 45}, {kWow, 45}, {kFlutter2, 40}, {kLoCut, 100}, {kHiCut2, 7000},
+            {kHum, 25}, {kHeadBuzz, 25}, {kHiss, 55}, {kCrackle, 30},
+            {kAgc, 40}, {kDrift, 35} });
+        // SP, recorded hot, dull from too much bias.
+        program("VHS - Training Video", {
+            {kDrive, 40}, {kTone, -15}, {kWear, 40}, {kComp, 35}, {kHiCut, 4500},
+            {kSatType, 1}, {kLoSat, 70}, {kHiSat, 0}, {kSplit, 5000}, {kHighs, -3},
+            {kWarp, 45}, {kRpm, 34}, {kShape, 60}, {kFlutter, 35}, {kFlutRate, 7},
+            {kWow, 40}, {kWowRate, 0.5f}, {kFlutter2, 30}, {kFlut2Rate, 12}, {kLoCut, 150}, {kHiCut2, 6000},
+            {kHum, 30}, {kBuzz, 15}, {kHeadBuzz, 35}, {kHiss, 50}, {kCrackle, 20}, {kNoise, 40}, {kNoisePos, 1},
+            {kMono, 1}, {kDropouts, 25},
+            {kAgc, 75}, {kDrift, 40} });
+        // EP, bias right, a little over reference level.
+        program("VHS - Six Hour Tape", {
+            {kDrive, 30}, {kWear, 30}, {kComp, 40}, {kHiCut, 6000},
+            {kSatType, 1}, {kLoSat, 60}, {kHiSat, 100}, {kHighs, 0},
+            {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
+            {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
+            {kAgc, 35}, {kDrift, 25} });
+        // Too little bias: brighter and grittier.
+        program("VHS - Sticky Tape", {
+            {kDrive, 30}, {kWear, 45}, {kComp, 40}, {kHiCut, 6500},
+            {kSatType, 1}, {kLoSat, 65}, {kHiSat, 20}, {kSplit, 1200}, {kHighs, -2},
+            {kWarp, 45}, {kRpm, 40}, {kShape, 70}, {kFlutter, 50}, {kFlutRate, 13}, {kScrape, 65},
+            {kWow, 25}, {kFlutter2, 25}, {kHiCut2, 8000},
+            {kHum, 10}, {kHiss, 45}, {kCrackle, 20}, {kDropouts, 45},
+            {kAgc, 20}, {kDrift, 35} });
+        // Too much bias: the highs give way sooner still.
+        program("VHS - Dirty Heads", {
+            {kDrive, 30}, {kWear, 35}, {kComp, 40}, {kHiCut, 5000},
+            {kSatType, 1}, {kLoSat, 60}, {kHiSat, 40}, {kSplit, 6000}, {kHighs, -4},
+            {kWarp, 30}, {kFlutter, 30}, {kScrape, 30}, {kWow, 20}, {kFlutter2, 15}, {kLoCut, 80}, {kHiCut2, 7000},
+            {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
+            {kAgc, 25}, {kDrift, 45} });
     }
 
     // ----- state ------------------------------------------------------------------

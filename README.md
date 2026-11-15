@@ -21,7 +21,7 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 54 controls on five pages, 29 built-in programs
+- 54 controls on five pages, 34 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
 - version 1.5
@@ -137,7 +137,7 @@ the Hi Sat knob (captioned TAPE SPEED there) runs the tape itself from SP to EP.
 
 ## 🗃 ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ
 
-Twenty-nine programs. The labels are handwritten.
+Thirty-four programs. The labels are handwritten.
 
 | Program | What is on it |
 |---|---|
@@ -170,6 +170,11 @@ Twenty-nine programs. The labels are handwritten.
 | Wrong Switch | Recorded with noise reduction, played without: bright, airy, a little squashed, all of the hiss. |
 | SP Tape | Sat Type = VHS at standard speed, recorded a little hot: loud parts lose their top and soften, quiet parts stay clear. |
 | EP Tape | Sat Type = VHS at the six-hour speed: the highs give way three times sooner and the top of the band is gone. |
+| VHS - 3rd Gen Copy | 3rd Gen Copy on the tape model: every pass recorded hot on a dubbing deck with too much bias. The loud parts go soft and the top is gone. |
+| VHS - Training Video | Training Video on the tape model: the linear track of a worn SP tape, recorded hot, dull from too much bias. |
+| VHS - Six Hour Tape | Six Hour Tape on the tape model: EP speed, with the wear, hiss and wobble that EP Tape leaves out. |
+| VHS - Sticky Tape | Sticky Tape on the tape model: too little bias, so it is brighter and grittier as it drags. |
+| VHS - Dirty Heads | Dirty Heads on the tape model: too much bias, so the highs give way sooner still. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
