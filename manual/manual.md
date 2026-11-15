@@ -281,8 +281,8 @@ Mic Type does not choose an EQ curve. Each type is a model of one kind of microp
 |---|---|---|
 | ^CAMCORDER^ | an electret capsule: its makers' and reviewers' figures | full range, a little air at the top, a faint hiss, and loud peaks flattened on one side |
 | ^DYNAMIC^ | the Shure 515 stage microphone's published curve | a gentle low cut and a presence peak at 5 kHz |
-| ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with hard edges, a carbon microphone's grit, the line's faint noise |
-| ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up |
+| ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with hard edges, a carbon microphone's grit, the line's faint noise; mono |
+| ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up; mono |
 
 All four leave 1 kHz at the level it went in. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
@@ -522,6 +522,7 @@ A microphone overloads and hisses at a sound pressure, not at a digital level, s
 | Boombox: distortion under ALC | 0.5 % typical, 2 % at most; 3 % at the end of the range | LA3220; ROHM BA3308 |
 | Boombox: ALC recovery | set by 22 uF and 1 MOhm | ROHM BA3308 application circuit |
 | Boombox: the cassette | 50 Hz to 10 kHz, S/N 45 dB | Sharp QT-27 radio cassette service manual |
+| Boombox: the built-in microphone | mono | the same manual |
 
 ### Each one, step by step
 
@@ -543,11 +544,13 @@ Four filters fitted to the twelve read points: a gentle low cut, the presence pe
 1. **The carbon's sensitivity.** Below reference level a carbon microphone grows less sensitive the quieter the sound: here by a quarter of a dB for every dB, by 10 dB at most.
 2. **Its distortion.** A second harmonic of 3 % at reference level.
 3. **The reference telephone.** Eight filters fitted to all 24 points of the P.48 table: the steep low cut, the broad rise to 2.5 to 3 kHz, and the cliff above 3.4 kHz.
-4. **The line.** Noise at -65 dBm0 in the band from 300 Hz to 3.4 kHz, the same in both channels: there is one line.
+4. **The line.** Noise at -65 dBm0 in the band from 300 Hz to 3.4 kHz.
+
+A phone line carries one channel, so the Phone sums left and right before step 1 and is mono.
 
 **Boombox**
 
-1. **The capsule.** The camcorder's electret, steps 1 to 4 above.
+1. **The capsule.** The camcorder's electret, steps 1 to 4 above, but only one: the built-in microphone of a radio cassette is mono, so the Boombox sums left and right first.
 2. **The ALC.** A fixed record gain of 37 dB brings the bottom of the ALC's range (-60 dBm from the capsule, 66.8 dB SPL, -45 dBFS here) up to reference level. Above it, a peak detector on the output turns the gain down by 14 dB for every dB it sees above reference: 45 dB of input give 3 dB of output, to the end of the range 45 dB up. The detector charges within milliseconds and lets go through 22 uF and 1 MOhm: a time of 22 seconds, of which the loop needs only the first third, so the gain comes back at 5.5 dB a second.
 3. **The gain element's distortion.** 0.5 % at the level of the LA3220's measurement, a little less at the start of the range.
 4. **The tape.** Its hiss, 45 dB under the level the ALC records at, and its band, 50 Hz to 10 kHz.

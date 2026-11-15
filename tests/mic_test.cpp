@@ -404,7 +404,20 @@ int main()
         check(std::fabs(g60 - g0 + 10.0) < 0.5, "and never more than 10 dB down");
     }
 
-    std::printf("11. With the Mic off nothing changes; with the Noise switch off silence stays silent\n");
+    std::printf("11. The Phone (one line) and the Boombox (Sharp QT-27: \"BUILT-IN MIC (MONO)\") are mono\n");
+    for (int t : {2, 3})
+    {
+        Fx fx(44100.0f, t, true, true);
+        std::vector<float> L(44100), R(44100, 0.0f);
+        for (size_t i = 0; i < L.size(); ++i) L[i] = (float)(0.3 * std::sin(kPi2 * 700.0 * (double)i / 44100.0));
+        for (size_t pos = 0; pos < L.size(); pos += 128) { float* io[2] = { L.data() + pos, R.data() + pos }; fx.e->processReplacing(fx.e, io, io, (VstInt32)std::min<size_t>(128, L.size() - pos)); }
+        double l = 0, r = 0, d = 0;
+        for (size_t i = 22050; i < L.size(); ++i) { l += (double)L[i] * L[i]; r += (double)R[i] * R[i]; d = std::fmax(d, std::fabs(L[i] - R[i])); }
+        std::printf("   %s, a tone in the left channel only: left %.1f dB, right %.1f dB, largest difference %.1e\n", kNames[t], 10 * std::log10(l / 22050), 10 * std::log10(r / 22050), d);
+        check(d < 1e-6, std::string(kNames[t]) + ": both channels the same (to the rounding of the mic's crossfade)");
+    }
+
+    std::printf("12. With the Mic off nothing changes; with the Noise switch off silence stays silent\n");
     {
         const std::vector<float> in = sine(44100.0f, 300.0, 0.5, 1.0);
         Fx a(44100.0f, 0, false), b(44100.0f, 3, false, false, 12.0f);

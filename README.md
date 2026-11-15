@@ -121,7 +121,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
 | Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. Adds the microphone's own noise (silenced by the Noise switch). |
-| Mic Type | Camcorder: an electret capsule, its faint hiss and its one-sided overload above 110 dB SPL. Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss. |
+| Mic Type | Camcorder: an electret capsule, its faint hiss and its one-sided overload above 110 dB SPL. Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
 | Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. |
 
 ### ＤＥＣＫ　デッキ
