@@ -1079,8 +1079,20 @@ private:
         rampS_[rOut] = 0.0f;
         ramp_[rOut].snap(0.0f);
         fadeHold_ = (int)((wf1_.base + wf2_.base + (choActive_ ? choBase_ : 0.0f)) * kCtrlInv) + 1;
+        // The chorus also swings: on the first tick one side's delay moves up to its depth (the
+        // one controlTick gives it) further back, and until the sound has got there that side
+        // would come in with a step in the middle of the fade-in. So the output waits those few
+        // ticks longer (choWait_) and then rises to the fade-in in 8 ticks (gate_). The fade-in
+        // itself keeps its own time, so once the gate is open the sound is as it always was.
+        if (choActive_)
+        {
+            const float swing = minf(0.4f * choBase_, 0.004f * sr_);
+            choWait_ = (int)((wf1_.base + wf2_.base + choBase_ + swing) * kCtrlInv) + 1 - fadeHold_;
+        }
+        else choWait_ = 0;
+        gateOn_ = choWait_ > 0; gateS_ = 0.0f; gate_.snap(0.0f);
 #else
-        fadeHold_ = 0;
+        fadeHold_ = 0; choWait_ = 0; gateOn_ = false;
 #endif
 
         // A reset follows the host starting the plugin and every program change and state
@@ -1189,7 +1201,8 @@ public:
             float dryLen = 0.0f;
             if (dryActive_) { dryDelay_.write(hq_ ? hbDry_.trip(x) : x); dryLen = dryD_.next(); }   // kept for Mix below 100 %
 
-            const float outGain = ramp_[rOut].next();
+            float outGain = ramp_[rOut].next();
+            if (gateOn_) outGain *= gate_.next();   // a moment after a reset only (the chorus swing)
             const float mix     = ramp_[rMix].next();
             const float monoMix = ramp_[rMono].next();
             const float choMix  = ramp_[rChorus].next();
@@ -1730,6 +1743,13 @@ private:
 
         // just after a reset: the output stays shut until the emptied delays have filled
         if (fadeHold_ > 0) { --fadeHold_; rampS_[rOut] = 0.0f; ramp_[rOut].snap(0.0f); }
+        // and, with the chorus on, a few ticks longer (see doReset); the fade-in goes on meanwhile
+        else if (gateOn_)
+        {
+            if (choWait_ > 0) --choWait_;
+            else if (gateS_ < 1.0f) { gateS_ = minf(gateS_ + 0.125f, 1.0f); gate_.to(gateS_); }
+            else { gate_.snap(1.0f); gateOn_ = false; }   // open: from here the output is as without it
+        }
         // Before a reset the host asked for (a program change, a state load) and when HQ is
         // switched: the output goes down in a straight line over 3 ms and stays shut, then the
         // reset brings the sound back with its fade-in.
@@ -2269,6 +2289,10 @@ private:
     bool  tape_ = false;
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
+    int   choWait_ = 0;                                   // ... and then a few more for the chorus swing
+    bool  gateOn_ = false;                                // after those, the output rises to the fade-in by gate_
+    float gateS_ = 0.0f;
+    Ramp  gate_;
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
     int   fadeOut_ = 0;                                   // ticks left of the fade-out before a reset
     bool  resetNextTick_ = false;                         // the fade-out is at its end: ask for the reset at the next tick

@@ -108,6 +108,37 @@ int main()
         check(worst < 1.25f * at128, "no block size makes the fade-out end in a step");
     }
 
+    std::printf("2. After a reset the chorus comes in with the rest of the sound (Cho Width 50, Cho Delay 20 ms)\n");
+    for (int hq = 0; hq < 2; ++hq)
+    {
+        // A state with the chorus on loaded while a 30 Hz tone plays, and HQ switched with the
+        // chorus on. At width 50 the right side's delay moves furthest from the left's at once,
+        // while the left one hardly moves at first: so the left channel, with the same tone, the
+        // same fades and the same chorus, is the measure for the right. Eight start times, so the
+        // tone is caught at every phase.
+        for (int how = 0; how < 2; ++how)
+        {
+            float stepL = 0.0f, stepR = 0.0f;
+            for (int k = 0; k < 8; ++k)
+            {
+                Fx fx(kInit, hq != 0); fx.set(kNoiseOn, 0);
+                fx.set(kChorusOn, 1); fx.set(kChoWidth, 50); fx.set(kChoDelay, 20); fx.set(kChoMix, 40);
+                const std::vector<uint8_t> withChorus = fx.state();
+                if (how == 0) fx.set(kChorusOn, 0);
+                fx.play(1.0f + 0.004f * (float)k, 0.5f, 30.0f, nullptr);
+                if (how == 0) fx.load(withChorus);
+                else fx.set(kHq, hq ? 0.0f : 1.0f);
+                std::vector<float> L, R;
+                fx.play(0.2f, 0.5f, 30.0f, &L, &R);
+                stepL = std::fmax(stepL, largestStep(L));
+                stepR = std::fmax(stepR, largestStep(R));
+            }
+            std::printf("   HQ %s, %s: largest step in the 200 ms after it, left %.4f, right %.4f\n",
+                        hq ? "on " : "off", how == 0 ? "a state with the chorus on loaded" : "HQ switched with the chorus on", stepL, stepR);
+            check(stepR < 1.25f * stepL, "the right channel comes in as smoothly as the left");
+        }
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
