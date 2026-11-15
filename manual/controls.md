@@ -239,6 +239,6 @@ what: Runs the stages that distort (Drive, Wear, Comp, Saturator) at twice the s
 listen: With HQ off, loud bright sounds grow extra, unrelated tones underneath. With it on, they are gone for highs at ordinary levels.
 note: On takes about a quarter more CPU. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
 
-## NR
+## B-Type NR
 what: B-type noise reduction, as on the linear tracks of early stereo decks. **Off**: none. **Rec**: recorded with it, played without. **Play**: recorded without, played with. **On**: both.
-note: The four positions and what each sounds like are in the NR section after this list. Switching fades it in or out over 8 ms.
+note: The four positions and what each sounds like are in the B-Type NR section after this list. Switching fades it in or out over 8 ms.

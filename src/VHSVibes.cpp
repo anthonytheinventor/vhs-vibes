@@ -912,7 +912,7 @@ public:
         addParam(floatParam ("scrape",     "Scrape",       0.0f, 100.0f, 0.0f, "%", 0));
         addParam(floatParam ("whistle",    "Whistle",      0.0f, 100.0f, 0.0f, "%", 0));
         addParam(boolParam  ("hq",         "HQ",         true));    // on in a new instance since 1.5
-        addParam(choiceParam("nr",         "NR",         {"Off", "Rec", "Play", "On"}, 0));
+        addParam(choiceParam("nr",         "B-Type NR",  {"Off", "Rec", "Play", "On"}, 0));
         addParam(choiceParam("sat_type",   "Sat Type",   {"2-Band", "VHS"}, 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");

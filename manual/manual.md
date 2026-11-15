@@ -274,7 +274,7 @@ epigraph: What it was recorded through.
 [[controls INPUT]]
 
 ::: page DECK
-toc: The machine's faults, NR and HQ
+toc: The machine's faults, B-Type NR and HQ
 epigraph: The tape got older. So did the machine.
 :::
 
@@ -282,7 +282,7 @@ Faults of the machine rather than the tape. Each does something no other control
 
 [[controls DECK]]
 
-## NR: the four positions
+## B-Type NR: the four positions
 
 NR is B-type noise reduction. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. The switch chooses which of the two sides is in.
 

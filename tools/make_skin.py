@@ -137,7 +137,7 @@ PAGES = [
         ("DECK", "デッキ", ["Deck On", "AGC", "Drift", None]),
         ("HI-FI TRACK", "ハイファイ", ["Tracking", "Breathing", None, None]),
         ("SCREEN", "スクリーン", ["Animation", None, None, None]),
-        ("QUALITY", "高音質", ["HQ", None, "NR", "<"]),
+        ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
     ]},
 ]
 
@@ -176,7 +176,7 @@ SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
     "Sat Type": ((64, 40), [(4, 50), (72, 50)], ["2-BAND", "VHS"]),
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
-    "NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
+    "B-Type NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
 }
 TOGGLE_SIZE = (88, 44)
 TOGGLE_POS = (26, 50)

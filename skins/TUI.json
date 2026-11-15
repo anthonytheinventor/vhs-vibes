@@ -807,7 +807,7 @@
                     }
                 },
                 {
-                    "key": "vvSeg NR",
+                    "key": "vvSeg B-Type NR",
                     "value": {
                         "version": 2,
                         "actions": [
@@ -877,8 +877,8 @@
                                     "type": "Button",
                                     "data": {
                                         "version": 2,
-                                        "onImage": "seg_nr_0_on.png",
-                                        "offImage": "seg_nr_0_off.png",
+                                        "onImage": "seg_b-typenr_0_on.png",
+                                        "offImage": "seg_b-typenr_0_off.png",
                                         "buttonId": 0,
                                         "numButtonsInGroup": 4,
                                         "handleName": "Data",
@@ -906,8 +906,8 @@
                                     "type": "Button",
                                     "data": {
                                         "version": 2,
-                                        "onImage": "seg_nr_1_on.png",
-                                        "offImage": "seg_nr_1_off.png",
+                                        "onImage": "seg_b-typenr_1_on.png",
+                                        "offImage": "seg_b-typenr_1_off.png",
                                         "buttonId": 1,
                                         "numButtonsInGroup": 4,
                                         "handleName": "Data",
@@ -935,8 +935,8 @@
                                     "type": "Button",
                                     "data": {
                                         "version": 2,
-                                        "onImage": "seg_nr_2_on.png",
-                                        "offImage": "seg_nr_2_off.png",
+                                        "onImage": "seg_b-typenr_2_on.png",
+                                        "offImage": "seg_b-typenr_2_off.png",
                                         "buttonId": 2,
                                         "numButtonsInGroup": 4,
                                         "handleName": "Data",
@@ -964,8 +964,8 @@
                                     "type": "Button",
                                     "data": {
                                         "version": 2,
-                                        "onImage": "seg_nr_3_on.png",
-                                        "offImage": "seg_nr_3_off.png",
+                                        "onImage": "seg_b-typenr_3_on.png",
+                                        "offImage": "seg_b-typenr_3_off.png",
                                         "buttonId": 3,
                                         "numButtonsInGroup": 4,
                                         "handleName": "Data",
@@ -3749,8 +3749,8 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "NR",
-                                "type": "vvSeg NR",
+                                "name": "B-Type NR",
+                                "type": "vvSeg B-Type NR",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
