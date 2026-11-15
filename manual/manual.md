@@ -169,7 +169,7 @@ title: ＳＩＧＮＡＬ　ＰＡＴＨ
 jp: 信号経路
 word: PATH
 toc: The signal path as a diagram
-epigraph: Two wobbles, because a copy of a copy wobbles twice.
+epigraph: A copy of a copy wobbles twice.
 :::
 
 The sound goes through the machine in this order. Each box is one stage; its colour says which page its controls are on.
@@ -396,7 +396,7 @@ Load **SP Tape** and play something with cymbals and a bass line. Turn ^REC LEVE
 :::
 
 ::: aside
-The tape was never meant to carry music. It carried it anyway.
+Made for pictures. It carried the music anyway.
 :::
 
 [[pagebreak]]
@@ -483,7 +483,7 @@ Load **Wrong Switch**, a tape recorded with the switch on and played with it off
 :::
 
 ::: aside
-It was built to take something away. Set wrong, it adds.
+Built to take something away. Set wrong, it adds.
 :::
 
 [[pagebreak]]
@@ -620,7 +620,7 @@ Load **Bootleg Concert** and stop the music: within seconds the hiss and the roo
 :::
 
 ::: aside
-The microphone was never the best part of the machine. It was the part nearest the sound.
+Not the best part. The part nearest the sound.
 :::
 
 ::: chapter
@@ -669,8 +669,8 @@ id: notes
 title: ＮＯＴＥＳ
 jp: ノート
 word: NOTES
-toc: Notes from the back of the box
-epigraph: Written in pencil on the back of the box, by someone who knew the machine.
+toc: How it behaves, and what comes from real machines
+epigraph: In pencil, on the inside of the sleeve.
 :::
 
 ## How it behaves
