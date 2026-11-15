@@ -37,6 +37,11 @@ let it, the machine loses the tape for a moment and finds it again.
 
 Needs MPC OS 3.10.1 or later. `INSTALL.txt` in the zip says the same at more length.
 
+## 📖 ＲＥＡＤ　ＴＨＥ　ＭＡＮＵＡＬ
+
+Every control, every program and what the machine is doing inside, on paper the colour of the
+cassette: [VHS-Vibes-Manual.pdf](https://github.com/anthonytheinventor/vhs-vibes/blob/main/manual/VHS-Vibes-Manual.pdf).
+
 ## ☕ ＴＩＰ　ＪＡＲ
 
 VHS Vibes is free. If it ends up on your tracks, you can leave a tip at
