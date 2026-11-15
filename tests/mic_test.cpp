@@ -9,7 +9,7 @@
 // kRefLevel (-8 dBFS) is 104 dB SPL, so 94 dB SPL peaks at -18 dBFS.
 //
 // The Camcorder is the camera's record chain (the camcorder report, 2026-11-15): capsule, mic
-// amp, record ALC. Its sections (3, 4, 13 to 16, 18) check it against the report's numbers,
+// amp, record ALC. Its sections (3, 4, 13 to 18) check it against the report's numbers,
 // worked out here from the documents' own figures, not from the source's constants. Section 16
 // measures how far each model is from bypass on a music-like signal, for the Camcorder that is
 // replaced (the capsule alone, still in the source as MicModel::capsule) and the new one.
@@ -703,6 +703,45 @@ int main()
         check(n12.crest < by.crest - 2.0, "the new one at the programs' Mic Gain (-12 dB): past the ALC's range, the peaks come down by at least 2 dB");
         check(n26.loudQuiet < by.loudQuiet - 6.0 && n26.spread < 0.6 * by.spread && n26.gap > -50.0,
               "inside the range (the source 26 dB quieter): at least 6 dB less between loud and quiet, under 0.6 of the spread, and the noise lifted in the gap to within 50 dB of the loud part");
+    }
+
+    std::printf("17. The two programs with the Camcorder (Camcorder 89, Wedding Video): where typical material lands (the mic alone, 1 kHz)\n"
+                "    the range ends at %.1f dBFS peak at Mic Gain 0 (%.1f dB SPL); typical: the levels_test tone (-12 dBFS peak) and a sine at -18 dBFS rms\n", dB(knee(22.0)), kKneeSpl + 22.0);
+    {
+        const float sr = 44100.0f;
+        auto at = [&](double gainDb, double peakDbfs, double* past, double* g, double* dist, double* opk) {
+            MicModel m;
+            const std::vector<float> o = micOnly(sine(sr, 1000.0, fromDb(peakDbfs), 1.5), sr, gainDb, false, false, &m);
+            *past = peakDbfs + gainDb - dB(knee(22.0));
+            *g = dB(m.alcG);
+            *dist = thd(o, sr, 1000.0, (size_t)sr, o.size());
+            *opk = 0; for (size_t i = (size_t)sr; i < o.size(); ++i) *opk = std::fmax(*opk, std::fabs(o[i]));
+        };
+        for (double gainDb : {12.0, 2.0, 1.0, 0.0, -6.0, -12.0})
+            for (double pk : {-12.0, -15.0})
+            {
+                double past, g, dist, opk;
+                at(gainDb, pk, &past, &g, &dist, &opk);
+                std::printf("   Mic Gain %+5.1f dB, %s: %+5.1f dB past the end of the range, ALC gain %+6.2f dB, out peak %.2f, THD %5.2f %%\n",
+                            gainDb, pk == -12.0 ? "-12 dBFS peak" : "-18 dBFS rms ", past, g, opk, 100 * dist);
+            }
+        std::printf("   to keep a -18 dBFS rms sine inside the range Mic Gain would have to be %+.1f dB (the knob goes down to -12)\n", dB(knee(22.0)) - (-15.0));
+        for (int prog : {4, 15})
+        {
+            Fx fx(sr, 0, true);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, prog, nullptr, 0.0f);
+            char name[64] = {0};
+            fx.e->dispatcher(fx.e, effGetProgramNameIndexed, prog, 0, name, 0.0f);
+            mpc::Plugin* pl = static_cast<mpc::Plugin*>(fx.e->object);
+            const double g = pl->get(kMicGain);
+            double past1, g1, d1, p1, past2, g2, d2, p2;
+            at(g, -12.0, &past1, &g1, &d1, &p1);
+            at(g, -15.0, &past2, &g2, &d2, &p2);
+            std::printf("   %-14s Mic %s, type %d, Mic Gain %+.1f dB, AGC %.0f %%: the tone %+.1f dB past the range (THD %.2f %%), the sine %+.1f dB past (THD %.2f %%)\n",
+                        name, pl->getBool(kMicOn) ? "on" : "off", pl->getInt(kMicType), g, pl->get(kAgc), past1, 100 * d1, past2, 100 * d2);
+            check(pl->getInt(kMicType) == 0 && g == -12.0 && d1 < 0.01 && d2 < 0.01 && p1 < 1.0,
+                  std::string(name) + ": Mic Gain at the bottom of its range, where typical material is squashed and not clipped (THD under 1 %)");
+        }
     }
 
     std::printf("18. Camcorder: its ALC starts from rest unheard (it settles for 100 ms before the mic fades in), switched on or chosen while a tone plays\n");

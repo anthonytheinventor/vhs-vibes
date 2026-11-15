@@ -2634,11 +2634,13 @@ private:
             {kWow, 40}, {kWowRate, 0.4f}, {kHiss, 25}, {kCrackle, 10},
             {kChorusOn, 1}, {kChoMix, 55}, {kChoSpeed, 0.35f}, {kChoDelay, 18}, {kChoWidth, 90},
             {kDrift, 20} });
-        // The camcorder's level control does the squashing here.
+        // The camcorder's level control does the squashing here. Mic Gain at the bottom of its
+        // range: the camcorder's ALC ends 21 dB under kRefLevel, so ordinary material is past it
+        // even there (a sine at -18 dBFS rms by 2 dB), and at the old +2 dB it clipped hard.
         program("Camcorder 89", {
             {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
             {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
-            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 2},
+            {kMicOn, 1}, {kMicType, 0}, {kMicGain, -12},
             {kAgc, 80}, {kDrift, 10} });
         // A tape that will not track: buzz on the music, static, drops to the backup track.
         program("Tracking Error", {
@@ -2705,11 +2707,12 @@ private:
             {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
             {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
             {kAgc, 35}, {kDrift, 25} });
-        // A camcorder at the back of the hall: the level control rides everything.
+        // A camcorder at the back of the hall: the level control rides everything. Mic Gain at
+        // the bottom of its range, as in Camcorder 89.
         program("Wedding Video", {
             {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
             {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
-            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 1},
+            {kMicOn, 1}, {kMicType, 0}, {kMicGain, -12},
             {kAgc, 90}, {kDrift, 20} });
         // The best VHS could do, the Hi-Fi track on a good day: wide, steady, quiet, breathing a little.
         program("Hi-Fi Master", {
