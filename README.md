@@ -37,6 +37,11 @@ let it, the machine loses the tape for a moment and finds it again.
 
 Needs MPC OS 3.10.1 or later. `INSTALL.txt` in the zip says the same at more length.
 
+## ☕ ＴＩＰ　ＪＡＲ
+
+VHS Vibes is free. If it ends up on your tracks, you can leave a tip at
+[ko-fi.com/anthonytheinventor](https://ko-fi.com/anthonytheinventor). It keeps the VCR running.
+
 ## 📼 ＷＨＡＴ　ＩＳ　ＯＮ　ＴＨＥ　ＴＡＰＥ
 
 The sound goes through the machine in this order:
