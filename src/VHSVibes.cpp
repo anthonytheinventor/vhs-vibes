@@ -1965,7 +1965,7 @@ private:
         info.name         = "VHS Vibes";
         info.vendor       = "anthonytheinventor";   // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
-        info.version      = 1503;           // 1.5.3
+        info.version      = 1600;           // 1.6.0
         info.isInstrument = false;
         info.numInputs    = 2;
         info.numOutputs   = 2;
