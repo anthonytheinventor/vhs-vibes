@@ -157,11 +157,9 @@ In the MPC's Program Q-Link mode the sixteen Q-Links do not follow the page. The
 
 ## It moves
 
-- The two reels turn while sound comes in or the song is playing, coast to a stop about two seconds after, and lurch with the wobble.
-- The neon grid on the page sticker rolls with the reels.
-- The sun glows with the output level.
+The two reels turn while sound comes in or the song is playing, coast to a stop about two seconds after, and lurch with the wobble. The neon grid on the page sticker rolls with them, and the sun glows with the output level. The **Animation** switch on the DECK page turns the movement off.
 
-These are driven by two extra read-only parameters, **Reel** and **Level**, which the plugin updates up to 20 times a second. They are not settings, cannot be automated and are best left alone. The **Animation** switch on the DECK page turns the movement off.
+Two extra read-only parameters, **Reel** and **Level**, drive the movement; the plugin updates them up to 20 times a second. They are not settings, cannot be automated and are best left alone.
 
 ::: chapter
 id: path
@@ -729,8 +727,6 @@ toc: Troubleshooting
 epigraph: The picture rolls. Somewhere a small wheel wants turning.
 :::
 
-**Troubleshooting:** what can happen, why, and what to do.
-
 | What happens | Why, and what to do |
 |---|---|
 | VHS Vibes is not in the plugin browser. | Check that the MPC runs MPC OS 3.10.1 or later; that **Enable Enhancements** and **External Plugin Support** are both on under Preferences > Enhancements (Beta); that the MPC was restarted afterwards; and that the folder `{{vendor}} - VST - VHS Vibes` sits inside a folder named `VST2 Plugins` at the top of the drive. Look under **External Plugins**. |
@@ -745,7 +741,7 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | Head Buzz, Whistle or Breathing cannot be heard. | Head Buzz and Whistle follow **Master** and the **Noise** switch. The Whistle is at 15.7 kHz; not everyone can hear it. Breathing shapes Hiss and Head Buzz, so it needs one of them turned up. |
 | A new program did not change HQ or Animation. | Those two switches are not part of the programs. |
 | The reels stand still. | They turn only while sound comes in or the song is playing. Or **Animation** is off. |
-| The MPC is short of CPU. | Switch **HQ** off: on, it takes about a quarter more. Switching **Animation** off saves the work of updating the screen. |
+| The MPC is short of CPU. | Switch **HQ** off: on, it takes about a quarter more. **Animation** off saves the work of updating the screen. |
 
 ::: chapter
 id: rewind
