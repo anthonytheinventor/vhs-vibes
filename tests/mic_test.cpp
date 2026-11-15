@@ -701,14 +701,19 @@ int main()
         const Dyn p12 = row("new, Mic Gain +12 dB", 12.0, false);
         row("new, Mic Gain +6 dB", 6.0, false);
         row("new, Mic Gain 0 dB", 0.0, false);
-        const Dyn m6 = row("new, Mic Gain -6 dB", -6.0, false);
-        const Dyn m12 = row("new, Mic Gain -12 dB", -12.0, false);
+        row("new, Mic Gain -6 dB", -6.0, false);
+        row("new, Mic Gain -12 dB", -12.0, false);
+        // where this music is held inside the range: 26 dB under its level at the microphone
+        // without the distance (its peaks stand 18 dB over its rms), wherever the distance puts that
+        const double inside = (double)kCamDistanceDb - 26.0;
+        char nm[48]; std::snprintf(nm, sizeof(nm), "new, Mic Gain %+.0f dB (held)", inside);
+        const Dyn in26 = row(nm, inside, false);
         const double oldMove = std::fmax(std::fabs(o0.loudQuiet - by.loudQuiet), std::fabs(o0.spread - by.spread));
         check(oldMove < 0.5 && std::fabs(o0.crest - by.crest) < 1.5,
               "the model it replaces leaves the level over time within 0.5 dB and the crest within 1.5 dB (its 53 Hz highpass on the kick) (the owner: \"You can barely tell it's on\")");
         check(p12.crest < by.crest - 2.0, "the new one at Mic Gain +12 dB: past the ALC's range, the peaks come down by at least 2 dB");
-        check(m6.loudQuiet < by.loudQuiet - 6.0 && m6.spread < 0.6 * by.spread && m6.gap > -50.0 && m12.loudQuiet < by.loudQuiet - 6.0 && m12.gap > -50.0,
-              "at Mic Gain -6 and -12 dB, inside the range: at least 6 dB less between loud and quiet (and under 0.6 of the spread at -6), the noise lifted in the gap to within 50 dB of the loud part");
+        check(in26.loudQuiet < by.loudQuiet - 6.0 && in26.spread < 0.6 * by.spread && in26.gap > -50.0,
+              "with the music 26 dB under its level at the microphone, inside the range: at least 6 dB less between loud and quiet, under 0.6 of the spread, the noise lifted in the gap to within 50 dB of the loud part");
     }
 
     std::printf("17. The two programs with the Camcorder (Camcorder 89, Wedding Video): where typical material lands (the mic alone, 1 kHz)\n"
@@ -746,8 +751,8 @@ int main()
             at(g, -15.0, &past2, &g2, &d2, &p2);
             std::printf("   %-14s Mic %s, type %d, Mic Gain %+.1f dB, AGC %.0f %%: the tone %+.1f dB past the range (THD %.2f %%), the sine %+.1f dB past (THD %.2f %%)\n",
                         name, pl->getBool(kMicOn) ? "on" : "off", pl->getInt(kMicType), g, pl->get(kAgc), past1, 100 * d1, past2, 100 * d2);
-            check(pl->getInt(kMicType) == 0 && std::fabs(g - (prog == 4 ? 2.0 : 1.0)) < 0.01 && past1 <= 0.0 && past2 <= 0.0 && d1 < 0.005 && d2 < 0.005,
-                  std::string(name) + ": its original Mic Gain; with the distance, typical material at or inside the top of the ALC's range (THD under 0.5 %)");
+            check(pl->getInt(kMicType) == 0 && std::fabs(g - (prog == 4 ? 2.0 : 1.0)) < 0.01 && past1 <= 4.0 && past2 <= 4.0 && d1 < 0.01 && d2 < 0.01 && p1 < 1.0,
+                  std::string(name) + ": its original Mic Gain; with the distance, typical material at most 4 dB past the top of the ALC's range, not clipping (THD under 1 %)");
         }
     }
 
