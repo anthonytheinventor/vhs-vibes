@@ -24,7 +24,7 @@ let it, the machine loses the tape for a moment and finds it again.
 - 54 controls on five pages, 34 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
-- version 1.5
+- version 1.6
 
 ## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
 
@@ -120,7 +120,9 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Control | What it does |
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
-| Mic Power, Type, Gain | The tone of re-recording through a cheap microphone: Camcorder, Dynamic, Phone or Boombox. |
+| Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. Adds the microphone's own noise (silenced by the Noise switch). |
+| Mic Type | Camcorder: an electret capsule, its faint hiss and its one-sided overload above 110 dB SPL. Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss. |
+| Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. |
 
 ### ＤＥＣＫ　デッキ
 
@@ -223,6 +225,19 @@ The Animation switch on the DECK page turns them off.
   bias effects. There is no head bump: at these tape speeds it lies below 20 Hz. Driven hard,
   the stage clips highs it has just lifted, which folds back into the band without HQ; HQ is
   on in a new instance for that reason.
+- The four Mic Types are built from published figures (the manual's chapter INSIDE THE MACHINE
+  has the table). Camcorder and Boombox: J. Kean's account of electret capsules (first-order
+  low cut, 100 MOhm and 30 pF; overload above 110 dB SPL, negative peaks first), J. Neal's
+  measurements of ten Panasonic WM-61A capsules (the rise at 13 to 17 kHz) and its 26 dB SPL(A)
+  self-noise. Dynamic: figure 1 of the Shure 515BSM guide at 0.6 m, read at twelve points.
+  Phone: all 24 points of Table 1 of CCITT P.48 (1988), the intermediate reference system,
+  with the G.712 line noise limit of -65 dBm0p. Boombox: the Sanyo LA3220's ALC (45 dB of input
+  from -60 dBm give 3 dB of output, 0.5 % distortion), ROHM BA3308's 22 uF and 1 MOhm recovery
+  network, and the Sharp QT-27 radio cassette's 50 Hz to 10 kHz and S/N 45 dB. Each fit is made
+  per sample rate and holds from 44.1 to 192 kHz. Estimates: the mapping of digital level to sound
+  pressure (-8 dBFS peak = 104 dB SPL), the amounts of the carbon microphone's distortion and
+  level-dependence (documented only in kind), how much later the electret's positive half
+  overloads, and the ALC's attack (5 ms). With the Mic off the plugin is exactly as before.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
@@ -285,14 +300,16 @@ read-outs under the knobs are live text (Nexa).
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds eight small programs and runs them on the computer: `host_test` (what the plugin tells
+Builds nine small programs and runs them on the computer: `host_test` (what the plugin tells
 the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `nr_test` (the noise reduction
 against the chip makers' figures), `tape_test` (Sat Type = VHS against the figures it is built to), `v152_test`
 (everything that changed in 1.5.2: resets at any block size, Q-Links across every switch, cut-short
-states), `deck_test` and `levels_test` (measurements of each stage to read through). The first six end in
+states), `mic_test` (the four Mic Types against the figures they are built from), `deck_test` and
+`levels_test` (measurements of each stage to read through). The first seven end in
 PASS or FAIL. Then `ab14_test`, built once against the 1.4.0 source from git and once against this one,
-checks that the 25 programs that existed in 1.4 still come out the same, sample for sample from 100 ms on (the git
-tags are fetched if they are missing).
+checks that the 25 programs that existed in 1.4 still come out the same with the Mic off, sample for
+sample from 100 ms on (the git tags are fetched if they are missing). `tools/mic_fit.py` holds the
+fits and constants behind the microphones and checks the filters against their targets.
 `race_test` is not run by the script: it hammers the plugin from several threads and is meant
 to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
 

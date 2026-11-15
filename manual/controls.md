@@ -196,15 +196,19 @@ what: The length of the chorus delay.
 what: Spreads the chorus left and right. 0 % moves both sides together; 100 % moves them half a cycle apart.
 
 ## Mic
-what: Switches the microphone on or off: the tone of re-recording through a cheap microphone.
+what: Plays the sound into one of four period microphones before it reaches the recorder, as if it had been re-recorded through one. Each is built from published figures: the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ lists them. The mic fades in and out when switched.
+note: While the Mic is on it adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. The Noise switch silences it; the Master knob does not change it.
 
 ## Mic Type
-what: Which microphone. **Camcorder**: 180 Hz to 7.5 kHz, with a 5 dB peak at 3.2 kHz. **Dynamic**: 90 Hz to 12 kHz, 4 dB peak at 5 kHz. **Phone**: 350 Hz to 3.4 kHz, 6 dB peak at 1.8 kHz. **Boombox**: 120 Hz to 6 kHz, 4 dB peak at 900 Hz.
+what: Which microphone. **Camcorder**: the electret capsule of a camcorder: 3 dB down at 53 Hz, flat to 5 kHz, a rise of about 2.5 dB around 15 kHz, its own faint hiss, and above about 110 dB SPL a gentle overload that flattens the negative half of the wave first. **Dynamic**: a moving-coil stage microphone of the Shure 515 kind: a gentle low cut (8 dB down at 100 Hz), a presence peak of 5 dB at 5 kHz, a smaller one at 8 kHz, falling away above 10 kHz. **Phone**: the CCITT P.48 reference telephone: 300 Hz to 3.4 kHz with a broad rise to 3 kHz and steep edges, the second harmonic of a carbon microphone, its sensitivity that falls with the level (quiet sound comes through weaker still), and the line's faint noise. **Boombox**: the same electret, a record level control (ALC) that turns everything from a whisper to a shout into nearly the same level, and the cassette's 50 Hz to 10 kHz with its hiss.
+listen: Boombox: after a loud passage the ALC lets go over about seven seconds and the room, the hiss and every quiet sound come up with it. Phone: quiet words sink further than loud ones.
 try: Camcorder 89 and Wedding Video use Camcorder, Answer Machine uses Phone, Bootleg Concert and Tube TV use Boombox.
+note: Changing the type fades the mic out, puts the new one in and fades it back in.
 
 ## Mic Gain
-what: Level of the microphone stage. It works only while Mic Power is on.
-note: The microphone comes before AGC and the preamp, so more gain here also drives those harder.
+what: How loud the sound is at the microphone: as if the source were louder or closer. It is applied before the microphone, so it decides how hard the mic itself is driven. It works only while Mic is on.
+listen: Camcorder: from about +6 dB the capsule starts to overload (with sound peaking near -8 dBFS). Phone: down, and quiet words sink. Boombox: the ALC keeps the level almost the same; what changes is how close the noise sits. Dynamic: a plain level.
+note: The microphone comes before AGC and the preamp, so more gain here also drives those harder. A sound peaking at -8 dBFS counts as 104 dB SPL at the microphone; this mapping is an assumption (see the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ).
 
 <!-- ======================================================================== DECK -->
 

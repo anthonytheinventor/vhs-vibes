@@ -67,7 +67,7 @@ epigraph: Press it. What comes back is almost your song.
 - {{controls}} controls on {{pages}} pages, {{programs}} built-in programs.
 - A hot pink cassette on the MPC's screen, with reels that turn when sound passes.
 - Every noise is synthesised: no samples, nothing to load.
-- Two parts are built from the machines' own published figures: the tape of the VHS linear track, and the noise reduction circuit of early stereo decks. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
+- Three parts are built from published figures: the tape of the VHS linear track, the noise reduction circuit of early stereo decks, and the four microphones of the INPUT page. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
 - This manual describes version {{version}}.
 
 [[screenshot TAPE | The first of the five pages, as the MPC shows it.]]
@@ -181,7 +181,7 @@ The sound goes through the machine in this order. Each box is one stage; its col
 ::: signal
 Noise | NOISE | if Position is Pre | optional
 Chorus | INPUT | modulated delay |
-Mic | INPUT | cheap microphone |
+Mic | INPUT | period microphone |
 AGC | DECK | level control, seconds |
 Tone | TAPE | tilt |
 NR record | DECK | lifts quiet highs |
@@ -264,6 +264,7 @@ epigraph: Everything the tape adds when nobody is talking.
 
 - The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a silent background.
 - With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops. That is how a real recorder's level control behaves; turn Master down if it is too much.
+- While the Mic is on, the microphone adds its own noise: the capsule's hiss, or the phone line's. The Noise switch silences it; Master does not change it.
 
 ::: page INPUT
 toc: Chorus and microphone
@@ -271,6 +272,23 @@ epigraph: What it was recorded through.
 :::
 
 [[controls INPUT]]
+
+## The four microphones
+
+Mic Type does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Boombox the level control of the recorder it sat in.
+
+| Type | Built on | What you hear |
+|---|---|---|
+| ^CAMCORDER^ | an electret capsule: its makers' and reviewers' figures | full range, a little air at the top, a faint hiss, and loud peaks flattened on one side |
+| ^DYNAMIC^ | the Shure 515 stage microphone's published curve | a gentle low cut and a presence peak at 5 kHz |
+| ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with hard edges, a carbon microphone's grit, the line's faint noise |
+| ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up |
+
+All four leave 1 kHz at the level it went in. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+
+::: note Since 1.6
+The four types were rebuilt in 1.6. A project or program with the Mic on sounds different from before; with the Mic off nothing has changed.
+:::
 
 ::: page DECK
 toc: The machine's faults, B-Type NR and HQ
@@ -313,11 +331,11 @@ id: inside
 title: ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ
 jp: 内部
 word: INSIDE
-toc: How the VHS saturator and B-Type NR are modelled
+toc: How the VHS saturator, B-Type NR and the microphones are modelled
 epigraph: Somebody took the lid off and wrote down what was there.
 :::
 
-Two parts of VHS Vibes are not tuned by ear to sound like tape. They are built from what was published about the machines: a format's own figures in one case, a chip's circuit diagram in the other. This chapter says what each is made of, what was measured, and what had to be estimated.
+Three parts of VHS Vibes are not tuned by ear to sound like tape. They are built from what was published about the machines: a format's own figures, a chip's circuit diagram, and the datasheets, standards and measurements of four microphones. This chapter says what each is made of, what was measured, and what had to be estimated.
 
 ## The tape itself: Type = VHS
 
@@ -475,6 +493,106 @@ Load **Wrong Switch**, a tape recorded with the switch on and played with it off
 It was built to take something away. Set wrong, it adds.
 :::
 
+[[pagebreak]]
+
+## Four microphones: Mic Type
+
+Before the recorder hears the sound, the Mic stage plays it into a microphone. Each of the four types is built from published figures for one kind of microphone of the period. Where a figure was missing, the value is an estimate, and is called one below.
+
+### One level for all four
+
+A microphone overloads and hisses at a sound pressure, not at a digital level, so the stage has to decide how loud a digital level is in the air. It takes a sound peaking at -8 dBFS, the level the rest of the plugin treats as the recorder's reference, to be 104 dB SPL: a loud voice close to the microphone, or a band heard from the crowd. 94 dB SPL (1 pascal), the pressure microphones are specified at, then peaks at -18 dBFS.
+
+**This mapping is an assumption.** No document can fix it for a plugin. It was chosen so that the electret's documented overload lies 6 dB above reference: music played in at reference level passes cleanly, and Mic Gain +6 dB reaches the overload. The same mapping serves all four types. Mic Gain moves the sound along it, as a louder or a closer source would.
+
+### The figures they are built on
+
+| Figure | Value | Where it is from |
+|---|---|---|
+| Electret: the capsule and the gate of its transistor | a first-order low cut; 100 MOhm and 30 pF: 53 Hz | J. Kean, "Design and Performance of Electret Condenser Microphones", Radio World |
+| Electret: overload | above 110 dB SPL; negative-going peaks clip first | the same article |
+| Electret: the highs | flat to 5 kHz, +1 dB at 8 kHz, +1.5 to +3 dB at 13 to 17 kHz | ten Panasonic WM-61A capsules measured by J. Neal, read off his plot |
+| Electret: self-noise | 26 dB SPL(A) | a figure quoted for the WM-61A |
+| Electret: sensitivity | -35 dB re 1 V/Pa | WM-61A |
+| Dynamic: response at 0.6 m | 50 Hz -16, 100 Hz -8, 200 Hz -4, 500 Hz -1.5, 2 kHz +1, 4 kHz +4, 5 kHz +5, 6.5 kHz +2, 8 kHz +3, 10 kHz 0, 15 kHz -10 dB | Shure 515BSM user guide, figure 1 (the Unidyne B family of the 515SA and 515SB), read off the plot |
+| Phone: sending response | 24 points from 100 Hz to 8 kHz | CCITT Recommendation P.48 (1988), Table 1: the intermediate reference system, "based on the mean characteristics of many commercial circuits" |
+| Phone: carbon microphone | the second harmonic is the main distortion; sensitivity rises with sound pressure | patents on carbon transmitters; White and Louie, The Audio Dictionary |
+| Phone: line noise | at most -65 dBm0p | CCITT G.712 |
+| Boombox: record ALC | 45 dB of input, from -60 dBm, give 3 dB of output; a peak detector on the output | Sanyo LA3220 datasheet, a radio-cassette record amplifier |
+| Boombox: distortion under ALC | 0.5 % typical, 2 % at most; 3 % at the end of the range | LA3220; ROHM BA3308 |
+| Boombox: ALC recovery | set by 22 uF and 1 MOhm | ROHM BA3308 application circuit |
+| Boombox: the cassette | 50 Hz to 10 kHz, S/N 45 dB | Sharp QT-27 radio cassette service manual |
+
+### Each one, step by step
+
+**Camcorder**
+
+1. **The capsule's highs.** One peak filter gives the WM-61A's rise: flat to 5 kHz, a little up at 8 kHz, about 2.5 dB up around 15 kHz.
+2. **The low cut.** The capsule and the gate of its transistor form a first-order low cut at 53 Hz.
+3. **Self-noise.** White noise at 26 dB SPL(A).
+4. **Overload.** The transistor gives way gently above 110 dB SPL, the negative half of the wave first. There it reaches 1 % distortion, second harmonic as well as third.
+
+There is no top cut in the microphone: the band is the recorder's business, and Hi Cut sets it. There is no level control either: a camcorder's own is the AGC knob on the DECK page.
+
+**Dynamic**
+
+Four filters fitted to the twelve read points: a gentle low cut, the presence peak, the smaller peak above the dip at 6.5 kHz, and the fall above 10 kHz. A moving coil does not overload at these levels and its own noise is far below a recorder's, so there is neither. There is no proximity lift: the guide gives it only at 1 cm, and no distance in between is documented.
+
+**Phone**
+
+1. **The carbon's sensitivity.** Below reference level a carbon microphone grows less sensitive the quieter the sound: here by a quarter of a dB for every dB, by 10 dB at most.
+2. **Its distortion.** A second harmonic of 3 % at reference level.
+3. **The reference telephone.** Eight filters fitted to all 24 points of the P.48 table: the steep low cut, the broad rise to 2.5 to 3 kHz, and the cliff above 3.4 kHz.
+4. **The line.** Noise at -65 dBm0 in the band from 300 Hz to 3.4 kHz, the same in both channels: there is one line.
+
+**Boombox**
+
+1. **The capsule.** The camcorder's electret, steps 1 to 4 above.
+2. **The ALC.** A fixed record gain of 37 dB brings the bottom of the ALC's range (-60 dBm from the capsule, 66.8 dB SPL, -45 dBFS here) up to reference level. Above it, a peak detector on the output turns the gain down by 14 dB for every dB it sees above reference: 45 dB of input give 3 dB of output, to the end of the range 45 dB up. The detector charges within milliseconds and lets go through 22 uF and 1 MOhm: a time of 22 seconds, of which the loop needs only the first third, so the gain comes back at 5.5 dB a second.
+3. **The gain element's distortion.** 0.5 % at the level of the LA3220's measurement, a little less at the start of the range.
+4. **The tape.** Its hiss, 45 dB under the level the ALC records at, and its band, 50 Hz to 10 kHz.
+
+### What comes out, measured
+
+At 44.1 kHz; the responses hold at every rate from 44.1 to 192 kHz.
+
+| Test | Result |
+|---|---|
+| Phone against the P.48 table, 100 Hz to 3.5 kHz | within 0.2 dB at all 20 points |
+| Phone at 4 and 5 kHz | -33.6 and -49.1 dB (table: -33.5 and -48.5) |
+| Phone at 6.3 and 8 kHz | -76 and -92 dB (table: -70 and -86): a little deeper |
+| Phone, 1 kHz at reference level | second harmonic 4.7 % (3 % at the microphone, lifted 4 dB by the curve at 2 kHz) |
+| Phone, 20 dB under reference | comes out 25 dB lower; never more than 10 dB under a plain microphone |
+| Phone, silence | line noise -65.0 dBm0 |
+| Dynamic against the Shure points | within 0.8 dB at all twelve, worst at 500 Hz |
+| Camcorder, the low cut | 3.0 dB down at 53 Hz, 0.5 dB at 150 Hz |
+| Camcorder, the highs | +0.3 dB at 5 kHz, +0.8 dB at 8 kHz, +2.3 dB at 15 kHz |
+| Camcorder, 1 kHz at 104, 110 and 116 dB SPL | 0.25 %, 1.0 % and 4.2 % distortion; the negative peak always the lower |
+| Camcorder, silence | 25.9 dB SPL(A) |
+| Boombox, 1 kHz from -70 to -45 dBFS | 37.2 dB of gain, straight |
+| Boombox, 1 kHz from -45 to 0 dBFS | out at -8.0 to -5.0 dBFS: 45 dB in, 3.05 dB out |
+| Boombox, under ALC at -20 dBm | 0.9 % distortion, the capsule's share included |
+| Boombox, a loud sound from rest | held within about 5 ms, after a short burst |
+| Boombox, after a loud passage | the gain comes back at 5.53 dB a second (the 22 uF and 1 MOhm give 5.53) and is back in full 6.5 s later |
+| Boombox, silence right after a sound | the tape's hiss, -56 dB(A) |
+| Boombox, the same silence 11 s later | -51 dB(A): the capsule's hiss at full gain on top |
+
+### What is estimated
+
+- **The level mapping** above.
+- **Camcorder and Boombox:** that "begins overloading" means 1 % distortion; that the positive half gives way 6 dB later than the negative (no figure was found); the middle of the spread of the ten measured capsules.
+- **Phone:** both carbon effects are documented only in kind, so their amounts are estimates, kept modest: 3 % second harmonic, a quarter of a dB per dB down to 10 dB, following the level within 1 ms up and 50 ms down. For the line noise: the limit taken as the level, the reference junction taken as 0 dBr in 600 Ohm, the band edges as gentle ones, no psophometric weighting.
+- **Boombox:** the ALC's attack (no charging current is published): 5 ms; that its range starts at the capsule level the WM-61A's sensitivity gives; that it starts where the output reaches -8 dBFS; the cassette's band edges taken as -3 dB points; its hiss measured in that band without weighting.
+- **Left out, for want of figures:** a camcorder's wind filter, its motor noise, how a microphone's housing colours it, the proximity effect at ordinary distances, the carbon's own noise, and the 8-bit coding of digital phone lines.
+
+::: note Hear it
+Load **Bootleg Concert** and stop the music: within seconds the hiss and the room climb up as the ALC lets go, and the next note slams them down. Load **Answer Machine** and play a voice that goes from loud to soft: the soft words sink further than they should. In **Camcorder 89**, turn ^MIC GAIN^ up to +10 dB and listen to loud peaks harden. For the Dynamic, choose Init, switch the Mic on and pick it: a presence lift, nothing more.
+:::
+
+::: aside
+The microphone was never the best part of the machine. It was the part nearest the sound.
+:::
+
 ::: chapter
 id: switches
 title: ＳＷＩＴＣＨＥＳ
@@ -492,7 +610,7 @@ Every section of the machine has its own switch, so a part can be taken out with
 
 - **Saturator Power** off: Hi Cut stays in.
 - **Wobble** off: the two filters of the WOBBLE page stay in.
-- **Noise** off: silences every noise, the Whistle and the head-switching buzz included.
+- **Noise** off: silences every noise, the Whistle, the head-switching buzz and the microphones' own noise included.
 - **Deck Power** off: NR, HQ and Animation are not affected.
 
 ## Two switches the programs leave alone
@@ -548,7 +666,7 @@ epigraph: Written in pencil on the back of the box, by someone who knew the mach
 | A dropout is the tape lifting off the head, which costs the highs far more than the lows. | Dropouts |
 | The line whistle of a TV set sits at 15.734 kHz. | Whistle |
 
-The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS** and in **B-Type NR** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS**, in **B-Type NR** and in the four microphones of **Mic Type** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: chapter
 id: compat
@@ -565,6 +683,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 - No older program uses the newer controls.
 - The newer programs come after Init, so every older program keeps its number.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
+- **The Mic** was rebuilt in 1.6. Its settings load as they were saved, but with the Mic on the sound is that of the new models; with it off nothing has changed.
 
 ## What arrived when
 
@@ -575,6 +694,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.3 | Animation | |
 | 1.4 | Scrape, Whistle, HQ | Sticky Tape, Tube TV, Worn Heads, Dirty Heads |
 | 1.5 | NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
+| 1.6 | The four Mic Types rebuilt from published figures (the same controls) | |
 
 ::: chapter
 id: trouble
@@ -591,7 +711,7 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 |---|---|
 | VHS Vibes is not in the plugin browser. | Check that the MPC runs MPC OS 3.10.1 or later; that **Enable Enhancements** and **External Plugin Support** are both on under Preferences > Enhancements (Beta); that the MPC was restarted afterwards; and that the folder `{{vendor}} - VST - VHS Vibes` sits inside a folder named `VST2 Plugins` at the top of the drive. Look under **External Plugins**. |
 | It hisses and hums with nothing playing. | That is the tape noise. Switch **Noise** off on the NOISE page, or set **Master** to 0 %. |
-| The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. |
+| The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on with Type **Boombox**: its ALC turns the gain up in every pause, as the real one did. |
 | With Mix below 100 % it sounds like a chorus. | The dry input is steady and the tape path wobbles. Switch **Wobble** off for a clean blend, or keep Mix at 100 %. |
 | The pitch bends or blurs when I turn a wobble knob. | The knob changes the plugin's own delay. It settles as soon as the knob rests. |
 | The sound dips for a moment when I choose a program, or switch HQ or Sat Type. | Each of these fades the sound out and back in. |
