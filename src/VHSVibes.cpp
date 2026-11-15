@@ -938,7 +938,10 @@ public:
         choDelay_.prepare(2 * kChorusDelaySamples);   // the delay time plus its swing
 
         // See notifierMain(): tells the host about program changes, the meters and the latency.
-        notifier_ = std::thread(&VHSVibes::notifierMain, this);
+        // If the system cannot start a thread, the plugin runs without it (the sound is the
+        // same; the host is then not told about those three) rather than throwing into the host.
+        try { notifier_ = std::thread(&VHSVibes::notifierMain, this); }
+        catch (...) { mpc::log("VHSVibes: could not start the helper thread; no meters or latency reports"); }
     }
 
     ~VHSVibes() override
