@@ -164,6 +164,24 @@ int main()
             check(worst < 1.4f * own, "switching the type makes no click");
         }
 
+        // the numbers under the three shared knobs say what the knobs mean in each type
+        {
+            Fx rd; rd.set(kSatOn, 1);
+            auto shown = [&](int i) { char t[64] = {0}; rd.e->dispatcher(rd.e, effGetParamDisplay, i, 0, t, 0.0f); return std::string(t); };
+            rd.set(kLoSat, 100.0f * (0.0f - kTapeLevelMin) / kTapeLevelSpan); rd.set(kHiSat, 0); rd.set(kSplit, 2500);
+            const std::string a = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
+            rd.set(kSatType, 1);
+            const std::string b = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
+            rd.set(kHiSat, 100); rd.set(kSplit, 200); rd.set(kLoSat, 100);
+            const std::string c = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
+            rd.set(kHiSat, 35); rd.set(kSplit, 8000); rd.set(kLoSat, 0);
+            const std::string d2 = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
+            std::printf("   Lo Sat | Hi Sat | Split read: 2-Band \"%s\"; VHS \"%s\", \"%s\", \"%s\"\n", a.c_str(), b.c_str(), c.c_str(), d2.c_str());
+            check(a == "56 % | 0 % | 2.5 kHz", "2-Band: per cent and Hz, as before");
+            check(b == "0.0 dB | SP | right", "VHS at the deck's reference settings: 0.0 dB, SP, right");
+            check(c == "+8.0 dB | EP | -100 %" && d2 == "-10.0 dB | 35% EP | +100 %", "VHS at the ends: record level in dB, speed towards EP, bias signed");
+        }
+
         // a state saved by 1.4 has no Sat Type: 2-Band
         Fx saver; void* data = nullptr;
         const VstIntPtr size = saver.e->dispatcher(saver.e, effGetChunk, 0, 0, &data, 0.0f);

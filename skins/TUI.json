@@ -1457,7 +1457,7 @@
                             "bounds": {
                                 "version": 2,
                                 "acceptsHWFocus": "No",
-                                "showWhenDataModelInvalid": "Hide",
+                                "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "220 444 140 25",
@@ -1486,7 +1486,7 @@
                             "bounds": {
                                 "version": 2,
                                 "acceptsHWFocus": "No",
-                                "showWhenDataModelInvalid": "Hide",
+                                "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "500 444 140 25",
@@ -1515,7 +1515,7 @@
                             "bounds": {
                                 "version": 2,
                                 "acceptsHWFocus": "No",
-                                "showWhenDataModelInvalid": "Hide",
+                                "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "780 444 140 25",

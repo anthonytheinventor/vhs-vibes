@@ -225,11 +225,11 @@ epigraph: What the tape did to the sound.
 
 ## The three knobs that change their name
 
-The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS. They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
+The **Type** switch changes what the saturator stage is, and with it what three of its knobs mean. Their captions on the screen change with it: SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS. The numbers under them change too: REC LEVEL reads in dB, TAPE SPEED reads SP, EP or how far towards EP, BIAS reads "right" or a signed percentage (minus is too little bias, plus too much). They stay the same three knobs, on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat. Lows and Highs keep their names but change their job as well.
 
 | Knob | Type = 2-Band | Type = VHS |
 |---|---|---|
-| ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. The read-out stays in Hz. |
+| ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. |
 | ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. | **Rec Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
 | ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Tape Speed.** The tape speed, from SP at 0 % to EP at 100 %. The slower, the sooner the highs give way and the lower the top of the band. |
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. |
@@ -433,7 +433,7 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | The sound dips for a moment when I choose a program, or switch HQ or Sat Type. | Each of these fades the sound out and back in. |
 | AGC, Drift, Tracking and Breathing do nothing. | **Power** on the DECK page is off. The programs Init and Clean Widener switch it off. |
 | Split, Lows, Lo Sat, Highs and Hi Sat do nothing. | **Power** in the SATURATOR block is off. |
-| Split, Lo Sat and Hi Sat do not do what their names say. | **Type** is on VHS, where they are Bias, Level and Speed. See the table in the chapter ＴＡＰＥ. |
+| Split, Lo Sat and Hi Sat do not do what their names say. | **Type** is on VHS, where they are Bias, Rec Level and Tape Speed, and are captioned so on the screen. See the table in the chapter ＴＡＰＥ. |
 | Head Buzz, Whistle or Breathing cannot be heard. | Head Buzz and Whistle follow **Master** and the **Noise** switch. The Whistle is at 15.7 kHz; not everyone can hear it. Breathing shapes Hiss and Head Buzz, so it needs one of them turned up. |
 | A new program did not change HQ or Animation. | Those two switches are not part of the programs. |
 | The reels stand still. | They turn only while sound comes in or the song is playing. Or **Animation** is off. |

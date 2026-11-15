@@ -849,7 +849,7 @@ def build_tui(params):
                 pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", swap_file(name)))
                 children.append(G.entry("caption " + name, "Image", pic,
                                         "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, CAPTION_H),
-                                        "No", "Hide", "Always",
+                                        "No", "Show", "Always",
                                         invalidating=["IndexedEnabling/%d/%d/%s" % (SWAP_STEP, SWAP_STEPS, params[SWAP_PARAM].handle)]))
         groups = []
         for b in range(4):

@@ -48,7 +48,7 @@
 // back); the right Hi-Fi channel fails before the left; a dropout is the tape lifting off the
 // head, which costs the highs far more than the lows; the line whistle sits at 15.734 kHz.
 // The other times and depths are not documented anywhere I could find and are set by ear.
-// Tape speed needs no control of its own: SP is roughly Hi Cut 10 kHz / Lo Cut 50 Hz, EP
+// Outside Sat Type = VHS tape speed has no control of its own: SP is roughly Hi Cut 10 kHz / Lo Cut 50 Hz, EP
 // roughly 6 kHz / 100 Hz with about 3 dB more hiss.
 //
 // Mix blends the untouched input back in. The dry signal is delayed by the resting length
@@ -1460,12 +1460,45 @@ public:
         visLevel_.store(outEnv_, std::memory_order_relaxed);
     }
 
+    // The Split knob as bias: 0 at its default (2.5 kHz, normalised 0.68468), -1 at the bottom
+    // (too little), +1 at the top (too much).
+    static float tapeBias(float n)
+    {
+        const float n0 = 0.68468f;
+        return n < n0 ? (n - n0) / n0 : (n - n0) / (1.0f - n0);
+    }
+
     // Value text with its unit, at most 8 characters: "25 %", "+3.0 dB", "9.0 kHz", "33 rpm".
     bool formatValue(int index, float v, std::string& out) override
     {
         if (index < 0 || index >= kNumParams || !isSetting(index) || param(index).kind != mpc::Param::Kind::Float) return false;
         if (units_[index] == 0 && index != kTone) return false;
         char buf[32];
+        // With Sat Type on VHS three knobs mean something else (see TapeSat), and say so:
+        // record level in dB, tape speed from SP to EP, bias as right / too little / too much.
+        if ((index == kLoSat || index == kHiSat || index == kSplit) && getInt(kSatType) == 1)
+        {
+            if (index == kLoSat)
+            {
+                const float dB = kTapeLevelMin + kTapeLevelSpan * 0.01f * v;
+                if (std::fabs(dB) < 0.05f) std::snprintf(buf, sizeof(buf), "0.0 dB");
+                else std::snprintf(buf, sizeof(buf), "%+.1f dB", (double)dB);
+            }
+            else if (index == kHiSat)
+            {
+                if (v < 0.5f) std::snprintf(buf, sizeof(buf), "SP");
+                else if (v > 99.5f) std::snprintf(buf, sizeof(buf), "EP");
+                else std::snprintf(buf, sizeof(buf), "%.0f%% EP", (double)v);   // that far from SP towards EP
+            }
+            else
+            {
+                const float b = 100.0f * tapeBias(param(kSplit).toNormalised(v));
+                if (std::fabs(b) < 1.0f) std::snprintf(buf, sizeof(buf), "right");
+                else std::snprintf(buf, sizeof(buf), "%+.0f %%", (double)b);        // minus: too little bias, plus: too much
+            }
+            out = buf;
+            return true;
+        }
         switch (units_[index])
         {
             case 1: std::snprintf(buf, sizeof(buf), "%.0f %%", (double)v); break;
@@ -1555,15 +1588,19 @@ private:
             splitCoeff_ = lpCoeff(get(kSplit), nlSr_);
             // The type itself only changes at a restart (a switch of it fades out first):
             // until then the stage that is sounding keeps its own settings.
-            if (groups == gAll) tape_ = getInt(kSatType) == 1;
+            if (groups == gAll)
+            {
+                const bool tape = getInt(kSatType) == 1;
+                if (tape != tape_) pushPending_.store(true);   // the three read-outs change: have the host ask again
+                tape_ = tape;
+            }
             if (tape_)
             {
                 // Lo Sat: record level, -10 to +8 dB (0 dB, where a reference-level tone has
                 // its 3 %, at 56 %). Hi Sat: tape speed. Split: bias, right at its default
                 // (2.5 kHz), too little below, too much above. Lows and Highs trim the two
                 // halves of the result around 1 kHz.
-                const float n = getNormalised(kSplit), n0 = 0.68468f;
-                tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), n < n0 ? (n - n0) / n0 : (n - n0) / (1.0f - n0));
+                tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(getNormalised(kSplit)));
                 splitCoeff_ = lpCoeff(1000.0f, nlSr_);
             }
         }

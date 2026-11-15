@@ -61,7 +61,7 @@ note: Hi Cut is drawn in the same block but is a stage of its own: it stays in w
 
 ## Split
 what: In **2-Band**: the frequency at which the signal is divided into a low band and a high band. In **VHS** the caption reads BIAS: how well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner.
-note: The read-out stays in Hz or kHz in both types.
+note: In VHS the read-out shows "right" at 2.5 kHz, a minus percentage for too little bias and a plus percentage for too much.
 
 ## Lows
 what: In **2-Band**: the level of the low band going into its clipper. In **VHS**: trims the result below 1 kHz.
