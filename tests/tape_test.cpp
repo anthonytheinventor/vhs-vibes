@@ -190,6 +190,29 @@ int main()
             check(quietAway == 0 && quiet > 0, "the sound fades once, where the switch changes, and plays on the way there");
         }
 
+        // a loud hit after a quiet passage, with the compressor's make-up turned up: the clip that
+        // catches it must not depend on where Rec Level and Tape Speed stand (in 2-Band those two
+        // knobs are the clippers that make it unnecessary; in VHS they are something else)
+        {
+            double firstMs[2] = {0, 0}; int k = 0;
+            for (float loSat : {16.0f, 18.0f})      // either side of the point where a 2-Band clipper is fully in
+            {
+                Fx f; f.set(kSatOn, 1); f.set(kSatType, 1); f.set(kComp, 100); f.set(kHiSat, 30); f.set(kLoSat, loSat);
+                float L[128], R[128]; float* io[2] = { L, R }; long pos = 0;
+                for (int b = 0; b < 700; ++b)
+                {
+                    const float amp = b < 690 ? 0.004f : 0.9f;
+                    for (int i = 0; i < 128; ++i, ++pos) L[i] = R[i] = amp * (float)std::sin(6.283185307179586 * 200.0 * pos / 44100.0);
+                    f.e->processReplacing(f.e, io, io, 128);
+                    if (b == 690) for (int i = 0; i < 64; ++i) firstMs[k] = std::fmax(firstMs[k], (double)std::fabs(L[i]));
+                }
+                ++k;
+            }
+            const double dB = 20.0 * std::log10(firstMs[1] / firstMs[0]);
+            std::printf("   VHS, a loud hit after a quiet passage, Rec Level 0.36 dB apart: the hit's peak differs by %+.2f dB\n", dB);
+            check(std::fabs(dB) < 0.5, "the clip after the compressor does not depend on Rec Level or Tape Speed");
+        }
+
         // the numbers under the three shared knobs say what the knobs mean in each type
         {
             Fx rd; rd.set(kSatOn, 1);

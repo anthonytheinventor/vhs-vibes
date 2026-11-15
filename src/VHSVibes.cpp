@@ -1856,10 +1856,11 @@ private:
             agcTarget_ = 1.0f + agcAmt_ * (clamp(kRefLevel / agcEnv_, 0.25f, 5.0f) - 1.0f);
         }
         else { agcGain_ = agcTarget_ = 1.0f; agcEnv_ = kRefLevel; }
-        // The clip after the compressor is needed while something may turn the sound up and the
-        // saturator, whose clippers have the same rail, is not fully in.
+        // The clip after the compressor is needed while something may turn the sound up, unless
+        // the 2-band saturator, whose clippers have the same rail, is fully in. (With Sat Type on
+        // VHS those clippers are not in the path, and Lo Sat and Hi Sat mean something else.)
         boost_ = (agcActive_ || cur_[cMakeup] > 1.0f)
-              && !(ramp_[rSat].v == 1.0f && cur_[cLoMix] == 1.0f && cur_[cHiMix] == 1.0f);
+              && !(!tape_ && ramp_[rSat].v == 1.0f && cur_[cLoMix] == 1.0f && cur_[cHiMix] == 1.0f);
 
         // Tracking: now and then the Hi-Fi carrier drops. A burst of static, the deck falls
         // back to the dull mono linear track for a moment, another short burst, Hi-Fi again.
