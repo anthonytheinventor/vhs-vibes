@@ -2,7 +2,9 @@
 // built to (see TapeSat in the source). Ends with PASS or FAIL.
 #include "../src/VHSVibes.cpp"
 
+#include <algorithm>
 #include <cstdio>
+#include <vector>
 
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float) { return opcode == audioMasterVersion ? 2400 : 0; }
 static double dB(double x) { return 20.0 * std::log10(x > 1e-30 ? x : 1e-30); }
@@ -211,6 +213,27 @@ int main()
             const double dB = 20.0 * std::log10(firstMs[1] / firstMs[0]);
             std::printf("   VHS, a loud hit after a quiet passage, Rec Level 0.36 dB apart: the hit's peak differs by %+.2f dB\n", dB);
             check(std::fabs(dB) < 0.5, "the clip after the compressor does not depend on Rec Level or Tape Speed");
+        }
+
+        // Slew reads as the time a swing from silence to full level takes, and that is what it does
+        {
+            Fx sl;
+            auto shown = [&](float pc) { sl.set(kWear, pc); char t[64] = {0}; sl.e->dispatcher(sl.e, effGetParamDisplay, kWear, 0, t, 0.0f); return std::string(t); };
+            const std::string r = shown(0) + " | " + shown(20) + " | " + shown(45) + " | " + shown(50) + " | " + shown(100);
+            // a full-level 1 kHz square wave at Slew 100 %: it comes out as a triangle that climbs and
+            // falls at the limit's rate (the middle value of the sample-to-sample moves)
+            float L[128], R[128]; float* io[2] = { L, R }; float last = 0.0f; long pos = 0; std::vector<float> moves;
+            for (int b = 0; b < 80; ++b)
+            {
+                for (int i = 0; i < 128; ++i, ++pos) L[i] = R[i] = (pos / 22) % 2 ? 1.0f : -1.0f;
+                sl.e->processReplacing(sl.e, io, io, 128);
+                for (int i = 0; i < 128; ++i) { if (b >= 40) moves.push_back(std::fabs(L[i] - last)); last = L[i]; }
+            }
+            std::sort(moves.begin(), moves.end());
+            const double slope = moves[moves.size() / 2], ms = 1000.0 / (slope * 44100.0);
+            std::printf("   Slew reads \"%s\"; at 100 %% a full-level square wave moves by %.5f a sample: %.2f ms for a full swing\n", r.c_str(), slope, ms);
+            check(r == "off | 0.032 ms | 0.113 ms | 0.146 ms | 1.89 ms", "the read-out is the swing time in ms, and off at 0 %");
+            check(std::fabs(ms - 1.89) < 0.19, "the swing takes the time the read-out says");
         }
 
         // the numbers under the three shared knobs say what the knobs mean in each type
