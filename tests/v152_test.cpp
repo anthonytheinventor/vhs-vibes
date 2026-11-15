@@ -264,6 +264,47 @@ int main()
         check(same == cases, "every one");
     }
 
+    std::printf("7. No clicks at a program change with HQ on, and into a sound with the chorus at width 50\n");
+    for (int b : {128, 0})
+    {
+        // the two program-change cases of the 1.4 test (section 12 there), with HQ on
+        {
+            Fx fx(kInit, true, b); fx.set(kNoiseOn, 0);
+            std::vector<float> out; fx.play(1.0f, 0.25f, 1000.0f, nullptr); fx.play(0.1f, 0.25f, 1000.0f, &out);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, 12, nullptr, 0.0f);   // Subtle Glue: no noise of its own
+            fx.play(0.5f, 0.25f, 1000.0f, &out);
+            const std::vector<float> tail(out.end() - 4410, out.end());
+            std::printf("   %s, Init -> Subtle Glue: largest step %.4f (Subtle Glue itself steps %.4f)\n", blocks(b).c_str(), largestStep(out), largestStep(tail));
+            check(largestStep(out) < 1.3f * largestStep(tail), "a program change with HQ on fades out and in");
+        }
+        {
+            Fx fx(2, true, b); fx.set(kNoiseOn, 0); fx.set(kWobbleOn, 0);   // 3rd Gen Copy
+            std::vector<float> out; fx.play(1.0f, 0.5f, 300.0f, nullptr); fx.play(0.1f, 0.5f, 300.0f, &out);
+            const float own = largestStep(out);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, kInit, nullptr, 0.0f);
+            fx.play(0.5f, 0.5f, 300.0f, &out);
+            const std::vector<float> tail(out.end() - 4410, out.end());
+            std::printf("   %s, 3rd Gen Copy -> Init: largest step %.4f (3rd Gen Copy steps %.4f, Init %.4f)\n", blocks(b).c_str(), largestStep(out), own, largestStep(tail));
+            check(largestStep(out) < 1.3f * std::fmax(own, largestStep(tail)), "and between two very different programs");
+        }
+        {
+            // Subtle Glue -> a state of Init with the chorus on at width 50 and 20 ms, Mix 70 %
+            Fx fx(kInit, true, b); fx.set(kNoiseOn, 0);
+            fx.set(kChorusOn, 1); fx.set(kChoWidth, 50); fx.set(kChoDelay, 20); fx.set(kChoMix, 40); fx.set(kMix, 70);
+            const std::vector<uint8_t> withChorus = fx.state();
+            fx.e->dispatcher(fx.e, effSetProgram, 0, 12, nullptr, 0.0f);
+            fx.set(kNoiseOn, 0);
+            std::vector<float> L, R; fx.play(1.0f, 0.25f, 300.0f, nullptr); fx.play(0.1f, 0.25f, 300.0f, &L, &R);
+            const float own = std::fmax(largestStep(L), largestStep(R));
+            fx.load(withChorus);
+            fx.play(0.5f, 0.25f, 300.0f, &L, &R);
+            const std::vector<float> tL(L.end() - 4410, L.end()), tR(R.end() - 4410, R.end());
+            const float after = std::fmax(largestStep(tL), largestStep(tR)), all = std::fmax(largestStep(L), largestStep(R));
+            std::printf("   %s, Subtle Glue -> the chorus at width 50, Mix 70 %%: largest step %.4f (before %.4f, after %.4f)\n", blocks(b).c_str(), all, own, after);
+            check(all < 1.3f * std::fmax(own, after), "and into a sound with the chorus on and Mix below 100 %");
+        }
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
