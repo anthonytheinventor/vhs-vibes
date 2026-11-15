@@ -113,7 +113,7 @@ PAGES = [
         ("PREAMP", "プリアンプ", ["Drive", "Tone", "Wear", "Comp"]),
         ("OUTPUT", "アウトプット", ["Dropouts", "Mono", "Mix", "Output"]),
         ("SATURATOR", "サチュレーター", ["Saturator", "Split", "Lows", "Lo Sat"]),
-        ("", "", ["Highs", "Hi Sat", "Hi Cut", None]),
+        ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
     ]},
     {"name": "WOBBLE", "jp": "ゆらぎ", "file": "bg_wobble.png", "blocks": [
         ("TRACKING", "トラッキング", ["Warp", "RPM", "Shape", None]),
@@ -149,6 +149,7 @@ CAPTIONS = {
     "Flutter": "DEPTH", "Flut Rate": "RATE",
     "Wow Rate": "RATE", "Flutter 2": "FLUTTER", "Flut2 Rate": "RATE",
     "Hi Cut 2": "HI CUT", "Noise": "MASTER", "Noise Pos": "POSITION",
+    "Sat Type": "TYPE", "Split": "SPLIT / BIAS", "Lo Sat": "LO SAT / LEVEL", "Hi Sat": "HI SAT / SPEED",
     "Wobble On": "WOBBLE", "Noise On": "NOISE",
     "Deck On": "POWER",
 }
@@ -160,6 +161,7 @@ PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Wear", "Comp"
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
 SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
+    "Sat Type": ((64, 40), [(4, 50), (72, 50)], ["2-BAND", "TAPE"]),
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
     "NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
 }

@@ -21,7 +21,7 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 53 controls on five pages, 27 built-in programs
+- 54 controls on five pages, 29 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
 - version 1.5
@@ -69,6 +69,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Lows / Lo Sat | Level and clipping of the low band. |
 | Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
 | Hi Cut | 4-pole lowpass after the saturator. |
+| Sat Type | **2-Band**: the saturator described above. **Tape**: a model of what the linear track's tape does. Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. In Tape the three knobs with two names change meaning: **Lo Sat / Level** is the record level (how hard the tape is driven), **Hi Sat / Speed** is the tape speed from SP (0 %) to EP (100 %): the slower, the sooner the highs give way and the lower the top of the band; **Split / Bias** is how well the deck is set up for the tape: 2.5 kHz (where the knob rests) is right, lower is too little bias (brighter, grittier), higher is too much (duller, cleaner lows). Lows and Highs still trim the result, below and above 1 kHz. |
 
 ### ＷＯＢＢＬＥ　ゆらぎ
 
@@ -166,6 +167,8 @@ Twenty-five programs. The labels are handwritten.
 | Dirty Heads | Oxide on the heads: dull, and the highs keep falling away. |
 | Stereo Rental | An early stereo rental with noise reduction on both sides, and a tape that has aged in between: dull, the highs ducking in the quiet parts. |
 | Wrong Switch | Recorded with noise reduction, played without: bright, airy, a little squashed, all of the hiss. |
+| SP Tape | The tape model at standard speed, recorded a little hot: loud parts lose their top and soften, quiet parts stay clear. |
+| EP Tape | The tape model at the six-hour speed: the highs give way three times sooner and the top of the band is gone. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
@@ -189,11 +192,20 @@ The Animation switch on the DECK page turns them off.
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with 1.3 or 1.4 load with every setting in place. Scrape, Whistle, HQ and NR
-  rest at 0 or off, no older program uses them, and the newer programs come after Init so
+- Projects made with 1.3 or 1.4 load with every setting in place. Scrape, Whistle, NR and Sat Type
+  rest at 0, off or 2-Band, no older program uses them, and the newer programs come after Init so
   every older one keeps its number.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
+- Sat Type = Tape is built to published figures where there are any: the track's two speeds
+  (33.35 and 11.12 mm/s), reference level (100 nWb/m, taken as -8 dBFS, the same as the NR's
+  Dolby level), 3 % third-harmonic distortion 10 dB above it (320 nWb/m, the figure for video
+  tape), a band that reaches 10 kHz in SP and about 4.5 kHz in EP, and the direction of the
+  bias effects. No published curve was found for how much less level this track holds at high
+  frequencies; that part is an estimate from audio cassette behaviour scaled by tape speed
+  (a 7 kHz tone in SP reaches its 3 % point about 5 dB below reference level), as are the
+  shape of the curve past the 3 % point and the sizes of the bias effects. There is no head
+  bump: at these tape speeds it lies below 20 Hz.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
@@ -255,10 +267,10 @@ read-outs under the knobs are live text (Nexa).
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds six small programs and runs them on the computer: `host_test` (what the plugin tells
+Builds seven small programs and runs them on the computer: `host_test` (what the plugin tells
 the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `nr_test` (the noise reduction
-against the chip makers' figures), `deck_test` and
-`levels_test` (measurements of each stage to read through). The first four end in PASS or FAIL.
+against the chip makers' figures), `tape_test` (Sat Type = Tape against the figures it is built to), `deck_test` and
+`levels_test` (measurements of each stage to read through). The first five end in PASS or FAIL.
 `race_test` is not run by the script: it hammers the plugin from several threads and is meant
 to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
 
