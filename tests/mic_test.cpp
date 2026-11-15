@@ -7,6 +7,12 @@
 //
 // The level mapping the models use (an assumption, stated in the manual): a sine peaking at
 // kRefLevel (-8 dBFS) is 104 dB SPL, so 94 dB SPL peaks at -18 dBFS.
+//
+// The Camcorder is the camera's record chain (the camcorder report, 2026-11-15): capsule, mic
+// amp, record ALC. Its sections (3, 4, 13 to 16, 18) check it against the report's numbers,
+// worked out here from the documents' own figures, not from the source's constants. Section 16
+// measures how far each model is from bypass on a music-like signal, for the Camcorder that is
+// replaced (the capsule alone, still in the source as MicModel::capsule) and the new one.
 #include "../src/VHSVibes.cpp"
 
 #include <algorithm>
@@ -24,6 +30,18 @@ static const char* kNames[4] = { "Camcorder", "Dynamic", "Phone", "Boombox" };
 static const double kRef = 0.4;                                   // kRefLevel, as a number (1.5.3 has it too)
 static double splPeak(double spl) { return kRef * fromDb(spl - 104.0); }   // the peak of a sine of this SPL
 static double splRms(double spl) { return splPeak(spl) / std::sqrt(2.0); }   // and the rms of a noise of this SPL
+
+// The Camcorder's ALC from the documents (camcorder report, section 3): knee at -66 dBs (0.388 mV)
+// from a -35 dB V/Pa capsule; 1 : 19 above it over 22 dB; the end of the range on kRefLevel.
+static const double kKneeSpl  = 94.0 + 20.0 * std::log10(0.7746e-3 * std::pow(10.0, -6.0 / 20.0) / std::pow(10.0, -35.0 / 20.0));
+static const double kKneePk   = splPeak(kKneeSpl);                         // a sine at the knee: its peak
+static const double kKneeOut  = kRef * std::pow(10.0, -22.0 / 19.0 / 20.0);  // the output there
+static const double kCamGain  = kKneeOut / kKneePk;                          // the record gain before the ALC
+static const double kAttDb    = 22.0 * 18.0 / 19.0;                          // its largest attenuation
+static const double kRecDbS   = 18.0 * 20.0 * std::log10(std::exp(1.0)) / 19.0;   // recovery, dB/s (19 s detector, 18 dB per dB)
+static double knee(double d) { return kKneePk * fromDb(d); }                 // a sine d dB above the knee
+// the static curve the report gives, output in dB re the knee's output
+static double lawDb(double d) { return d <= 0.0 ? d : d <= 22.0 ? d / 19.0 : 22.0 / 19.0 + (d - 22.0); }
 
 struct Fx
 {
@@ -150,6 +168,83 @@ static double thd(const std::vector<float>& v, float sr, double hz, size_t from,
     return std::sqrt(s) / f1;
 }
 
+// The capsule's 26 dB SPL(A) (white) at the camcorder's output with the ALC at full gain: through
+// the record gain and the mic amp's band, measured A-weighted between 20 Hz and 20 kHz.
+static double camNoise(float sr)
+{
+    MicModel m; m.set(0, sr);
+    double num = 0.0, den = 0.0;
+    for (double f = 20.0; f < 20000.0 && f < 0.5 * sr; f += 1.0)
+    {
+        const double h = m.gainAt(2, 4, sr, (float)f) / m.gainAt(2, 4, sr, 1000.0f), a = aWeight(f);
+        num += h * h * a * a; den += a * a;
+    }
+    return splRms(26.0) * kCamGain * std::sqrt(num / den);
+}
+// the music-like test signal (16): a chord, a kick on every beat, a hi-hat on every half beat;
+// loud for 2 s, 15 dB quieter for 2 s, 2 s of silence, loud 2 s, quiet 2 s; -18 dBFS rms over
+// the parts that play
+static std::vector<float> music(float sr)
+{
+    const double secs = 10.0;
+    std::vector<double> v((size_t)(secs * sr), 0.0);
+    uint32_t rng = 0x9e3779b9u;
+    const double chord[3] = { 220.0, 277.18, 329.63 };
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        const double t = (double)i / sr;
+        if (t >= 4.0 && t < 6.0) continue;
+        const bool loud = t < 2.0 || (t >= 6.0 && t < 8.0);
+        double x = 0.0;
+        for (double f : chord) for (int k = 1; k <= 6; ++k) x += 0.08 / k * std::sin(kPi2 * f * k * t + k);
+        const double tb = std::fmod(t, 0.5), th = std::fmod(t, 0.25);
+        x += 0.9 * std::exp(-tb / 0.08) * std::sin(kPi2 * (50.0 + 60.0 * std::exp(-tb / 0.02)) * tb);
+        rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+        x += 0.25 * std::exp(-th / 0.015) * ((double)rng / 2147483648.0 - 1.0);
+        v[i] = x * (loud ? 1.0 : fromDb(-15.0));
+    }
+    double e = 0.0; size_t n = 0;
+    for (size_t i = 0; i < v.size(); ++i) { const double t = (double)i / sr; if (t < 4.0 || t >= 6.0) { e += v[i] * v[i]; ++n; } }
+    const double k = fromDb(-18.0) / std::sqrt(e / (double)n);
+    std::vector<float> out(v.size());
+    for (size_t i = 0; i < v.size(); ++i) out[i] = (float)(v[i] * k);
+    return out;
+}
+struct Dyn { double crest, loudQuiet, spread, gap; };
+// crest factor (peak / rms over the parts that play), loud against quiet (rms of 0.5-2 s against
+// 2.5-4 s), level over time (standard deviation of the 50 ms rms in dB, over the parts that play,
+// after the first 0.2 s), and the gap's level against the loud part (rms of its last half second,
+// 5.4-5.9 s)
+static Dyn dynamics(const std::vector<float>& v, float sr)
+{
+    auto rms = [&](double a, double b) { double e = 0; size_t n = 0; for (size_t i = (size_t)(a * sr); i < (size_t)(b * sr); ++i, ++n) e += (double)v[i] * v[i]; return std::sqrt(e / (double)n); };
+    double pk = 0, e = 0; size_t n = 0;
+    for (size_t i = (size_t)(0.2 * sr); i < v.size(); ++i) { const double t = (double)i / sr; if (t >= 4.0 && t < 6.0) continue; pk = std::fmax(pk, std::fabs(v[i])); e += (double)v[i] * v[i]; ++n; }
+    std::vector<double> lv;
+    for (double t = 0.2; t + 0.05 <= 10.0; t += 0.05) if (t + 0.05 <= 4.0 || t >= 6.0) lv.push_back(dB(rms(t, t + 0.05)));
+    double m = 0; for (double x : lv) m += x;
+    m /= (double)lv.size();
+    double sd = 0; for (double x : lv) sd += (x - m) * (x - m);
+    Dyn d;
+    d.crest = dB(pk / std::sqrt(e / (double)n));
+    d.loudQuiet = dB(rms(0.5, 2.0) / rms(2.5, 4.0));
+    d.spread = std::sqrt(sd / (double)lv.size());
+    d.gap = dB(rms(5.4, 5.9) / rms(0.5, 2.0));
+    return d;
+}
+// MicModel alone, as the plugin calls it (Mic Gain in front); old = the capsule alone (the
+// Camcorder before this model)
+static std::vector<float> micOnly(const std::vector<float>& in, float sr, double gainDb, bool noise, bool old, MicModel* keep = nullptr)
+{
+    MicModel m; m.set(0, sr); m.reset();
+    const float g = (float)fromDb(gainDb);
+    std::vector<float> out(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+        out[i] = old ? m.capsule(in[i] * g, noise ? 1.0f : 0.0f) : m.process(splat(in[i] * g), noise ? 1.0f : 0.0f)[0];
+    if (keep) *keep = m;
+    return out;
+}
+
 int main()
 {
     int fails = 0;
@@ -201,49 +296,79 @@ int main()
         check(std::fabs(g - 6.0) < 0.05, "Mic Gain is a plain gain in front of it");
     }
 
-    std::printf("3. Camcorder: the electret capsule. Gate highpass (Kean: 100 Mohm, 30 pF, first order), WM-61A HF rise (read off Neal's plot), no lowpass\n");
+    std::printf("3. Camcorder: the band, below the ALC's knee. The capsule (gate highpass: Kean, 100 Mohm, 30 pF; HF rise: WM-61A, Neal's plot)\n"
+                "   times the mic amp (Sony DCR-TRV900E mic input, Vrancic's table); through the plugin against the two parts\n");
     {
-        // first order at 53.05 Hz: -3.0 dB there, -9.1 dB at 20 Hz, -0.5 dB at 150 Hz; the
-        // rise: flat within 0.3 dB from 300 Hz to 5 kHz, +1 at 8 kHz, +1.5 to +3 at 13 to 17 kHz
-        // (the units' spread: +2.25 +/- 0.75), +1 to -1 at 21.5 kHz
-        const double pts[11][3] = { {20,-9.1,0.5},{53.05,-3.0,0.5},{150,-0.5,0.5},{300,0,0.3},{3000,0,0.3},{5000,0,0.3},{8000,1.0,0.5},{13000,2.25,0.75},{15000,2.25,0.75},{17000,2.25,0.75},{21500,0,1.0} };
+        // the capsule as before: first order at 53.05 Hz, the units' spread at 13 to 17 kHz
+        const double cap[11][3] = { {20,-9.1,0.5},{53.05,-3.0,0.5},{150,-0.5,0.5},{300,0,0.3},{3000,0,0.3},{5000,0,0.3},{8000,1.0,0.5},{13000,2.25,0.75},{15000,2.25,0.75},{17000,2.25,0.75},{21500,0,1.0} };
+        // the mic amp, read (dB re 1 kHz)
+        const double amp[10][2] = { {20,-12.8},{50,-3.1},{100,-0.6},{200,0.0},{1000,0.0},{2000,-0.2},{5000,-0.6},{10000,-1.7},{15000,-3.6},{20000,-4.9} };
         for (float sr : rates)
         {
-            double worst = 0.0; std::string line; bool ok = true;
-            for (const auto& p : pts)
+            MicModel m; m.set(0, sr);
+            auto part = [&](int from, int to, double hz) { return dB(m.gainAt(from, to, sr, (float)hz) / m.gainAt(from, to, sr, 1000.0f)); };
+            double worstCap = 0.0, worstAmp = 0.0, worstAll = 0.0; bool okCap = true; std::string lc, la;
+            for (const auto& p : cap)
             {
                 if (p[0] > 0.45 * sr) continue;
-                const double got = respDb(sr, 0, p[0], 0.1);
-                char b[40]; std::snprintf(b, sizeof(b), " %g:%+.2f/%+.2f", p[0], got, p[1]); line += b;
-                worst = std::fmax(worst, std::fabs(got - p[1]));
-                if (std::fabs(got - p[1]) > p[2]) ok = false;
+                const double got = part(0, 2, p[0]);
+                char b[40]; std::snprintf(b, sizeof(b), " %g:%+.2f/%+.2f", p[0], got, p[1]); lc += b;
+                worstCap = std::fmax(worstCap, std::fabs(got - p[1]));
+                if (std::fabs(got - p[1]) > p[2]) okCap = false;
             }
-            std::printf("   %6.0f Hz:%s\n", sr, line.c_str());
-            char what[160]; std::snprintf(what, sizeof(what), "%.0f Hz: within 0.5 dB at the highpass and at 8 kHz, 0.3 dB in the flat part, inside the spread at 13 to 17 kHz, 1 dB at 21.5 kHz", sr);
-            check(ok, what);
+            for (const auto& p : amp)
+            {
+                if (p[0] > 0.45 * sr) continue;
+                const double got = part(2, 4, p[0]);
+                char b[40]; std::snprintf(b, sizeof(b), " %g:%+.2f/%+.1f", p[0], got, p[1]); la += b;
+                worstAmp = std::fmax(worstAmp, std::fabs(got - p[1]));
+            }
+            // through the plugin, 20 dB under the knee (the ALC at full gain, both clips far off)
+            for (double hz : {20.0, 50.0, 100.0, 300.0, 3000.0, 8000.0, 15000.0})
+                worstAll = std::fmax(worstAll, std::fabs(respDb(sr, 0, hz, knee(-20.0)) - part(0, 4, hz)));
+            std::printf("   %6.0f Hz capsule:%s\n", sr, lc.c_str());
+            std::printf("   %6.0f Hz mic amp:%s\n", sr, la.c_str());
+            char what[200];
+            std::snprintf(what, sizeof(what), "%.0f Hz capsule: within 0.5 dB at the highpass and at 8 kHz, 0.3 dB in the flat part, inside the spread at 13 to 17 kHz, 1 dB at 21.5 kHz", sr);
+            check(okCap, what);
+            std::snprintf(what, sizeof(what), "%.0f Hz mic amp: within 0.3 dB of every read point to 0.45 times the rate (worst %.2f)", sr, worstAmp);
+            check(worstAmp <= 0.3, what);
+            std::snprintf(what, sizeof(what), "%.0f Hz: the plugin's response is the two together, within 0.1 dB (worst %.3f)", sr, worstAll);
+            check(worstAll <= 0.1, what);
         }
+        std::printf("   (Vrancic's table also gives -28.1 dB at 10 Hz; the fitted highpass gives %.1f there, the capsule adds %.1f)\n",
+                    [] { MicModel m; m.set(0, 48000.0f); return dB(m.gainAt(2, 4, 48000.0f, 10.0f) / m.gainAt(2, 4, 48000.0f, 1000.0f)); }(),
+                    [] { MicModel m; m.set(0, 48000.0f); return dB(m.gainAt(0, 2, 48000.0f, 10.0f) / m.gainAt(0, 2, 48000.0f, 1000.0f)); }());
     }
 
-    std::printf("4. Camcorder: the JFET's overload (Kean: above 110 dB SPL, negative peaks first), 1 kHz\n");
+    std::printf("4. Camcorder: the two overloads ahead of the ALC, 1 kHz, each stage alone\n"
+                "   the capsule's JFET (Kean: above 110 dB SPL, negative peaks first); the mic amp (derived: 107 dB SPL from the BA7780 and LA7471, symmetric)\n");
     {
-        double thd104 = 0, thd110 = 0;
-        for (double spl : {104.0, 107.0, 110.0, 113.0, 116.0})
+        const float sr = 44100.0f;
+        auto stage = [&](float (*fn)(float), double spl, double* h2, double* h3, double* hi, double* lo) {
+            const std::vector<float> in = sine(sr, 1000.0, splPeak(spl), 0.2);
+            std::vector<float> out(in.size());
+            for (size_t i = 0; i < in.size(); ++i) out[i] = fn(in[i]);
+            double mean = 0; for (float v : out) mean += v;
+            mean /= (double)out.size();
+            *hi = 0; *lo = 0; for (float v : out) { *hi = std::fmax(*hi, v - mean); *lo = std::fmin(*lo, v - mean); }
+            return thd(out, sr, 1000.0, 0, out.size(), h2, h3);
+        };
+        double jf[6] = {0}, ma[6] = {0}; int k = 0;
+        for (double spl : {101.0, 104.0, 107.0, 110.0, 113.0, 116.0})
         {
-            Fx fx(44100.0f, 0, true);
-            const std::vector<float> in = sine(44100.0f, 1000.0, splPeak(spl), 0.75);
-            const std::vector<float> out = fx.run(in);
-            double h2 = 0, h3 = 0;
-            const double t = thd(out, 44100.0f, 1000.0, 17640, out.size(), &h2, &h3);
-            // the waveform's two peaks around its mean (the stage's DC is left in)
-            double mean = 0; for (size_t i = 22050; i < out.size(); ++i) mean += out[i];
-            mean /= (double)(out.size() - 22050);
-            double hi = 0, lo = 0; for (size_t i = 22050; i < out.size(); ++i) { hi = std::fmax(hi, out[i] - mean); lo = std::fmin(lo, out[i] - mean); }
-            std::printf("   %.0f dB SPL (peak %.3f): THD %.2f %% (2nd %.2f %%, 3rd %.2f %%), positive peak %.4f, negative %.4f\n", spl, splPeak(spl), 100 * t, 100 * h2, 100 * h3, hi, -lo);
-            if (spl == 104.0) thd104 = t;
-            if (spl == 110.0) { thd110 = t; check(-lo < hi, "the negative half gives way first"); check(h2 > 0.5 * h3, "so there is second harmonic as well as third"); }
+            double h2, h3, hi, lo, m2, m3, mhi, mlo;
+            jf[k] = stage(MicModel::jfet, spl, &h2, &h3, &hi, &lo);
+            ma[k] = stage(MicModel::micAmp, spl, &m2, &m3, &mhi, &mlo);
+            std::printf("   %.0f dB SPL (peak %.3f): JFET THD %.2f %% (2nd %.2f %%, 3rd %.2f %%, peaks +%.4f/-%.4f); mic amp THD %.2f %% (2nd %.3f %%, 3rd %.2f %%, peaks +%.4f/-%.4f)\n",
+                        spl, splPeak(spl), 100 * jf[k], 100 * h2, 100 * h3, hi, -lo, 100 * ma[k], 100 * m2, 100 * m3, mhi, -mlo);
+            if (spl == 110.0) { check(-lo < hi, "JFET: the negative half gives way first"); check(h2 > 0.5 * h3, "so there is second harmonic as well as third"); }
+            if (spl == 107.0) check(m2 < 0.0001 && std::fabs(mhi + mlo) < 1e-4, "mic amp: both halves alike (no second harmonic)");
+            ++k;
         }
-        check(std::fabs(thd110 - 0.01) < 0.0015, "1 % THD at 110 dB SPL (taken as where overload begins)");
-        check(thd104 < 0.003, "clean at reference level (104 dB SPL)");
+        check(std::fabs(jf[3] - 0.01) < 0.0015, "JFET: 1 % THD at 110 dB SPL (taken as where overload begins)");
+        check(std::fabs(ma[2] - 0.01) < 0.0015, "mic amp: 1 % THD at 107 dB SPL (taken as where overload begins)");
+        check(ma[2] > jf[2], "so of the two the mic amp gives way first");
     }
 
     std::printf("5. Noise floors (silence in, Noise switch on, the mic's own noise only)\n");
@@ -255,9 +380,10 @@ int main()
                 Fx fx(sr, 0, true, true);
                 const std::vector<float> out = fx.run(in);
                 const double a = bandRms(out, sr, (size_t)(0.5f * sr), out.size(), 20.0, 20000.0, true);
-                const double want = splRms(26.0);
-                std::printf("   %.0f Hz Camcorder: %.1f dB(A) re full scale, %.1f dB SPL(A); the WM-61A figure 26 dB SPL(A) is %.1f\n", sr, dB(a), 104.0 + dB(a / splRms(104.0)), dB(want));
-                check(std::fabs(dB(a / want)) < 1.0, "the capsule's self-noise within 1 dB of 26 dB SPL(A)");
+                const double want = camNoise(sr);
+                std::printf("   %.0f Hz Camcorder: %.1f dB(A) re full scale, %.1f dB re a kRefLevel sine; the WM-61A's 26 dB SPL(A) through the full record gain (%+.1f dB) and the mic amp's band: %.1f\n",
+                            sr, dB(a), dB(a / (kRef / std::sqrt(2.0))), dB(kCamGain), dB(want));
+                check(std::fabs(dB(a / want)) < 1.0, "silence in: the capsule's self-noise at the full record gain, within 1 dB");
             }
             {
                 Fx fx(sr, 2, true, true);
@@ -404,8 +530,8 @@ int main()
         check(std::fabs(g60 - g0 + 10.0) < 0.5, "and never more than 10 dB down");
     }
 
-    std::printf("11. The Phone (one line) and the Boombox (Sharp QT-27: \"BUILT-IN MIC (MONO)\") are mono\n");
-    for (int t : {2, 3})
+    std::printf("11. The Camcorder (one built-in mic, one linear track), the Phone (one line) and the Boombox (Sharp QT-27: \"BUILT-IN MIC (MONO)\") are mono\n");
+    for (int t : {0, 2, 3})
     {
         Fx fx(44100.0f, t, true, true);
         std::vector<float> L(44100), R(44100, 0.0f);
@@ -428,6 +554,182 @@ int main()
             const std::vector<float> out = fx.run(std::vector<float>(44100 * 3, 0.0f));
             double m = 0; for (float s : out) m = std::fmax(m, std::fabs(s));
             check(m == 0.0, std::string(kNames[t]) + ", Mic Gain +12 dB, Noise off: silence in, silence out");
+        }
+    }
+
+    std::printf("13. Camcorder: the ALC's static curve, 1 kHz (TRV900 measured 1 : 19 above its knee; range 22 dB, Sanyo VM-RZ1P;\n"
+                "    knee at -66 dBs = %.1f dB SPL = %.1f dBFS peak; record gain %+.2f dB; the range ends at %.1f dB SPL)\n", kKneeSpl, dB(kKneePk), dB(kCamGain), kKneeSpl + 22.0);
+    {
+        const double ds[] = { -20.0, -10.0, 0.0, 1.6, 3.5, 6.0, 9.5, 12.0, 14.0, 20.0, 22.0, 25.0, 28.0, 31.0 };
+        const double trv[][2] = { {1.6,1.1},{3.5,1.6},{6.0,2.0},{9.5,2.3},{12.0,2.4},{14.0,2.5},{20.0,2.8} };
+        for (float sr : rates)
+        {
+            double out[14], dist[14]; std::string line;
+            for (int i = 0; i < 14; ++i)
+            {
+                Fx fx(sr, 0, true);
+                const std::vector<float> o = fx.run(sine(sr, 1000.0, knee(ds[i]), 1.5));
+                const size_t a = (size_t)(1.0 * sr), b = o.size();
+                out[i] = dB(partial(o, sr, 1000.0, a, b) / kKneeOut);
+                dist[i] = thd(o, sr, 1000.0, a, b);
+                char c[40]; std::snprintf(c, sizeof(c), " %+.1f->%+.2f", ds[i], out[i]); line += c;
+            }
+            std::printf("   %6.0f Hz, dB re the knee in -> out:%s\n", sr, line.c_str());
+            double worst = 0.0;
+            for (int i = 0; i < 11; ++i) worst = std::fmax(worst, std::fabs(out[i] - lawDb(ds[i])));
+            const double slope = (out[9] - out[5]) / 14.0, past = out[13] - out[10];
+            char what[200];
+            std::snprintf(what, sizeof(what), "%.0f Hz: on the report's curve within 0.25 dB from 20 dB under the knee to the end of the range (worst %.2f)", sr, worst);
+            check(worst <= 0.25, what);
+            std::snprintf(what, sizeof(what), "%.0f Hz: 1 : 19 above the knee (%.4f dB per dB from +6 to +20; 1/19 = %.4f; the TRV900's table %.4f)", sr, slope, 1.0 / 19.0, (2.8 - 2.0) / 14.0);
+            check(std::fabs(slope - 1.0 / 19.0) < 0.006, what);
+            std::snprintf(what, sizeof(what), "%.0f Hz: the end of the range (+22 dB) comes out at kRefLevel within 0.25 dB (%+.2f dB)", sr, out[10] + dB(kKneeOut / kRef));
+            check(std::fabs(out[10] + dB(kKneeOut / kRef)) < 0.25, what);
+            std::snprintf(what, sizeof(what), "%.0f Hz: past it the output follows the input again (9 dB more in: %+.2f dB out), and distorts: THD %.2f %% at the end, %.2f %% 9 dB past",
+                          sr, past, 100 * dist[10], 100 * dist[13]);
+            check(past > 8.0 && dist[10] < 0.005 && dist[13] > 2.0 * dist[10], what);
+            if (sr == 44100.0f)
+            {
+                std::string t;
+                for (const auto& p : trv) for (int i = 0; i < 14; ++i) if (ds[i] == p[0]) { char c[48]; std::snprintf(c, sizeof(c), " %+.1f: %+.2f/%+.1f", p[0], out[i], p[1]); t += c; }
+                std::printf("   against the TRV900's table (in re the knee: model/measured, dB re the knee's output):%s\n", t.c_str());
+                std::printf("   (the TRV900's knee is soft: near it the hard knee lies up to 1.7 dB under the table, as the report says; above +6 dB the slopes agree)\n");
+            }
+        }
+    }
+
+    std::printf("14. Camcorder: attack and recovery (both estimates: a 20 ms detector charge, a 19 s discharge: %.2f dB/s back with 18 dB per dB)\n", kRecDbS);
+    {
+        for (float sr : rates)
+        {
+            // 1 s at the knee, 2 s 20 dB above it (inside the range), then 6 s of a probe 10 dB under
+            // the knee (full gain once the ALC has let go). Noise off.
+            std::vector<float> in = sine(sr, 1000.0, knee(0.0), 1.0);
+            const std::vector<float> loud = sine(sr, 1000.0, knee(20.0), 2.0, kPi2 * 1000.0 * 1.0), probe = sine(sr, 1000.0, knee(-10.0), 6.0, kPi2 * 1000.0 * 3.0);
+            in.insert(in.end(), loud.begin(), loud.end());
+            in.insert(in.end(), probe.begin(), probe.end());
+            Fx fx(sr, 0, true);
+            const std::vector<float> out = fx.run(in);
+            // the same in the report's terms, worked out in double: record gain, the cubic after
+            // the gain element, a peak detector charging with 20 ms and discharging with 19 s,
+            // gain (vc / threshold) ^ -18 at least -20.84 dB
+            std::vector<double> ref(in.size());
+            {
+                const double atk = 1.0 - std::exp(-1.0 / (0.020 * sr)), rel = std::exp(-1.0 / (19.0 * sr)), floor = fromDb(-kAttDb), c = 0.06665;
+                double vc = 0.0, g = 1.0;
+                for (size_t i = 0; i < in.size(); ++i)
+                {
+                    double y = std::fmax(-2.2364, std::fmin(2.2364, (double)in[i] * kCamGain * g));
+                    y -= c * y * y * y;
+                    vc *= rel;
+                    if (std::fabs(y) > vc) vc += atk * (std::fabs(y) - vc);
+                    g = vc > kKneeOut ? std::fmax(std::pow(vc / kKneeOut, -18.0), floor) : 1.0;
+                    ref[i] = y;
+                }
+            }
+            const size_t ms = (size_t)(0.001 * sr);
+            auto pkOut = [&](double t0) { double m = 0; for (size_t i = (size_t)(t0 * sr), k = 0; k < ms; ++i, ++k) m = std::fmax(m, std::fabs(out[i])); return m; };
+            auto pkRef = [&](double t0) { double m = 0; for (size_t i = (size_t)(t0 * sr), k = 0; k < ms; ++i, ++k) m = std::fmax(m, std::fabs(ref[i])); return m; };
+            const double steady = pkOut(2.8), steadyRef = pkRef(2.8);
+            double attack = 0.0, attackRef = 0.0, burst = 0.0, burstRef = 0.0;
+            for (double t = 1.0; t < 1.5; t += 0.001)
+            {
+                burst = std::fmax(burst, pkOut(t)); burstRef = std::fmax(burstRef, pkRef(t));
+                if (std::fabs(dB(pkOut(t) / steady)) > 1.0) attack = t + 0.001 - 1.0;
+                if (std::fabs(dB(pkRef(t) / steadyRef)) > 1.0) attackRef = t + 0.001 - 1.0;
+            }
+            auto level = [&](double t0) { const size_t a = (size_t)(t0 * sr); return dB(partial(out, sr, 1000.0, a, a + (size_t)(0.05 * sr))); };
+            const double t0 = 3.0, l1 = level(t0 + 0.5), l2 = level(t0 + 1.5), fin = level(t0 + 5.5);
+            double back = -1.0;
+            for (double t = t0; t < t0 + 5.5; t += 0.01) if (level(t) > fin - 1.0) { back = t - t0; break; }
+            const double rate = l2 - l1, att = 20.0 * 18.0 / 19.0, wantBack = (att - 1.0) / kRecDbS;
+            std::printf("   %6.0f Hz: onset 20 dB: back within 1 dB after %.0f ms (the report's detector: %.0f ms), overshoot to %+.1f dB (%+.1f); recovery %.2f dB/s, within 1 dB of full gain after %.2f s (%.2f s for %.1f dB)\n",
+                        sr, 1000.0 * attack, 1000.0 * attackRef, dB(burst / steady), dB(burstRef / steadyRef), rate, back, wantBack, att);
+            char what[160];
+            std::snprintf(what, sizeof(what), "%.0f Hz: the onset as the report's 20 ms detector gives it, within 15 %% (and 1 dB of overshoot)", sr);
+            check(std::fabs(attack / attackRef - 1.0) < 0.15 && std::fabs(dB(burst / steady) - dB(burstRef / steadyRef)) < 1.0, what);
+            std::snprintf(what, sizeof(what), "%.0f Hz: the gain comes back at the rate the 19 s detector sets, within 5 %%, and has come back when that rate says, within 10 %%", sr);
+            check(std::fabs(rate / kRecDbS - 1.0) < 0.05 && std::fabs(back / wantBack - 1.0) < 0.1, what);
+        }
+    }
+
+    std::printf("15. Camcorder: the capsule's noise comes up in a gap (2 s of a tone 20 dB above the knee, then silence, Noise switch on)\n");
+    {
+        for (float sr : rates)
+        {
+            std::vector<float> in = sine(sr, 1000.0, knee(20.0), 2.0);
+            in.resize(in.size() + (size_t)(6.0f * sr), 0.0f);
+            Fx fx(sr, 0, true, true);
+            const std::vector<float> out = fx.run(in);
+            const size_t p = (size_t)(2.0f * sr);
+            // 0.1 to 0.3 s after the tone (middle 0.2 s: the ALC still 18.95 - 0.2 x 8.23 dB down), 5 to 6 s after (let go)
+            const double early = bandRms(out, sr, p + (size_t)(0.1f * sr), p + (size_t)(0.3f * sr), 20.0, 20000.0, true);
+            const double late  = bandRms(out, sr, p + (size_t)(5.0f * sr), out.size(), 20.0, 20000.0, true);
+            const double full = camNoise(sr), held = 20.0 * 18.0 / 19.0 - 0.2 * kRecDbS;
+            std::printf("   %6.0f Hz: 0.2 s after the tone %.1f dB(A) (the noise at full gain %.1f, %.1f dB down: %.1f), 5 to 6 s after %.1f; it rose %.1f dB; the tone came out at %.1f dBFS rms\n",
+                        sr, dB(early), dB(full), held, dB(full) - held, dB(late), dB(late / early), dB(kKneeOut * fromDb(20.0 / 19.0) / std::sqrt(2.0)));
+            char what[160];
+            std::snprintf(what, sizeof(what), "%.0f Hz: held down by what the ALC's gain says, within 1.5 dB, then at the full record gain within 1 dB", sr);
+            check(std::fabs(dB(early / full) + held) < 1.5 && std::fabs(dB(late / full)) < 1.0, what);
+        }
+    }
+
+    std::printf("16. How far from bypass: a music-like signal at -18 dBFS rms (chord, kick, hi-hat; loud and 15 dB quieter parts; a 2 s gap), the mic alone\n"
+                "    crest = peak / rms; loud-quiet = the level difference of the two parts; spread = standard deviation of the 50 ms level; gap = noise in the gap's last half second re the loud part (Noise on)\n"
+                "    Mic Gain below -12 dB is beyond the knob: the same as a source that much quieter (further away)\n");
+    {
+        const float sr = 44100.0f;
+        const std::vector<float> in = music(sr);
+        const Dyn by = dynamics(in, sr);
+        std::printf("   %-32s crest %5.1f dB, loud-quiet %5.1f dB, spread %4.1f dB, gap %s\n", "bypass (the input)", by.crest, by.loudQuiet, by.spread, "silent");
+        auto row = [&](const char* name, double gainDb, bool old) {
+            Dyn d = dynamics(micOnly(in, sr, gainDb, false, old), sr);
+            d.gap = dynamics(micOnly(in, sr, gainDb, true, old), sr).gap;
+            std::printf("   %-32s crest %5.1f dB, loud-quiet %5.1f dB, spread %4.1f dB, gap %6.1f dB; change from bypass: crest %+5.1f, loud-quiet %+5.1f, spread %+5.1f\n",
+                        name, d.crest, d.loudQuiet, d.spread, d.gap, d.crest - by.crest, d.loudQuiet - by.loudQuiet, d.spread - by.spread);
+            return d;
+        };
+        const Dyn o0 = row("replaced (capsule alone), 0 dB", 0.0, true);
+        row("replaced (capsule alone), -12 dB", -12.0, true);
+        row("new, Mic Gain 0 dB", 0.0, false);
+        row("new, Mic Gain -6 dB", -6.0, false);
+        const Dyn n12 = row("new, Mic Gain -12 dB (the programs)", -12.0, false);
+        row("new, source 20 dB quieter", -20.0, false);
+        const Dyn n26 = row("new, source 26 dB quieter", -26.0, false);
+        row("new, source 32 dB quieter", -32.0, false);
+        const double oldMove = std::fmax(std::fabs(o0.loudQuiet - by.loudQuiet), std::fabs(o0.spread - by.spread));
+        check(oldMove < 0.5 && std::fabs(o0.crest - by.crest) < 1.5,
+              "the model it replaces leaves the level over time within 0.5 dB and the crest within 1.5 dB (its 53 Hz highpass on the kick) (the owner: \"You can barely tell it's on\")");
+        check(n12.crest < by.crest - 2.0, "the new one at the programs' Mic Gain (-12 dB): past the ALC's range, the peaks come down by at least 2 dB");
+        check(n26.loudQuiet < by.loudQuiet - 6.0 && n26.spread < 0.6 * by.spread && n26.gap > -50.0,
+              "inside the range (the source 26 dB quieter): at least 6 dB less between loud and quiet, under 0.6 of the spread, and the noise lifted in the gap to within 50 dB of the loud part");
+    }
+
+    std::printf("18. Camcorder: its ALC starts from rest unheard (it settles for 100 ms before the mic fades in), switched on or chosen while a tone plays\n");
+    {
+        for (float sr : { 44100.0f, 192000.0f })
+        {
+            std::string line; double worst = -100.0;
+            for (double d : {1.0, 2.2, 5.0, 10.0, 20.0, 30.0})
+                for (int how = 0; how < 2; ++how)
+                {
+                    // 0.5 s with the Mic off (or on Dynamic), then the Mic on (or Camcorder chosen); the
+                    // loudest millisecond after that against the steady level 2 s later
+                    Fx fx(sr, how ? 1 : 0, how == 1);
+                    const std::vector<float> a = sine(sr, 1000.0, knee(d), 0.5), b = sine(sr, 1000.0, knee(d), 2.5, kPi2 * 1000.0 * 0.5);
+                    fx.run(a);
+                    if (how) fx.set(kMicType, 0.0f); else fx.set(kMicOn, 1.0f);
+                    const std::vector<float> o = fx.run(b);
+                    const size_t ms = (size_t)(0.001 * sr);
+                    double steady = 0, most = 0;
+                    for (size_t i = (size_t)(2.0 * sr); i < (size_t)(2.0 * sr) + 20 * ms; ++i) steady = std::fmax(steady, std::fabs(o[i]));
+                    for (size_t i = 0; i < (size_t)(2.0 * sr); ++i) most = std::fmax(most, std::fabs(o[i]));
+                    worst = std::fmax(worst, dB(most / steady));
+                    char c[48]; std::snprintf(c, sizeof(c), " %+.0f%s:%+.2f", d, how ? "t" : "m", dB(most / steady)); line += c;
+                }
+            std::printf("   %6.0f Hz, dB above the knee (m: Mic switched on, t: type chosen), loudest after it re steady:%s\n", sr, line.c_str());
+            char what[120]; std::snprintf(what, sizeof(what), "%.0f Hz: no start-up burst: never more than 1 dB above the steady level (worst %+.2f)", sr, worst);
+            check(worst < 1.0, what);
         }
     }
 

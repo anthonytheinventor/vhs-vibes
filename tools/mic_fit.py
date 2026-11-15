@@ -8,6 +8,7 @@ Nelder-Mead to the published points the source comments name.
     python tools/mic_fit.py fit phone          refit the P.48 curve (minutes)
     python tools/mic_fit.py fit dynamic RATE   refit the Shure curve for 44100, 88200 or 192000
     python tools/mic_fit.py fit capsule RATE   refit the WM-61A rise for 44100, 48000, 88200 or 192000
+    python tools/mic_fit.py fit camamp RATES   refit the camcorder mic amp's band (44100; 48000; 88200 96000; 192000)
 """
 import cmath
 import math
@@ -29,6 +30,8 @@ def rbj(kind, f0, q, gdb, fs):
     if kind == '1':   # first-order highpass, bilinear, exact at its corner
         k = math.tan(math.pi * f0 / fs); m = 1 / (1 + k)
         return [m, -m, 0], [1, (k - 1) * m, 0]
+    if kind == 'L':   # first-order lowpass: its pole matched to f0, its zero at -q (q = 1: at half the rate)
+        return [1, q, 0], [1, -math.exp(-2 * math.pi * f0 / fs), 0]
     raise ValueError(kind)
 
 
@@ -62,6 +65,10 @@ SHURE = [(50, -16), (100, -8), (200, -4), (500, -1.5), (1000, 0), (2000, 1), (40
 # (frequency, target, weight)
 WM61 = [(300, 0, 4), (1000, 0, 4), (2000, 0, 4), (3000, 0, 4), (4000, 0, 4), (5000, 0, 4), (6000, 0.3, 1),
         (8000, 1.0, 2), (13000, 2.25, 1), (15000, 2.25, 1), (17000, 2.25, 1), (21500, 0, 0.5)]
+# Camcorder mic amp: the Sony DCR-TRV900E's mic input (D. Vrancic's table, manual gain 3, dB re
+# 1 kHz, as the camcorder report reads it). (frequency, target)
+CAMAMP = [(20, -12.8), (50, -3.1), (100, -0.6), (200, 0.0), (1000, 0.0), (2000, -0.2), (5000, -0.6),
+          (10000, -1.7), (15000, -3.6), (20000, -4.9)]
 
 # ---- the filters in the source (keep in step with src/VHSVibes.cpp) ----------------------
 PHONE = [('h', 325.3, 1.026, 0), ('h', 169.6, 1.433, 0), ('p', 1045.7, 0.253, 13.34), ('l', 1861.7, 1.308, 0),
@@ -75,6 +82,8 @@ DYN = [
     [('h', 101.90, 0.371, 0), ('p', 4578.1, 2.550, 5.04), ('p', 8174.7, 8.928, 2.15), ('l', 11879.7, 1.469, 0), ('l', 8810.5, 0.688, 0)],
 ]
 CAP = [(15307.6, 0.590, 2.50), (15035.1, 0.711, 2.49), (14106.2, 1.200, 2.47), (13867.4, 1.352, 2.47)]
+CAMHP = ('h', 38.8, 0.569, 0)
+CAMLP = [(19660.6, 0.234), (16080.6, 0.185), (13431.8, 0.091), (13299.6, 0.0)]
 
 
 def check():
@@ -93,6 +102,12 @@ def check():
     for fs in RATES:
         secs = [('p',) + CAP[band(fs)]]
         print('  %6.0f: %s' % (fs, ' '.join('%g: %+.2f' % (f, rel(secs, f, fs)) for f, d, w in WM61 if f < 0.45 * fs)))
+    print('Camcorder mic amp against the TRV900 points (dB re 1 kHz, got/read):')
+    for fs in RATES:
+        secs = [CAMHP, ('L',) + CAMLP[band(fs)] + (0,)]
+        pts = [(f, d) for f, d in CAMAMP if f < 0.45 * fs]
+        print('  %6.0f: worst %.2f dB; %s' % (fs, max(abs(rel(secs, f, fs) - d) for f, d in pts),
+                                            ' '.join('%g: %+.2f/%+.1f' % (f, rel(secs, f, fs), d) for f, d in pts)))
 
 
 def consts():
@@ -135,6 +150,14 @@ def consts():
     onset = 0.7746e-3 / 10 ** (-35 / 20.0)
     print('ALC onset: -60 dBm from -35 dB V/Pa = %.4f Pa = %.1f dB SPL = %.1f dBFS peak; record gain %.1f dB'
           % (onset, 94 + 20 * math.log10(onset), 20 * math.log10(onset * ref / math.sqrt(10)), -20 * math.log10(onset / math.sqrt(10))))
+    ss = solve(lambda s: thd(lambda x: s * sc(x / s), 1.0), 0.05, 5.0, 0.01, False)
+    print('Camcorder mic amp: the symmetric cubic scale that gives a sine 1 %% THD: %.3f times its peak' % ss)
+    knee = 0.7746e-3 * 10 ** (-6 / 20.0) / 10 ** (-35 / 20.0)
+    thr = 10 ** (-22 / 19 / 20.0)
+    print('Camcorder ALC: knee -66 dBs from -35 dB V/Pa = %.4f Pa = %.1f dB SPL, %.1f dB below kRefLevel; threshold %.5f x kRefLevel'
+          ' (%.2f dB); record gain %.2f dB; at most %.6f (%.2f dB)'
+          % (knee, 94 + 20 * math.log10(knee), 10 - 20 * math.log10(knee), thr, 20 * math.log10(thr),
+             20 * math.log10(thr * math.sqrt(10) / knee), 10 ** (-22 * 18 / 19 / 20.0), -22 * 18 / 19))
     print('line noise: -65 dBm0, 1 Pa = %.2f dBm0: %.4e of the 1 Pa rms' % (20 * math.log10(10 ** (-3.7 / 20) / 0.7746), 10 ** ((-65 - 20 * math.log10(10 ** (-3.7 / 20) / 0.7746)) / 20)))
 
 
@@ -216,4 +239,15 @@ if __name__ == '__main__':
         fs = float(sys.argv[3])
         pts = [p for p in WM61 if p[0] < 0.47 * fs]
         show(fit([('p', 14000, 1.0, 2.3)], lambda s: 1e12 if bad(s, fs, 5) else sum(w * (rel(s, f, fs) - d) ** 2 for f, d, w in pts), rounds=4))
+    elif what == 'fit' and sys.argv[2] == 'camamp':
+        # second-order highpass and first-order lowpass (the report's starting point: 45 Hz, Q 0.6;
+        # 14 kHz) to the TRV900 points below 0.45 fs, at every rate of the band together
+        rates = [float(r) for r in sys.argv[3:]]
+        def err(s):
+            if any(bad(s[:1], fs, 5) or not (10 < s[1][1] < 0.49 * fs) for fs in rates) or not (0 <= s[1][2] <= 1): return 1e12
+            return sum((rel(s, f, fs) - d) ** 2 for fs in rates for f, d in CAMAMP if f < 0.45 * fs)
+        best = fit([('h', 45.0, 0.6, 0), ('L', 14000.0, 0.9, 0)], err, rounds=6)
+        show(best)
+        for fs in rates:
+            print('  %6.0f: %s' % (fs, ' '.join('%g: %+.2f/%+.1f' % (f, rel(best, f, fs), d) for f, d in [(10, -28.1)] + CAMAMP if f < 0.45 * fs)))
     else: print(__doc__)

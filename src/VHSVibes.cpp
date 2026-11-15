@@ -11,7 +11,8 @@
 //   in -> [noise, if Noise Pos = Pre]
 //      -> CHORUS      short modulated delay, L/R out of phase for width
 //      -> MIC         one of four period microphones ("re-recorded through a mic"): camcorder
-//                     electret, dynamic, telephone, boombox with its record ALC (see MicModel)
+//                     electret with its mic amp and record ALC, dynamic, telephone, boombox
+//                     with its record ALC (see MicModel)
 //      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
 //      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage). Between
 //                     the two: NR ENCODE, (deck) B-type noise reduction, record side: lifts
@@ -842,7 +843,10 @@ enum RampIndex { rOut, rMono, rChorus, rMic, rSat, rMix, kNumRamp };
 // its link; the section numbers below are the report's. A value that no source gave is marked
 // "estimate", with the reason.
 //
-//   Camcorder  capsule: HF rise -> gate highpass -> + self-noise -> JFET overload
+//   Camcorder  the camera's record chain: the electret capsule (HF rise -> gate highpass ->
+//              + self-noise -> JFET overload) -> the mic amp's band and overload -> the record
+//              ALC (42 dB of gain, then 1 : 19 over a 22 dB range) -> the cubic after it.
+//              Mono: one built-in mic.
 //   Dynamic    four filters fitted to the Shure Unidyne B (515) curve at 0.6 m
 //   Phone      carbon transmitter: sensitivity rising with level -> 2nd harmonic -> the CCITT
 //              P.48 IRS sending curve (eight filters) -> + the line's idle noise. Mono: one line.
@@ -875,7 +879,7 @@ constexpr float kGateHpHz = 1.0f / (kTwoPi * 100.0e6f * 30.0e-12f);
 // One peak filter, fitted for each rate band (tools/mic_fit.py) to 0 dB from 300 Hz to 5 kHz,
 // +1 dB at 8 kHz, the middle of the spread (+2.25 dB) at 13, 15 and 17 kHz and 0 at 21.5 kHz.
 // At every rate: within 0.3 dB to 5 kHz, +0.7 dB at 8 kHz, +1.8 to +2.5 dB at 13 to 17 kHz,
-// under +1 dB at 21.5 kHz. No lowpass in the mic: the band is the recorder's business.
+// under +1 dB at 21.5 kHz. No lowpass in the capsule: the band is the recorder's business.
 constexpr float kCapPeak[4][3] = {                                  // Hz, Q, dB
     { 15307.6f, 0.590f, 2.50f }, { 15035.1f, 0.711f, 2.49f },      // below 46 kHz; 46-70 kHz
     { 14106.2f, 1.200f, 2.47f }, { 13867.4f, 1.352f, 2.47f },      // 70-130 kHz; 130 kHz up
@@ -905,7 +909,7 @@ constexpr float kAWeightBw   = 12468.0f;                    // A-weighted bandwi
 // from 100 Hz to 3.5 kHz at every rate from 44.1 to 192 kHz, 0.3 dB at 4 kHz (-33.5 dB),
 // 0.6 dB at 5 kHz (-48.5 dB), and as deep as the table or deeper at 6.3 and 8 kHz. Its gain of +17.3 dB at 1 kHz is taken off
 // again (the 1 kHz normalisation below).
-struct MicSec { char kind; float hz, q, db; };   // 'h' highpass, 'l' lowpass, 'p' peak, 'n' notch, '1' first-order highpass
+struct MicSec { char kind; float hz, q, db; };   // 'h' highpass ('H': worked out in double), 'l' lowpass, 'p' peak, 'n' notch, '1' first-order highpass, 'L' first-order lowpass
 constexpr MicSec kPhoneSecs[8] = {
     { 'h',  325.3f, 1.026f,  0.0f  }, { 'h',  169.6f, 1.433f,  0.0f },   // the low cut
     { 'p', 1045.7f, 0.253f, 13.34f },                                    // the broad rise to 2.5-3 kHz
@@ -985,6 +989,79 @@ constexpr float kAlcAttackSec   = 0.005f;                    // estimate
 // kRefLevel sine), measured in that band.
 constexpr float kTapeHissRms = kRefLevel * 0.707107f * 5.6234e-3f;   // -45 dB
 
+// Camcorder, second report ("the camcorder report": VHS Vibes camcorder mic research,
+// 2026-11-15, section 3, its recommended model). The built-in mic of a 1980s camcorder was a
+// decent electret; what made it sound like a camcorder was the record chain behind it: a mic
+// amp, then an ALC with about 40 dB of fixed gain in front of a short range. The topology is
+// the JVC GR-C1's (1984, the first VHS-C camera; its service manual's audio block diagram: mic
+// amp -> voltage-controlled amplifier -> line amp, an ALC detector on the output feeding back
+// to the VCA). So: the capsule above (unchanged) -> the mic amp's band -> the mic amp's
+// overload -> the ALC (gain element, detector on its output) -> the overload after it. Mono:
+// one built-in mic, one linear audio track. No mechanism noise (drum, capstan): its level and
+// spectrum were not found anywhere, so it is not modelled; the only noise is the capsule's own,
+// which the ALC lifts in the gaps.
+//
+// Mic-amp band: the Sony DCR-TRV900E's mic input, measured by D. Vrancic (signal generator and
+// oscilloscope, manual gain 3; the line input is flat, so the roll-offs are the mic path's),
+// read from his table: 20 Hz -12.8, 50 Hz -3.1, 100 Hz -0.6, 200 Hz to 1 kHz 0, 2 kHz -0.2,
+// 5 kHz -0.6, 10 kHz -1.7, 15 kHz -3.6, 20 kHz -4.9 dB re 1 kHz. A 1998 camera, the only
+// measured camcorder mic path found. The report's shapes (second-order highpass near 45 Hz,
+// Q about 0.6; first-order lowpass near 14 kHz) refitted to those points for each rate band
+// (tools/mic_fit.py fit camamp): the highpass comes to 38.8 Hz, Q 0.569 at every rate; the
+// lowpass is a first-order section with its pole matched to its corner and its zero placed by
+// the fit (a bilinear one, with its zero at half the sample rate, cannot follow the points at
+// 44.1 and 48 kHz). Within 0.2 dB of every point from 20 Hz to 20 kHz (to 0.45 times the rate)
+// at all five rates. The table's 10 Hz (-28.1 dB) is not met by a second-order highpass that
+// meets 20 and 50 Hz (it gives -23.8); the capsule's own 53 Hz highpass lies on top of it.
+constexpr float kCamHpHz = 38.8f, kCamHpQ = 0.569f;                 // fit to the read points
+constexpr float kCamLp[4][2] = {                                     // Hz (pole), zero (at -z)
+    { 19660.6f, 0.234f }, { 16080.6f, 0.185f },                      // below 46 kHz; 46-70 kHz
+    { 13431.8f, 0.091f }, { 13299.6f, 0.000f },                      // 70-130 kHz; 130 kHz up
+};
+// Mic-amp overload: derived (camcorder report, section 3). ROHM BA7780KV: 0.95 V out at 21.5 dB
+// of gain, so -22.0 dBV at its input; Sanyo LA7471M: 1.4 V typical at 24.3 dB, -21.4 dBV. With
+// the -35 dB V/Pa capsule both are 107 to 108 dB SPL; the report's range is 104 (BA7780 gain
+// high) to 110 dB SPL (gain low), its value 107. Taken as 1 % THD at 107 dB SPL, as for the
+// JFET: the plugin's cubic at the scale that gives a sine of that level 1 %. Symmetric (an
+// estimate: the datasheets give a level, not a shape), so its scale is 1.953 times the peak
+// (tools/mic_fit.py consts), not the JFET's 1.935, which is for a cubic that gives way on one
+// half only (the report reused that figure; the difference is 0.08 dB).
+constexpr float kCamClip = 1.953f * kPaPeak * 4.4668f;              // 107 dB SPL = 94 + 13 dB
+// The ALC's static curve, read from the TRV900's mic-jack measurements (1.2 kHz, peak values):
+// full gain up to its knee, then 0.75 dB more output for 14 dB more input, about 1 : 19.
+// Its range: 22 dB, read (Sanyo VM-RZ1P training manual, ALC section: "a wide coverage range
+// of 22 dB" with the mic), consistent with the Sony CCD-M8U's "at least 20 dB". So the loop
+// attenuates 18 dB for every dB its detector is above the threshold, by at most 22 x 18 / 19 =
+// 20.84 dB (the report rounds it to 20.8, 0.0912); past that the output follows the input.
+//
+// Where its range starts: the camera's nominal mic level, -66 dBs (0.388 mV, Sony CCD-M8U and
+// CCD-TR4; the JVC GR-C1 says -68), is taken as the knee (an assumption, supported by the TRV900,
+// whose knee lies at -63 dBs). From the -35 dB V/Pa capsule that is 0.0218 Pa, 60.8 dB SPL; by
+// the plugin's one level mapping (a sine peaking at kRefLevel is 104 dB SPL) a sine of 60.8 dB
+// SPL peaks 43.2 dB below kRefLevel. The knee's output is set so that the end of the 22 dB range
+// lands on kRefLevel: 22 / 19 = 1.16 dB below it (derived; the report rounds it to -1.2 dB,
+// 0.871). The record gain in front of the ALC is that output over the knee's input: +42.0 dB
+// (derived). So the knee follows from the mapping: move kRefLevel's SPL and the knee moves with it.
+// The range ends 22 dB above the knee, at 82.8 dB SPL (a sine peaking 21.2 dB below kRefLevel);
+// above that the camera overloads.
+constexpr float kCamKneePeak = kPaPeak * (0.38822e-3f / 0.017783f);   // -66 dBs / (-35 dB V/Pa) = 0.0218 Pa
+constexpr float kCamThresh   = kRefLevel * 0.87520f;                  // -1.16 dB: 10 ^ (-22 / 19 / 20)
+constexpr float kCamRecGain  = kCamThresh / kCamKneePeak;             // +42.0 dB
+constexpr float kCamMaxAtt   = 0.090760f;                             // -20.84 dB: 10 ^ (-22 x 18 / 19 / 20)
+// Attack and recovery: no period camera's ALC time constants were found (the GR-C1's ALC filter
+// C9, C23, R10 is on its schematic but not legible). Both are estimates, the report's:
+// attack, the detector's charge, 20 ms: slower than the Boombox's 5 ms, because a camcorder's
+// AGC is documented to let a sudden loud sound distort "before the AGC reacts" (Videomaker,
+// "Camcorder Sounds"). Recovery, the detector's discharge, 19 s: with the 18 dB-per-dB law the
+// gain comes back at 18 x 8.69 / 19 = 8.2 dB a second, the full 20.8 dB in about 2.5 s; chosen
+// from words only: "much lower for several seconds, and then it will gradually increase"
+// (Videomaker, "The AGC Conspiracy"), and the Sanyo's "recovery time is shortened" with the mic
+// (so faster than the Boombox's 7.6 s).
+constexpr float kCamAttackSec   = 0.020f;                    // estimate
+constexpr float kCamRecoverySec = 19.0f;                     // estimate
+// After the ALC: the Boombox's cubic (kAlcCubic, kAlcRail), the report's choice (an estimate:
+// the LA3220's distortion figure belongs to a radio-cassette IC, not a camcorder's).
+
 struct MicModel
 {
     enum { kCamcorder = 0, kDynamic, kPhone, kBoombox };
@@ -995,9 +1072,10 @@ struct MicModel
     Xorshift32 rng[2] = { Xorshift32(0x3c6ef372u), Xorshift32(0xa54ff53au) };
     // phone: the level the carbon's sensitivity follows
     float env = kRefLevel, envAtk = 0.0f, envRel = 0.0f;
-    // boombox: the ALC's detector voltage (double: its 22 s discharge is a change of about one
-    // part in a million a sample, which a float would round to a few percent), 1 / (vc /
-    // threshold), the gain it sets, the detector's charge and discharge per sample
+    // camcorder, boombox: the ALC's detector voltage (double: its 19 or 22 s discharge is a
+    // change of about one part in a million a sample, which a float would round to a few
+    // percent), 1 / (vc / threshold), the gain it sets, the detector's charge and discharge per
+    // sample
     double vc = 0.0, alcAtk = 0.0, alcRel = 1.0;
     float u = 1.0f, alcG = 1.0f;
 
@@ -1009,6 +1087,25 @@ struct MicModel
             case 'l': return BiquadCoeffs::lowpass(sr, s.hz, s.q);
             case 'p': return BiquadCoeffs::peak(sr, s.hz, s.q, s.db);
             case 'n': return BiquadCoeffs::notch(sr, s.hz, s.q);
+            case 'H':
+            {
+                // the same highpass as 'h', worked out in double before it is rounded to float:
+                // at 192 kHz a 39 Hz corner is a change of under a millionth in cos w, which
+                // float arithmetic gets wrong by a few percent (0.35 dB at 20 Hz)
+                const double w = 2.0 * 3.14159265358979 * s.hz / sr, c = std::cos(w), al = std::sin(w) / (2.0 * s.q), a0 = 1.0 + al;
+                BiquadCoeffs k;
+                k.b0 = (float)(0.5 * (1.0 + c) / a0); k.b1 = (float)(-(1.0 + c) / a0); k.b2 = k.b0;
+                k.a1 = (float)(-2.0 * c / a0); k.a2 = (float)((1.0 - al) / a0);
+                return k;
+            }
+            case 'L':
+            {
+                // first-order lowpass: its pole matched to its corner, its zero at -q (q = 1
+                // would put it at half the rate, as the bilinear transform does). Its gain is
+                // set by the 1 kHz normalisation that follows.
+                BiquadCoeffs c; c.b0 = 1.0f; c.b1 = s.q; c.b2 = 0.0f; c.a1 = -std::exp(-kTwoPi * s.hz / sr); c.a2 = 0.0f;
+                return c;
+            }
             default:
             {
                 // first-order highpass by the bilinear transform, exact at its corner
@@ -1063,7 +1160,16 @@ struct MicModel
             add({ 'p', p[0], p[1], p[2] });
             add({ '1', kGateHpHz, 0.0f, 0.0f });
             normalise(0, 2, sr);
-            capNoise = noiseAmp(kCapNoiseRms, kAWeightBw, sr);   // A-weighted level of white noise: no filter after it
+            capNoise = noiseAmp(kCapNoiseRms, kAWeightBw, sr);   // A-weighted level of white noise, at the capsule
+        }
+        if (t == kCamcorder)
+        {
+            const float* l = kCamLp[band];
+            add({ 'H', kCamHpHz, kCamHpQ, 0.0f });
+            add({ 'L', l[0], l[1], 0.0f });
+            normalise(2, 4, sr);
+            alcAtk = 1.0 - std::exp(-1.0 / ((double)kCamAttackSec * sr));
+            alcRel = std::exp(-1.0 / ((double)kCamRecoverySec * sr));
         }
         if (t == kBoombox)
         {
@@ -1101,34 +1207,61 @@ struct MicModel
         vc = 0.0; u = 1.0f; alcG = 1.0f;
     }
     // The negative half of the capsule's JFET gives way first.
-    static Stereo jfet(Stereo x)
-    {
-        const Stereo neg = splat(0.0f);
-        const Stereo s = x < neg ? splat(kJfetNeg) : splat(kJfetPos);
-        const Stereo inv = x < neg ? splat(1.0f / kJfetNeg) : splat(1.0f / kJfetPos);
-        return s * softClip(x * inv);
-    }
     static float jfet(float x)
     {
         const float s = x < 0.0f ? kJfetNeg : kJfetPos;
         const float t = clamp(x * (x < 0.0f ? 1.0f / kJfetNeg : 1.0f / kJfetPos), -1.5f, 1.5f);
         return s * (t - (4.0f / 27.0f) * t * t * t);
     }
+    // The camcorder's mic amp gives way on both halves alike.
+    static float micAmp(float x)
+    {
+        const float t = clamp(x * (1.0f / kCamClip), -1.5f, 1.5f);
+        return kCamClip * (t - (4.0f / 27.0f) * t * t * t);
+    }
     // one filter on a mono signal (both halves of the pair alike)
     float mono(int i, float x) { return f[i].process(splat(x))[0]; }
-    // noise: 1 while the Noise switch is on, 0 off (smoothed)
-    Stereo capsule(Stereo x, float noise)
+    // The capsule on one mono signal: its two filters, its noise (noise: 1 while the Noise
+    // switch is on, 0 off, smoothed), its JFET.
+    float capsule(float m, float noise)
     {
-        x = f[1].process(f[0].process(x));
-        if (noise > 0.0f) x += stereo(rng[0].nextBipolar(), rng[1].nextBipolar()) * (capNoise * noise);
-        return jfet(x);
+        m = mono(1, mono(0, m));
+        if (noise > 0.0f) m += rng[0].nextBipolar() * (capNoise * noise);
+        return jfet(m);
+    }
+    // A record ALC (Camcorder, Boombox): the gain element (record gain times the loop's gain),
+    // the cubic after it, and the detector on the output, which sets the gain for the next
+    // sample. Above the threshold the gain is (vc / threshold) ^ -kLaw, with 1 / r followed by
+    // one Newton step a sample (r moves by a few percent a sample at most), at least maxAtt.
+    template <int kLaw> float alc(float m, float recGain, float invThresh, float maxAtt)
+    {
+        m = clamp(m * (recGain * alcG), -kAlcRail, kAlcRail);
+        m -= kAlcCubic * m * m * m;
+        // the detector: discharges through its resistor, charges from the output's peaks
+        const double pk = std::fabs(m);
+        vc *= alcRel;
+        if (pk > vc) vc += alcAtk * (pk - vc);
+        const float r = (float)vc * invThresh;
+        if (r > 1.0f)
+        {
+            u = clamp(u * (2.0f - r * u), 0.0f, 1.0f);
+            const float u2 = u * u, u4 = u2 * u2;
+            if (kLaw == 14) alcG = maxf(u4 * u4 * u4 * u2, maxAtt);
+            else { const float u8 = u4 * u4; alcG = maxf(u8 * u8 * u2, maxAtt); }   // 18
+        }
+        else { u = 1.0f; alcG = 1.0f; }
+        return m;
     }
     Stereo process(Stereo x, float noise)
     {
         switch (type)
         {
             case kCamcorder:
-                return capsule(x, noise);
+            {
+                float m = capsule(0.5f * (x[0] + x[1]), noise);     // one built-in mic
+                m = micAmp(mono(3, mono(2, m)));                    // the mic amp: its band, its overload
+                return splat(alc<18>(m, kCamRecGain, 1.0f / kCamThresh, kCamMaxAtt));
+            }
             case kDynamic:
                 for (int i = 0; i < n; ++i) x = f[i].process(x);
                 return x;
@@ -1148,24 +1281,8 @@ struct MicModel
             }
             default:   // kBoombox
             {
-                float m = mono(1, mono(0, 0.5f * (x[0] + x[1])));   // the capsule (one built-in mic)
-                if (noise > 0.0f) m += rng[0].nextBipolar() * (capNoise * noise);
-                m = clamp(jfet(m) * (kAlcRecGain * alcG), -kAlcRail, kAlcRail);
-                m -= kAlcCubic * m * m * m;
-                // the detector: discharges through 1 Mohm, charges from the output's peaks
-                const double pk = std::fabs(m);
-                vc *= alcRel;
-                if (pk > vc) vc += alcAtk * (pk - vc);
-                const float r = (float)vc * (1.0f / kRefLevel);
-                if (r > 1.0f)
-                {
-                    // the gain for the next sample: r ^ -14, with 1 / r followed by one Newton
-                    // step a sample (r moves by a few percent a sample at most)
-                    u = clamp(u * (2.0f - r * u), 0.0f, 1.0f);
-                    const float u2 = u * u, u4 = u2 * u2;
-                    alcG = maxf(u4 * u4 * u4 * u2, kAlcMaxAtt);
-                }
-                else { u = 1.0f; alcG = 1.0f; }
+                float m = capsule(0.5f * (x[0] + x[1]), noise);     // one built-in mic
+                m = alc<14>(m, kAlcRecGain, 1.0f / kRefLevel, kAlcMaxAtt);
                 if (noise > 0.0f) m += rng[1].nextBipolar() * (hiss * noise);
                 return splat(mono(3, mono(2, m)));           // the tape
             }
@@ -1359,6 +1476,7 @@ private:
         hsInc_   = 59.94f / sr_;
         agcHoldTicks_ = (int)(1.5f * sr_ * kCtrlInv);
         micHoldTicks_ = (int)(0.020f * sr_ * kCtrlInv) + 1;
+        micHoldCamTicks_ = (int)(0.100f * sr_ * kCtrlInv) + 1;
         agcRelease_   = 1.0f / (2.5f * sr_ * kCtrlInv);
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
@@ -1447,7 +1565,7 @@ private:
         rampS_[rOut] = 0.0f;
         ramp_[rOut].snap(0.0f);
         fadeHold_ = (int)((wf1_.base + wf2_.base + (choActive_ ? choBase_ : 0.0f)) * kCtrlInv) + 1;
-        if (micRun_) fadeHold_ += micHoldTicks_;   // the mic starts from rest too: it settles unheard (see controlTick)
+        if (micRun_) fadeHold_ += micHoldFor();   // the mic starts from rest too: it settles unheard (see controlTick)
         // The chorus also swings: on the first tick one side's delay moves up to its depth (the
         // one controlTick gives it) further back, and until the sound has got there that side
         // would come in with a step in the middle of the fade-in. So the output waits those few
@@ -2137,6 +2255,12 @@ private:
         }
     }
 
+    // How long the mic settles unheard. The Camcorder's ALC, with its 20 ms attack, takes up to
+    // about 80 ms from rest to come within 1 dB of its steady level (worst just above its knee,
+    // where the start overshoots by 2 dB and the loop closes slowly; well above the knee it takes
+    // under 20 ms), so it waits 100 ms. The others: 20 ms.
+    int micHoldFor() const { return mic_.type == MicModel::kCamcorder ? micHoldCamTicks_ : micHoldTicks_; }
+
     void setMicCurve(int type)
     {
         mic_.set(type, sr_);
@@ -2293,7 +2417,7 @@ private:
         // before the fade-in: long enough for the filters to settle and for the Boombox's ALC
         // to catch a loud sound (which takes it about 5 ms from rest, with a burst).
         const bool micWant = rampT_[rMic] > 0.0f;
-        if (micWant && !micRun_) { mic_.reset(); micRun_ = true; micHold_ = micHoldTicks_; }
+        if (micWant && !micRun_) { mic_.reset(); micRun_ = true; micHold_ = micHoldFor(); }
         else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
         if (micHold_ > 0) { --micHold_; rampS_[rMic] = 0.0f; ramp_[rMic].snap(0.0f); }
         if (choActive_)
@@ -2783,6 +2907,7 @@ private:
     bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of type
     bool  micRun_ = false;                    // the model runs (heard, fading, or settling unheard)
     int   micHold_ = 0, micHoldTicks_ = 55;   // control ticks it settles unheard before it fades in (20 ms)
+    int   micHoldCamTicks_ = 276;              // the same for the Camcorder (100 ms, see micHoldFor)
 
     // preamp, wear, compressor
     Stereo tiltLp_ = {0.0f, 0.0f}, slew_ = {0.0f, 0.0f};

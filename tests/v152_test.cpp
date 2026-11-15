@@ -166,14 +166,23 @@ int main()
 
     std::printf("4. Mic Type turned with a Q-Link while the mic is on (100 Hz tone at 0.5)\n");
     {
+        // Since 1.6 the Camcorder clips this tone hard (it is far past the end of its ALC's range),
+        // so its own steps are several times the others': the sweep is done once through all four
+        // and once through the other three alone, each against the largest step of what it passes.
         static const char* names[4] = { "Camcorder", "Dynamic", "Phone", "Boombox" };
-        float own = 0.0f;
+        float alone[4] = { 0 }, offOn[4] = { 0 };
+        float dry = 0.0f;
+        {
+            Fx fx; fx.set(kNoiseOn, 0);
+            std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr); fx.play(0.3f, 0.5f, 100.0f, &out);
+            dry = largestStep(out);
+            std::printf("   the Mic off:    largest step %.4f\n", dry);
+        }
         for (int t = 0; t < 4; ++t)
         {
             Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
             std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr); fx.play(0.3f, 0.5f, 100.0f, &out);
-            std::printf("   %-9s alone: largest step %.4f\n", names[t], largestStep(out));
-            own = std::fmax(own, largestStep(out));
+            alone[t] = largestStep(out);
         }
         // A change of type fades the mic out and back in, as the Mic switch does: so that, done
         // for each type, is the measure too.
@@ -183,19 +192,26 @@ int main()
             std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
             fx.set(kMicOn, 0); fx.play(0.3f, 0.5f, 100.0f, &out);
             fx.set(kMicOn, 1); fx.play(0.3f, 0.5f, 100.0f, &out);
-            own = std::fmax(own, largestStep(out));
+            offOn[t] = largestStep(out);
+            const float ref = std::fmax(alone[t], dry);
+            std::printf("   %-9s alone: largest step %.4f; the Mic switch off and on again: %.4f\n", names[t], alone[t], offOn[t]);
+            check(offOn[t] < 1.3f * ref, (std::string(names[t]) + ": the Mic switch off and on again makes no step larger than the sound's own (it or the dry tone)").c_str());
         }
-        std::printf("   the Mic switch off and on again: largest step %.4f\n", own);
-        Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1);
-        std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
-        for (int b = 0; b < 600; ++b)
+        for (int first : {0, 1})
         {
-            if (b >= 100 && b < 500) fx.e->setParameter(fx.e, kMicType, (float)(b - 100) / 399.0f);   // as a Q-Link sends it
-            fx.play(128.0f / 44100.0f, 0.5f, 100.0f, &out);
+            float own = dry;
+            for (int t = first; t < 4; ++t) own = std::fmax(own, std::fmax(alone[t], offOn[t]));
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)first);
+            std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
+            for (int b = 0; b < 600; ++b)
+            {
+                if (b >= 100 && b < 500) fx.e->setParameter(fx.e, kMicType, (float)first / 3.0f + (1.0f - (float)first / 3.0f) * (float)(b - 100) / 399.0f);   // as a Q-Link sends it
+                fx.play(128.0f / 44100.0f, 0.5f, 100.0f, &out);
+            }
+            std::printf("   swept from %s to Boombox through 400 values: largest step %.4f, the sound's own at most %.4f\n", names[first], largestStep(out), own);
+            check(largestStep(out) < 1.3f * own, "no click on the way");
+            check(fx.plug()->getInt(kMicType) == 3, "and it ends on Boombox");
         }
-        std::printf("   swept through 400 values: largest step %.4f, the sound's own at most %.4f\n", largestStep(out), own);
-        check(largestStep(out) < 1.3f * own, "no click on the way");
-        check(fx.plug()->getInt(kMicType) == 3, "and it ends on Boombox");
     }
 
     std::printf("5. After a program change nothing of the previous sound comes out\n");
