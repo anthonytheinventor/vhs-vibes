@@ -115,7 +115,7 @@ enum ParamIndex
     // preamp / tape
     kDrive,        // %     preamp soft clip amount
     kTone,         // -100..100  tilt: negative = darker, positive = brighter
-    kWear,         // %     slew limiter amount (shown as "Slew", read out as a swing time in ms)
+    kWear,         // %     slew limiter amount (shown as "Slew", read out as a swing time in microseconds)
     kComp,         // %     compressor amount (threshold down, make-up up)
     kHiCut,        // Hz    4-pole lowpass
     // 2-band saturator
@@ -1562,13 +1562,14 @@ public:
         if (units_[index] == 0 && index != kTone) return false;
         char buf[32];
         // Slew reads as what it sets: the shortest time the limit leaves for a swing from silence
-        // to full level (the step per sample of readParams, gWear, turned into milliseconds).
+        // to full level (the step per sample of readParams, gWear, turned into microseconds; the
+        // micro sign is written as its two UTF-8 bytes).
         if (index == kWear)
         {
             const float sr = srWanted_.load(std::memory_order_relaxed);
-            const float ms = 1000.0f / (2.0f * std::pow(0.006f, 0.01f * v) * (sr > 0.0f ? sr : 44100.0f));
+            const float us = 1.0e6f / (2.0f * std::pow(0.006f, 0.01f * v) * (sr > 0.0f ? sr : 44100.0f));
             if (v < 0.05f) std::snprintf(buf, sizeof(buf), "off");
-            else std::snprintf(buf, sizeof(buf), ms < 1.0f ? "%.3f ms" : "%.2f ms", (double)ms);
+            else std::snprintf(buf, sizeof(buf), "%.0f \xC2\xB5s", (double)us);
             out = buf;
             return true;
         }

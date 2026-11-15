@@ -30,11 +30,11 @@ what: A tilt in front of the Drive clipper. Left of centre is darker, right of c
 try: Training Video sits at -15, Dream Sequence at +10.
 
 ## Slew
-what: A slew limiter: it limits how fast the signal can move. The number under the knob is the shortest time the limit leaves for a swing from silence to full level. Sound that moves more slowly than that passes untouched; sound that tries to move faster is straightened into a ramp. That dulls and smears loud, bright sound and leaves quiet sound alone, which a filter cannot do.
+what: A slew limiter: it limits how fast the signal can move. The number under the knob is the shortest time, in microseconds, the limit leaves for a swing from silence to full level. Sound that moves more slowly than that passes untouched; sound that tries to move faster is straightened into a ramp. That dulls and smears loud, bright sound and leaves quiet sound alone, which a filter cannot do.
 listen: The top end dulls and the detail smears, more on loud passages than on quiet ones.
-try: 0.032 ms is Home Recording: a full-level tone passes clean up to about 5 kHz. 3rd Gen Copy uses 0.113 ms (1.4 kHz), Chewed Tape 0.146 ms (1.1 kHz). The longest, 1.89 ms, holds a full-level tone clean only up to 84 Hz. A tone 12 dB quieter passes four times as high.
+try: 32 µs is Home Recording: a full-level tone passes clean up to about 5 kHz. 3rd Gen Copy uses 113 µs (1.4 kHz), Chewed Tape 146 µs (1.1 kHz). The longest, 1890 µs, holds a full-level tone clean only up to 84 Hz. A tone 12 dB quieter passes four times as high.
 note: Turned fully down the read-out says off and the stage is skipped. The MPC lists the control from 0 to 100 %; the read-out turns that into the time.
-range: off, then 0.012 to 1.89 ms
+range: off, then 12 to 1890 µs
 
 ## Comp
 what: A one-knob compressor with make-up gain. Turning it up lowers the threshold (down to -36 dB at 100 %, ratio 4:1) and raises the make-up. Past about a third it squashes and brings quiet sound, and noise, up.

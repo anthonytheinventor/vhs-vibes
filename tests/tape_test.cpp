@@ -232,7 +232,7 @@ int main()
             std::sort(moves.begin(), moves.end());
             const double slope = moves[moves.size() / 2], ms = 1000.0 / (slope * 44100.0);
             std::printf("   Slew reads \"%s\"; at 100 %% a full-level square wave moves by %.5f a sample: %.2f ms for a full swing\n", r.c_str(), slope, ms);
-            check(r == "off | 0.032 ms | 0.113 ms | 0.146 ms | 1.89 ms", "the read-out is the swing time in ms, and off at 0 %");
+            check(r == "off | 32 \xC2\xB5s | 113 \xC2\xB5s | 146 \xC2\xB5s | 1890 \xC2\xB5s", "the read-out is the swing time in microseconds, and off at 0 %");
             check(std::fabs(ms - 1.89) < 0.19, "the swing takes the time the read-out says");
         }
 

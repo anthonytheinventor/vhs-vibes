@@ -69,7 +69,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 |---|---|
 | Drive | Preamp soft clipping. 0 % is clean. |
 | Tone | Tilt: left is darker, right is brighter (about 6 dB each way). |
-| Slew | A slew limiter: limits how fast the signal can move, which dulls and smears loud, bright sound like an old or copied tape. Reads as the shortest time left for a swing from silence to full level, from 0.012 to 1.89 ms; off at the bottom. |
+| Slew | A slew limiter: limits how fast the signal can move, which dulls and smears loud, bright sound like an old or copied tape. Reads as the shortest time left for a swing from silence to full level, from 12 to 1890 µs; off at the bottom. |
 | Comp | One-knob compressor. Past about a third it squashes and brings quiet sound (and noise) up. |
 | Dropouts | Short random dips, as when the tape lifts off the head: the highs go first and furthest, the lows only sag. 0 % is off. |
 | Mono | Sums left and right. |
