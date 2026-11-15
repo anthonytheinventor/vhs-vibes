@@ -475,6 +475,28 @@ struct PairBiquad
     }
 };
 
+// The same biquad on one (mono) signal. PairBiquad would work everything out twice, once in
+// each half; here the two halves carry the two halves of the state, z = (z1, z2), and of the
+// coefficients, (b1, b2) and (a1, a2), so the state update is one vector expression:
+//   y = b0 x + z1,   (z1, z2) = (b1, b2) x + (-a1, -a2) y + (z2, -0)
+// That is PairBiquad's arithmetic, operation for operation and in the same order, so the result
+// is the same to the bit: adding (-a) y is subtracting a y exactly, and adding -0 changes no
+// number, not even the sign of a zero. y is worked out as a vector too (only its first half
+// counts) because a compiler may fuse a scalar multiply-add where it does not fuse a vector
+// one (the 32-bit ARM build does), which would round differently.
+struct MonoBiquad
+{
+    Stereo b0 = {1.0f, 1.0f}, b = {0.0f, 0.0f}, na = {0.0f, 0.0f}, z = {0.0f, 0.0f};
+    void setCoeffs(const PairBiquad& p) { b0 = splat(p.b0); b = stereo(p.b1, p.b2); na = stereo(-p.a1, -p.a2); }
+    void reset() { z = splat(0.0f); }
+    float process(float x)
+    {
+        const Stereo y = b0 * x + z;
+        z = b * x + na * y[0] + __builtin_shufflevector(z, splat(-0.0f), 1, 2);
+        return y[0];
+    }
+};
+
 // One-pole lowpass coefficient for a cutoff in Hz (one exp: per block only).
 inline float lpCoeff(float hz, float sr)
 {
@@ -1078,7 +1100,8 @@ struct MicModel
 {
     enum { kCamcorder = 0, kDynamic, kPhone, kBoombox };
     int type = -1, n = 0;           // the type in the filters; how many filters it has
-    PairBiquad f[8];                // the filters (the mono types run them with both halves alike)
+    PairBiquad f[8];                // the filters (Dynamic runs these; they are also designed and measured here)
+    MonoBiquad mf[8];               // the same filters for the mono types (copied from f in set())
     float capNoise = 0.0f, hiss = 0.0f, line = 0.0f;   // noise amplitudes for this rate (uniform white noise)
     float camIn = 0.5f;                                // camcorder: the mono sum's 1/2 times the distance (kCamDistanceDb)
     Biquad lineBp;                                     // the phone line's band (mono)
@@ -1212,10 +1235,12 @@ struct MicModel
             envAtk = 1.0f - std::exp(-1.0f / (0.001f * sr));    // estimates (see kCarbonH2)
             envRel = 1.0f - std::exp(-1.0f / (0.050f * sr));
         }
+        for (int i = 0; i < n; ++i) mf[i].setCoeffs(f[i]);
     }
     void reset()
     {
         for (PairBiquad& b : f) b.reset();
+        for (MonoBiquad& b : mf) b.reset();
         lineBp.reset();
         env = kRefLevel;
         vc = 0.0; u = 1.0f; alcG = 1.0f;
@@ -1233,8 +1258,8 @@ struct MicModel
         const float t = clamp(x * (1.0f / kCamClip), -1.5f, 1.5f);
         return kCamClip * (t - (4.0f / 27.0f) * t * t * t);
     }
-    // one filter on a mono signal (both halves of the pair alike)
-    float mono(int i, float x) { return f[i].process(splat(x))[0]; }
+    // one filter on a mono signal
+    float mono(int i, float x) { return mf[i].process(x); }
     // The capsule on one mono signal: its two filters, its noise (noise: 1 while the Noise
     // switch is on, 0 off, smoothed), its JFET.
     float capsule(float m, float noise)

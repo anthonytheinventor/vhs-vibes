@@ -818,6 +818,37 @@ int main()
         }
     }
 
+    std::printf("20. The mono types run their filters as MonoBiquad (the state in the two halves of one vector): each filter of the\n"
+                "    Camcorder, the Phone and the Boombox gives PairBiquad's output bit for bit (noise, a loud tone, then silence)\n");
+    {
+        int filters = 0, differ = 0;
+        for (float sr : rates)
+            for (int t : { (int)MicModel::kCamcorder, (int)MicModel::kPhone, (int)MicModel::kBoombox })
+            {
+                MicModel m;
+                m.set(t, sr);
+                m.reset();
+                for (int i = 0; i < m.n; ++i, ++filters)
+                {
+                    PairBiquad p = m.f[i];
+                    MonoBiquad q = m.mf[i];
+                    uint32_t s = 1;
+                    bool same = true;
+                    for (int k = 0; k < 30000; ++k)
+                    {
+                        s = s * 1664525u + 1013904223u;
+                        const float x = k < 10000 ? (float)((s >> 8) * (2.0 / 16777216.0) - 1.0)
+                                      : k < 20000 ? (float)(0.9 * std::sin(kPi2 * 3000.0 * k / sr)) : 0.0f;
+                        const float a = p.process(splat(x))[0], b = q.process(x);
+                        if (std::memcmp(&a, &b, sizeof(float)) != 0) same = false;   // (tells -0 from +0 too)
+                    }
+                    if (!same) ++differ;
+                }
+            }
+        std::printf("   %d filters, %d differ\n", filters, differ);
+        check(differ == 0 && filters == 5 * (4 + 8 + 4), "MonoBiquad is PairBiquad on a mono signal, to the bit");
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }
