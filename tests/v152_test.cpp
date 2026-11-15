@@ -198,6 +198,42 @@ int main()
         check(fx.plug()->getInt(kMicType) == 3, "and it ends on Boombox");
     }
 
+    std::printf("5. After a program change nothing of the previous sound comes out\n");
+    for (int b : {128, 37, 0})
+        for (int jump = 0; jump < 2; ++jump)
+        {
+            // A loud tone through the longest delays there are (both wobbles at their extremes,
+            // Scrape, the chorus at 30 ms, Mix 60 %), then a program change, the same settings
+            // again, and silence with every noise off. Every sample after the fade-out must be 0:
+            // the reset leaves nothing of the tone in any delay line or filter. With `jump` the
+            // wobbles are at rest at the reset and go to their extremes just after it, so the
+            // delays and the dry copy crossfade to their longest lengths a little later.
+            Fx fx(kInit, true, b);
+            auto extremes = [&](bool on)
+            {
+                fx.set(kWarp, on ? 100 : 0); fx.set(kRpm, 6); fx.set(kShape, 100); fx.set(kFlutter, on ? 100 : 0); fx.set(kFlutRate, 2);
+                fx.set(kWow, on ? 100 : 0); fx.set(kWowRate, 0.1f); fx.set(kFlutter2, on ? 100 : 0); fx.set(kFlut2Rate, 3);
+                fx.set(kScrape, on ? 100 : 0); fx.set(kMix, 60); fx.set(kChorusOn, 1); fx.set(kChoDelay, 30); fx.set(kChoWidth, 50);
+                fx.set(kNoiseOn, 0);
+            };
+            extremes(true);
+            fx.play(2.0f, 0.9f, 1000.0f, nullptr);
+            fx.e->dispatcher(fx.e, effSetProgram, 0, kInit, nullptr, 0.0f);
+            extremes(jump == 0);
+            std::vector<float> out;
+            fx.play(0.01f, 0.0f, 1000.0f, &out);
+            if (jump) extremes(true);
+            fx.play(1.5f, 0.0f, 1000.0f, &out);
+            // the reset comes where the output has been exactly 0 for 32 samples (the fade-out is over)
+            size_t from = 0; int run = 0;
+            for (size_t i = 0; i < out.size() && from == 0; ++i) { run = out[i] == 0.0f ? run + 1 : 0; if (run == 32) from = i; }
+            float left = 0.0f;
+            for (size_t i = from; i < out.size(); ++i) left = std::fmax(left, std::fabs(out[i]));
+            std::printf("   %s, %s: the fade-out is over after %.1f ms, then the loudest sample is %.2e\n", blocks(b).c_str(),
+                        jump ? "wobbles to their extremes just after the change" : "the same extremes before and after", 1000.0 * (double)from / 44100.0, left);
+            check(from > 0 && from < 4410 && left == 0.0f, "silence");
+        }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }

@@ -1036,6 +1036,10 @@ private:
         setQuality();
         hbUp_.reset(); hbDown_.reset(); hbDry_.reset();
         fadeOut_ = 0; resetNextTick_ = false;
+        // All four lines are emptied, not only rewound: in the first moments after a reset the
+        // readers reach back past what has been written since (the resting length, the swing,
+        // the dry copy's crossfade a knob move can start), and the filters after them carry
+        // whatever they read on into the fade-in. Left in place, the old sound would be heard.
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
         micHp_.reset(); micPk_.reset(); micLp_.reset();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
