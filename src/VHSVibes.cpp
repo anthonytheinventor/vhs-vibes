@@ -287,13 +287,14 @@ inline Stereo splat(float x) { const Stereo v = {x, x}; return v; }
 inline Stereo vmin(Stereo a, Stereo b) { return a < b ? a : b; }
 inline Stereo vmax(Stereo a, Stereo b) { return a > b ? a : b; }
 inline Stereo vabs(Stereo a) { return __builtin_elementwise_abs(a); }
+inline Stereo vclamp(Stereo x, float limit) { return vmax(vmin(x, splat(limit)), splat(-limit)); }   // to -limit .. limit
 inline float  maxf(float a, float b) { return a > b ? a : b; }
 inline float  minf(float a, float b) { return a < b ? a : b; }
 
 // The cubic soft clipper of dsp/math.h, for both channels.
 inline Stereo softClip(Stereo x)
 {
-    x = vmax(vmin(x, splat(1.5f)), splat(-1.5f));
+    x = vclamp(x, 1.5f);
     return x - (4.0f / 27.0f) * x * x * x;
 }
 // Soft clipper with a clean blend: mix 0 = untouched, 1 = softClip(x * g) * makeup.
@@ -427,7 +428,7 @@ struct NoiseRed
         step(x, vB);
         const Stereo e = kNrGain * vB;
         control(e);
-        return x + vmax(vmin(e, splat(kNrClip)), splat(-kNrClip)) * mix;
+        return x + vclamp(e, kNrClip) * mix;
     }
     Stereo decode(Stereo y)
     {
@@ -513,7 +514,7 @@ struct TapeSat
     // x (27 + x^2) / (27 + 9 x^2): a soft curve that is level at +/-3 and reaches 1 there
     static Stereo curve(Stereo t)
     {
-        t = vmax(vmin(t, splat(3.0f)), splat(-3.0f));
+        t = vclamp(t, 3.0f);
         const Stereo t2 = t * t;
         return t * (27.0f + t2) / (27.0f + 9.0f * t2);
     }
@@ -1158,7 +1159,7 @@ private:
         // The AGC and the make-up gain turn quiet sound up; a sudden loud hit gets that gain
         // for a few milliseconds before they react. It is clipped here, as the recorder's
         // own input would.
-        if (boost_) x = vmax(vmin(x, splat(kBoostCeil)), splat(-kBoostCeil));
+        if (boost_) x = vclamp(x, kBoostCeil);
 
         // ----- 2-band saturator ------------------------------------------
         if (satMix > 0.0f && tape_)
