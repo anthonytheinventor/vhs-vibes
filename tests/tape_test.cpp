@@ -172,6 +172,24 @@ int main()
             check(worst < 1.4f * own, "switching the type makes no click");
         }
 
+        // a Q-Link turned slowly across Type or HQ: one fade where the switch changes, none on the way
+        for (int which : {(int)kSatType, (int)kHq})
+        {
+            Fx q; q.set(kSatOn, 1);
+            float L[128], R[128]; float* io[2] = { L, R }; long pos = 0; int quiet = 0, quietAway = 0;
+            for (int b = 0; b < 600; ++b)
+            {
+                if (b >= 100 && b < 500) q.e->setParameter(q.e, which, (float)(b - 100) / 400.0f);   // crosses 0.5 at block 300
+                for (int i = 0; i < 128; ++i, ++pos) L[i] = R[i] = 0.5f * (float)std::sin(6.283185307179586 * 300.0 * pos / 44100.0);
+                q.e->processReplacing(q.e, io, io, 128);
+                float peak = 0.0f;
+                for (int i = 0; i < 128; ++i) peak = std::fmax(peak, std::fabs(L[i]));
+                if (b > 20 && peak < 0.2f) { ++quiet; if (b < 295 || b > 360) ++quietAway; }
+            }
+            std::printf("   %s turned through 400 values: %d quiet blocks, %d of them away from the switch point\n", which == kHq ? "HQ" : "Type", quiet, quietAway);
+            check(quietAway == 0 && quiet > 0, "the sound fades once, where the switch changes, and plays on the way there");
+        }
+
         // the numbers under the three shared knobs say what the knobs mean in each type
         {
             Fx rd; rd.set(kSatOn, 1);

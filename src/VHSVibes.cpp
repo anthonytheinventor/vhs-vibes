@@ -1156,7 +1156,11 @@ public:
             for (int i = 0; i < kNumParams; ++i)
             {
                 const float v = getNormalised(i);
-                if (v != lastNorm_[i]) { lastNorm_[i] = v; dirty |= groupOf(i); }
+                if (v == lastNorm_[i]) continue;
+                // A Q-Link turned across a switch sends every value on the way: only a change
+                // of the position counts (or Type and HQ would restart the sound at each one).
+                if (param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
+                lastNorm_[i] = v;
             }
             if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ switched: fade out, then start again at the other rate
             if (dirty) readParams(dirty);
