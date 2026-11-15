@@ -39,8 +39,8 @@ Needs MPC OS 3.10.1 or later. `INSTALL.txt` in the zip says the same at more len
 
 ## 📖 ＲＥＡＤ　ＴＨＥ　ＭＡＮＵＡＬ
 
-Every control, every program and what the machine is doing inside, on paper the colour of the
-cassette: [VHS-Vibes-Manual.pdf](https://github.com/anthonytheinventor/vhs-vibes/blob/main/manual/VHS-Vibes-Manual.pdf).
+Every control, every program and what the machine is doing inside:
+[VHS-Vibes-Manual.pdf](https://github.com/anthonytheinventor/vhs-vibes/blob/main/manual/VHS-Vibes-Manual.pdf).
 
 ## ☕ ＴＩＰ　ＪＡＲ
 
