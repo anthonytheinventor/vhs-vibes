@@ -408,6 +408,30 @@ int main()
         check(whole == 1 && fx.get(kWarp) == other.get(kWarp) && fx.get(kHq) == other.get(kHq), "and the whole state still loads");
     }
 
+    std::printf("10. Closing the plugin does not wait for the helper thread's sleep\n");
+    {
+        // The helper thread looks every 50 ms. Closed at a random point of that, a plugin that
+        // waits for it takes 25 ms on average; one that wakes it takes well under a millisecond.
+        double total = 0.0, worst = 0.0;
+        for (int k = 0; k < 12; ++k)
+        {
+            AEffect* x = VSTPluginMain(hostCb);
+            x->dispatcher(x, effSetSampleRate, 0, 0, nullptr, 44100.0f);
+            x->dispatcher(x, effSetBlockSize, 0, 128, nullptr, 0.0f);
+            x->dispatcher(x, effMainsChanged, 0, 1, nullptr, 0.0f);
+            float L[128] = {0}, R[128] = {0}; float* io[2] = { L, R };
+            for (int b = 0; b < 4; ++b) x->processReplacing(x, io, io, 128);
+            std::this_thread::sleep_for(std::chrono::milliseconds(7 * k % 45));
+            x->dispatcher(x, effMainsChanged, 0, 0, nullptr, 0.0f);
+            const auto t0 = std::chrono::steady_clock::now();
+            x->dispatcher(x, effClose, 0, 0, nullptr, 0.0f);
+            const double ms = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() * 1000.0;
+            total += ms; worst = std::fmax(worst, ms);
+        }
+        std::printf("   12 instances closed: %.1f ms on average, %.1f ms at most\n", total / 12.0, worst);
+        check(total / 12.0 < 5.0, "closing takes a few milliseconds at most");
+    }
+
     std::printf(fails ? "FAIL\n" : "PASS\n");
     return fails ? 1 : 0;
 }

@@ -89,9 +89,11 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -942,7 +944,13 @@ public:
     ~VHSVibes() override
     {
         goQuiet();          // first: no new calls into a host that is closing us
-        quit_.store(true);
+        {
+            // under the lock, so the notifier cannot miss the wake-up between its look at quit_
+            // and its wait: it wakes at once instead of finishing its 50 ms
+            std::lock_guard<std::mutex> lock(quitMutex_);
+            quit_.store(true);
+        }
+        quitCv_.notify_all();
         if (notifier_.joinable()) notifier_.join();
     }
 
@@ -2049,9 +2057,13 @@ private:
         // started_: doReset can set started_ for a moment while a suspend comes in.)
         auto speaking = [this] { return started_.load() && !suspended_.load(); };
         auto tell = [&](int i) { if (speaking()) notifyHostParameterChanged(i); };
-        while (!quit_.load())
+        for (;;)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            {
+                // 50 ms between looks, cut short when the plugin closes (see the destructor)
+                std::unique_lock<std::mutex> lock(quitMutex_);
+                if (quitCv_.wait_for(lock, std::chrono::milliseconds(50), [this] { return quit_.load(); })) break;
+            }
             if (!speaking()) continue;
 
             if (pushPending_.exchange(false))
@@ -2343,6 +2355,8 @@ private:
     // ----- state ------------------------------------------------------------------
     std::thread notifier_;
     std::atomic<bool> quit_{false}, pushPending_{false};
+    std::mutex quitMutex_;                                // with quitCv_: wakes the notifier when the plugin closes
+    std::condition_variable quitCv_;
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
     std::atomic<bool> resetPending_{false};               // a reset is due at the start of the next block
     std::atomic<bool> resetWanted_{false};                // the host asked for one: fade out first, then reset
