@@ -10,7 +10,8 @@
 //
 //   in -> [noise, if Noise Pos = Pre]
 //      -> CHORUS      short modulated delay, L/R out of phase for width
-//      -> MIC         three-band EQ curve of a cheap microphone ("re-recorded through a mic")
+//      -> MIC         one of four period microphones ("re-recorded through a mic"): camcorder
+//                     electret, dynamic, telephone, boombox with its record ALC (see MicModel)
 //      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
 //      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage). Between
 //                     the two: NR ENCODE, (deck) B-type noise reduction, record side: lifts
@@ -69,7 +70,8 @@
 // sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type 2-Band). Programs keep
 // their numbers: 0 to 20 leave Scrape and Whistle at 0, 0 to 24 (the 1.4 set) leave NR and
 // Sat Type at rest, 25 to 33 are the 1.5 programs. So a project saved with an older version
-// loads with every setting in place.
+// loads with every setting in place. 1.6 rebuilt the four Mic Types from published figures
+// (see MicModel): with the Mic on such a project sounds different, with it off as before.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -824,7 +826,7 @@ enum CtlIndex
     cLowsG, cLoG, cLoMk, cLoMix,
     cHighsG, cHiG, cHiMk, cHiMix,
     cHum, cBuzz, cHead, cHiss, cCrackle,
-    cMicGain,
+    cMicGain, cMicNoise,
     cWobbleOn,
     cAgc, cDrift, cBreath,
     cScrape, cWhistle,
@@ -834,12 +836,338 @@ enum CtlIndex
 // Values that are additionally ramped every sample (anything that would click).
 enum RampIndex { rOut, rMono, rChorus, rMic, rSat, rMix, kNumRamp };
 
-struct MicCurve { float hpHz, peakHz, peakQ, peakDb, lpHz; };
-const MicCurve kMicCurves[4] = {
-    { 180.0f, 3200.0f, 1.0f, 5.0f,  7500.0f },   // Camcorder
-    {  90.0f, 5000.0f, 0.9f, 4.0f, 12000.0f },   // Dynamic
-    { 350.0f, 1800.0f, 1.2f, 6.0f,  3400.0f },   // Phone
-    { 120.0f,  900.0f, 0.8f, 4.0f,  6000.0f },   // Boombox
+// ---------------------------------------------------------------------------
+// MIC: four period microphones (Mic Type), each built from published figures. The research
+// notes behind them ("the report": VHS Vibes mic research, 2026-11-15) give every source with
+// its link; the section numbers below are the report's. A value that no source gave is marked
+// "estimate", with the reason.
+//
+//   Camcorder  capsule: HF rise -> gate highpass -> + self-noise -> JFET overload
+//   Dynamic    four filters fitted to the Shure Unidyne B (515) curve at 0.6 m
+//   Phone      carbon transmitter: sensitivity rising with level -> 2nd harmonic -> the CCITT
+//              P.48 IRS sending curve (eight filters) -> + the line's idle noise
+//   Boombox    the same capsule -> the record ALC -> + cassette hiss -> the cassette band
+//
+// Level. Overload and self-noise are sound pressures, so the stage needs a sound pressure for
+// each digital level. One mapping for all four, an assumption (nothing can fix it for a
+// plugin): a sine peaking at kRefLevel (-8 dBFS), the level the rest of the plugin treats as
+// the recorder's reference, is 104 dB SPL, so 94 dB SPL (1 Pa) peaks at -18 dBFS. That is the
+// report's suggested convention (0.1). With it the electret's documented overload (110 dB SPL)
+// lies 6 dB above reference: sound played in at reference passes the capsule cleanly and Mic
+// Gain +6 dB reaches overload; a loud talker at 30 cm (85 to 90 dB SPL) sits 14 to 19 dB below
+// reference. Mic Gain scales the sound before the mic (how loud the source was, how close).
+//
+// Every type is set to 0 dB at 1 kHz, where microphones are specified. Its noise is added only
+// while the Mic is on, at the model's own level: the Noise switch silences it, the Noise knob
+// does not scale it. Only the selected type's filters run (n of them).
+// ---------------------------------------------------------------------------
+constexpr float kPaPeak = kRefLevel * 0.316228f;   // the peak of a 1 Pa (94 dB SPL) sine: 10 dB under kRefLevel
+constexpr float kPaRms  = kPaPeak * 0.707107f;     // and its rms
+
+// Electret capsule (Camcorder, Boombox), report 0.2.
+// Gate highpass: J. Kean (Radio World), capsule + JFET gate resistance form a first-order
+// highpass; his example R = 100 Mohm, C = 30 pF: 53 Hz.
+constexpr float kGateHpHz = 1.0f / (kTwoPi * 100.0e6f * 30.0e-12f);
+// HF rise: ten Panasonic WM-61A capsules measured by J. Neal (read off the plot, report 0.2):
+// flat to 5 kHz, +1 dB at 8 kHz, +1.5 to +3 dB at 13 to 17 kHz, back to about 0 at 21.5 kHz.
+// One peak filter, fitted for each rate band (tools/mic_fit.py) to 0 dB from 300 Hz to 5 kHz,
+// +1 dB at 8 kHz, the middle of the spread (+2.25 dB) at 13, 15 and 17 kHz and 0 at 21.5 kHz.
+// At every rate: within 0.3 dB to 5 kHz, +0.7 dB at 8 kHz, +1.8 to +2.5 dB at 13 to 17 kHz,
+// under +1 dB at 21.5 kHz. No lowpass in the mic: the band is the recorder's business.
+constexpr float kCapPeak[4][3] = {                                  // Hz, Q, dB
+    { 15307.6f, 0.590f, 2.50f }, { 15035.1f, 0.711f, 2.49f },      // below 46 kHz; 46-70 kHz
+    { 14106.2f, 1.200f, 2.47f }, { 13867.4f, 1.352f, 2.47f },      // 70-130 kHz; 130 kHz up
+};
+// Overload: Kean, many electrets "begin overloading above 110 dB SPL", probably in the JFET,
+// and the clipping is asymmetric: negative-going peaks clip first, positive-going later. Taken
+// as 1 % THD at 110 dB SPL (the usual way a mic's maximum level is given; Kean quotes the
+// DIN 45500 criterion of 1 %): the negative half is the plugin's cubic soft clip at a scale
+// that gives a 110 dB SPL sine 1 % (solved numerically: 1.935 times its peak,
+// tools/mic_fit.py). How much later the positive half gives way is not documented: 6 dB later
+// is an estimate.
+constexpr float kSpl110Peak = kPaPeak * 6.3096f;            // 110 dB SPL = 94 + 16 dB
+constexpr float kJfetNeg = 1.935f * kSpl110Peak;
+constexpr float kJfetPos = kJfetNeg * 1.9953f;              // + 6 dB (estimate)
+// Self-noise: WM-61A "26 +/- 1 dB SPL(A)" (report 0.2, seen in a quoted figure; the datasheet's
+// S/N > 62 dB means at most 32 dB(A), and a period capsule mic measured 24 dB(A) in Audio,
+// July 1983). 26 dB SPL(A), white, A-weighted between 20 Hz and 20 kHz.
+constexpr float kCapNoiseRms = kPaRms * 3.9905e-4f;         // 20 uPa * 10^(26/20) = 3.99e-4 Pa
+constexpr float kAWeightBw   = 12468.0f;                    // A-weighted bandwidth of white noise, 20 Hz-20 kHz (computed, tools/mic_fit.py)
+
+// Phone, report 3. The CCITT P.48 (1988) intermediate reference system, sending side: "the
+// mean characteristics of many commercial circuits" (handset and local line), Table 1/P.48,
+// 100 Hz to 8 kHz. The report's eight-filter fit used 22 of the table's 24 points: it stopped
+// at 5 kHz and left 6.3 and 8 kHz 31 and 39 dB above the table. The same kind of fit (RBJ
+// filters at 48 kHz, Nelder-Mead; points below -30 dB need only be at least that deep) on all
+// 24, with the report's 11.9 kHz peak turned into a lowpass (tools/mic_fit.py): within 0.2 dB
+// from 100 Hz to 3.5 kHz at every rate from 44.1 to 192 kHz, 0.3 dB at 4 kHz (-33.5 dB),
+// 0.6 dB at 5 kHz (-48.5 dB), and as deep as the table or deeper at 6.3 and 8 kHz. Its gain of +17.3 dB at 1 kHz is taken off
+// again (the 1 kHz normalisation below).
+struct MicSec { char kind; float hz, q, db; };   // 'h' highpass, 'l' lowpass, 'p' peak, 'n' notch, '1' first-order highpass
+constexpr MicSec kPhoneSecs[8] = {
+    { 'h',  325.3f, 1.026f,  0.0f  }, { 'h',  169.6f, 1.433f,  0.0f },   // the low cut
+    { 'p', 1045.7f, 0.253f, 13.34f },                                    // the broad rise to 2.5-3 kHz
+    { 'l', 1861.7f, 1.308f,  0.0f  }, { 'l', 2773.4f, 3.496f,  0.0f },
+    { 'l', 3330.4f, 13.709f, 0.0f  },                                    // high Q: holds +5.5 dB at 3.15 kHz before the cliff
+    { 'n', 4135.1f, 4.234f,  0.0f  }, { 'n', 6971.6f, 0.534f,  0.0f },   // the cliff, and the depth above it
+};
+// The carbon transmitter (report 3). Documented: second harmonic is the main distortion
+// product ("double-frequency" distortion), and the sensitivity rises with sound pressure
+// (favouring the near talker). No amounts were found for either, so both are estimates, kept
+// modest: 3 % second harmonic at reference level (x + a x^2), and below reference a
+// sensitivity that falls by a quarter of a dB per dB (1 : 1.25), at most 10 dB, following the
+// level within 1 ms up and 50 ms down.
+constexpr float kCarbonH2    = 2.0f * 0.03f / kRefLevel;   // a: 3 % second harmonic at kRefLevel (estimate)
+constexpr float kCarbonClip  = 2.0f;                        // input held inside +/-2, where 1 + 2 a x stays positive
+constexpr float kCarbonFloor = 0.316228f;                   // the sensitivity falls by at most 10 dB (estimate)
+// The line's idle noise: CCITT G.712, PCM channel idle noise at most -65 dBm0p (report 3).
+// That limit is used as the level. dBm0 to plugin level: 1 Pa at the mouth gives -3.7 dB V/Pa
+// at the IRS junction (Table 1/P.48, 1 kHz) = -1.48 dBm in 600 ohm, the junction taken as a
+// 0 dBr point (an assumption); the 1 kHz tone of 1 Pa comes out of this model at kPaRms. Mono
+// (one line), white noise through a bandpass with its -3 dB points at 300 and 3400 Hz (the
+// channel's nominal band, P.48; G.712's mask itself was not in the text), set to -65 dBm0 in
+// total; the psophometric weighting is not applied.
+constexpr float kLineNoiseRms = kPaRms * 6.668e-4f;        // 10^((-65 + 1.48) / 20)
+constexpr float kLineBpHz = 1010.0f, kLineBpQ = 0.3258f;    // sqrt(300 * 3400), f0 / (3400 - 300)
+
+// Dynamic, report 2. Shure 515BSM user guide (2005, the Unidyne B family of the period 515SA /
+// 515SB), figure 1 at 0.6 m, read off the plot: 50 Hz -16, 100 -8, 200 -4, 500 -1.5, 1 kHz 0,
+// 2 kHz +1, 4 kHz +4, 5 kHz +5, 6.5 kHz +2, 8 kHz +3, 10 kHz 0, 15 kHz -10 dB. Highpass,
+// presence peak, the bump above the 6.5 kHz dip, lowpass: the report's fit at 48 kHz. Its
+// lowpass leans on the squeeze of the frequency scale near half the sample rate, so at other
+// rates the same filters are refitted (tools/mic_fit.py) to the report's 48 kHz curve between
+// the points and to the points themselves: for 44.1 kHz, for 88.2 and 96 kHz, and for 192 kHz
+// (the last two with a second lowpass, as the curve falls faster above 10 kHz than one can
+// follow without that squeeze). Within 0.82 dB of the read points at every rate, worst at
+// 500 Hz, which a highpass of this shape cannot meet along with 100 and 200 Hz.
+// No proximity lift: the plot gives it only at 1 cm against 0.6 m, and no distance between is
+// documented for this use. No distortion and no noise: a moving coil does not overload at these
+// levels, and its own noise is far below the recorder's (report 2).
+constexpr MicSec kDynSecs[4][5] = {
+    { { 'h', 101.86f, 0.370f, 0.0f }, { 'p', 4597.4f, 2.145f, 5.29f }, { 'p', 8172.8f, 5.749f, 2.25f }, { 'l', 10932.9f, 0.823f, 0.0f }, { 0, 0, 0, 0 } },          // below 46 kHz
+    { { 'h', 102.16f, 0.370f, 0.0f }, { 'p', 4578.7f, 2.34f,  5.17f }, { 'p', 8171.8f, 8.0f,   2.01f }, { 'l', 10325.8f, 0.9f,   0.0f }, { 0, 0, 0, 0 } },          // 46-70 kHz: the report's
+    { { 'h', 101.88f, 0.370f, 0.0f }, { 'p', 4579.5f, 2.422f, 5.17f }, { 'p', 8170.3f, 8.937f, 2.08f }, { 'l', 11448.6f, 1.122f, 0.0f }, { 'l', 11907.9f, 0.640f, 0.0f } },   // 70-130 kHz
+    { { 'h', 101.90f, 0.371f, 0.0f }, { 'p', 4578.1f, 2.550f, 5.04f }, { 'p', 8174.7f, 8.928f, 2.15f }, { 'l', 11879.7f, 1.469f, 0.0f }, { 'l', 8810.5f,  0.688f, 0.0f } },   // 130 kHz up
+};
+
+// Boombox, report 4. The capsule above, then the record preamp's ALC, then the cassette.
+// ALC (Sanyo LA3220, "2-channel equalizer amplifier with ALC" for radio cassettes): ALC width
+// 45 dB typical, "from VI = -60 dBm until VO goes up 3 dB" (45 dB of input give 3 dB of
+// output); its control voltage from a voltage doubler, a peak detector on the output. So: a
+// loop that attenuates by 14 dB for every dB its detector is above the threshold (45 dB in,
+// 3 dB out), at most 42 dB, beyond which the output follows the input again.
+// Where the range starts: -60 dBm (0.775 mV) from a -35 dB V/Pa capsule (WM-61A, report 0.2) is
+// 66.8 dB SPL, -45.2 dBFS by the mapping above (a derived value). The ALC starts when the
+// output reaches kRefLevel (the tape's reference; ROHM BA3308: ALC starts when the output peak
+// passes a threshold), so the record gain before it is kRefLevel over that input: +37.2 dB.
+constexpr float kAlcOnsetPeak = kPaPeak * (0.7746e-3f / 0.017783f);   // -60 dBm / (-35 dB V/Pa) = 0.0436 Pa
+constexpr float kAlcRecGain   = kRefLevel / kAlcOnsetPeak;
+constexpr float kAlcMaxAtt    = 0.0079433f;                 // 42 dB: the 45 dB range less its 3 dB
+// Distortion under ALC: LA3220 0.5 % typical (2 % max) at VI = -20 dBm, ROHM BA3308 3 % at the
+// end of its range. A cubic y - c y^3 after the gain element, set for 0.5 % at the output
+// level of VI = -20 dBm (40 dB into the range, 2.7 dB over reference): 0.27 % at the start of
+// the range, 0.54 % at its end (tools/mic_fit.py).
+constexpr float kAlcCubic = 0.06665f;
+constexpr float kAlcRail  = 2.2364f;                         // 1 / sqrt(3 c): the cubic's turning point (output 1.49)
+// Recovery: ROHM BA3308 "attack time and recovery time of ALC are set according to C7 and R7",
+// application values C7 = 22 uF, R7 = 1 Mohm: the detector discharges with 22 s. Because the
+// loop needs only 3 dB of detector voltage for its whole 42 dB, that is 0.35 x 22 = 7.6 s from
+// full attenuation back to none (5.5 dB a second). Attack: the charging current is not given
+// (a 4.7 k / 22 uF figure for the BA3306 was seen only in a search summary). Estimate: 5 ms,
+// fast, as the report proposes (a few ms for the loop to catch a loud onset).
+constexpr float kAlcRecoverySec = 22.0e-6f * 1.0e6f;
+constexpr float kAlcAttackSec   = 0.005f;                    // estimate
+// The cassette: Sharp QT-27 radio cassette service manual, tape frequency response 50 Hz to
+// 10 kHz, S/N 45 dB. Taken as the -3 dB points of a second-order highpass and lowpass (the
+// tolerance is not given), and the hiss as 45 dB below the level the ALC records at (a
+// kRefLevel sine), measured in that band.
+constexpr float kTapeHissRms = kRefLevel * 0.707107f * 5.6234e-3f;   // -45 dB
+
+struct MicModel
+{
+    enum { kCamcorder = 0, kDynamic, kPhone, kBoombox };
+    int type = -1, n = 0;           // the type in the filters; how many filters it runs
+    PairBiquad f[8];
+    float capNoise = 0.0f, hiss = 0.0f, line = 0.0f;   // noise amplitudes for this rate (uniform white noise)
+    Biquad lineBp;                                     // the phone line's band (mono)
+    Xorshift32 rng[2] = { Xorshift32(0x3c6ef372u), Xorshift32(0xa54ff53au) };
+    // phone: the carbon's level-dependent sensitivity
+    float env = kRefLevel, envAtk = 0.0f, envRel = 0.0f, cg = 1.0f, cgInc = 0.0f;
+    // boombox: the ALC's detector (vc), 1 / (vc / threshold) and the gain it sets
+    float vc = 0.0f, u = 1.0f, alcG = 1.0f, alcAtk = 0.0f, alcRel = 1.0f;
+
+    static BiquadCoeffs design(const MicSec& s, float sr)
+    {
+        switch (s.kind)
+        {
+            case 'h': return BiquadCoeffs::highpass(sr, s.hz, s.q);
+            case 'l': return BiquadCoeffs::lowpass(sr, s.hz, s.q);
+            case 'p': return BiquadCoeffs::peak(sr, s.hz, s.q, s.db);
+            case 'n': return BiquadCoeffs::notch(sr, s.hz, s.q);
+            default:
+            {
+                // first-order highpass by the bilinear transform, exact at its corner
+                const float k = std::tan(kPi * minf(s.hz, 0.45f * sr) / sr), m = 1.0f / (1.0f + k);
+                BiquadCoeffs c; c.b0 = m; c.b1 = -m; c.b2 = 0.0f; c.a1 = (k - 1.0f) * m; c.a2 = 0.0f;
+                return c;
+            }
+        }
+    }
+    // |H| of filters [from, to) at hz
+    double gainAt(int from, int to, float sr, float hz) const
+    {
+        const double w = 2.0 * 3.14159265358979 * hz / sr, c1 = std::cos(w), s1 = std::sin(w), c2 = std::cos(2.0 * w), s2 = std::sin(2.0 * w);
+        double g = 1.0;
+        for (int i = from; i < to; ++i)
+        {
+            const PairBiquad& q = f[i];
+            const double nr = q.b0 + q.b1 * c1 + q.b2 * c2, ni = -(q.b1 * s1 + q.b2 * s2);
+            const double dr = 1.0 + q.a1 * c1 + q.a2 * c2, di = -(q.a1 * s1 + q.a2 * s2);
+            g *= std::sqrt((nr * nr + ni * ni) / (dr * dr + di * di));
+        }
+        return g;
+    }
+    // Filters [from, to) together to 0 dB at 1 kHz: the first one's numerator is scaled.
+    void normalise(int from, int to, float sr)
+    {
+        const float k = (float)(1.0 / gainAt(from, to, sr, 1000.0f));
+        f[from].b0 *= k; f[from].b1 *= k; f[from].b2 *= k;
+    }
+    // Uniform white noise in [-a, a] whose rms, measured over `bandwidth` Hz, is `rms`.
+    static float noiseAmp(float rms, float bandwidth, float sr) { return rms * std::sqrt(3.0f * 0.5f * sr / bandwidth); }
+    // The same, for white noise that goes through filters with this power gain (sum of the
+    // squares of their impulse response) and is measured at their output.
+    static float noiseAmp(float rms, double power) { return rms * (float)std::sqrt(3.0 / power); }
+    template <typename F> static double powerGain(F filter, float sr)
+    {
+        double sum = 0.0;
+        const int len = (int)(0.05f * sr);   // 50 ms: the slowest one here, the 50 Hz highpass, has decayed by 96 dB
+        for (int i = 0; i < len; ++i) { const double y = filter(i == 0 ? 1.0f : 0.0f); sum += y * y; }
+        return sum;
+    }
+
+    void set(int t, float sr)
+    {
+        type = t;
+        const int band = sr >= 130000.0f ? 3 : sr >= 70000.0f ? 2 : sr >= 46000.0f ? 1 : 0;   // the fits are per rate band
+        n = 0;
+        auto add = [&](const MicSec& s) { f[n++].setCoeffs(design(s, sr)); };
+        if (t == kCamcorder || t == kBoombox)
+        {
+            const float* p = kCapPeak[band];
+            add({ 'p', p[0], p[1], p[2] });
+            add({ '1', kGateHpHz, 0.0f, 0.0f });
+            normalise(0, 2, sr);
+            capNoise = noiseAmp(kCapNoiseRms, kAWeightBw, sr);   // A-weighted level of white noise: no filter after it
+        }
+        if (t == kBoombox)
+        {
+            add({ 'h', 50.0f, 0.7071f, 0.0f });
+            add({ 'l', 10000.0f, 0.7071f, 0.0f });
+            normalise(2, 4, sr);
+            PairBiquad a = f[2], b = f[3];
+            a.reset(); b.reset();
+            hiss = noiseAmp(kTapeHissRms, powerGain([&](float x) { return b.process(a.process(splat(x)))[0]; }, sr));
+            alcAtk = 1.0f - std::exp(-1.0f / (kAlcAttackSec * sr));
+            alcRel = std::exp(-(float)kCtrl / (kAlcRecoverySec * sr));   // per control tick
+        }
+        if (t == kDynamic)
+        {
+            for (const MicSec& s : kDynSecs[band]) if (s.kind != 0) add(s);
+            normalise(0, n, sr);
+        }
+        if (t == kPhone)
+        {
+            for (const MicSec& s : kPhoneSecs) add(s);
+            normalise(0, n, sr);
+            lineBp.setCoeffs(BiquadCoeffs::bandpass(sr, kLineBpHz, kLineBpQ));
+            Biquad bp = lineBp;
+            bp.reset();
+            line = noiseAmp(kLineNoiseRms, powerGain([&](float x) { return bp.process(x); }, sr));
+            envAtk = 1.0f - std::exp(-1.0f / (0.001f * sr));    // estimates (see kCarbonH2)
+            envRel = 1.0f - std::exp(-1.0f / (0.050f * sr));
+        }
+    }
+    void reset()
+    {
+        for (PairBiquad& q : f) q.reset();
+        lineBp.reset();
+        env = kRefLevel; cg = 1.0f; cgInc = 0.0f;
+        vc = 0.0f; u = 1.0f; alcG = 1.0f;
+    }
+    // Every control tick: the carbon's sensitivity follows the level (two square roots), and the
+    // ALC's detector discharges.
+    void tick()
+    {
+        if (type == kPhone)
+        {
+            const float r = env * (1.0f / kRefLevel);
+            const float target = r >= 1.0f ? 1.0f : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);   // r ^ (1/4): 1 : 1.25
+            cgInc = (target - cg) * kCtrlInv;
+        }
+        else if (type == kBoombox) vc *= alcRel;
+    }
+
+    // The negative half of the capsule's JFET gives way first.
+    static Stereo jfet(Stereo x)
+    {
+        const Stereo neg = splat(0.0f);
+        const Stereo s = x < neg ? splat(kJfetNeg) : splat(kJfetPos);
+        const Stereo inv = x < neg ? splat(1.0f / kJfetNeg) : splat(1.0f / kJfetPos);
+        return s * softClip(x * inv);
+    }
+    // noise: 1 while the Noise switch is on, 0 off (smoothed)
+    Stereo capsule(Stereo x, float noise)
+    {
+        x = f[1].process(f[0].process(x));
+        if (noise > 0.0f) x += stereo(rng[0].nextBipolar(), rng[1].nextBipolar()) * (capNoise * noise);
+        return jfet(x);
+    }
+    Stereo process(Stereo x, float noise)
+    {
+        switch (type)
+        {
+            case kCamcorder:
+                return capsule(x, noise);
+            case kDynamic:
+                for (int i = 0; i < n; ++i) x = f[i].process(x);
+                return x;
+            case kPhone:
+            {
+                const Stereo a = vabs(x);
+                const float pk = maxf(a[0], a[1]);
+                env += (pk > env ? envAtk : envRel) * (pk - env);
+                cg += cgInc;
+                x = vclamp(x * cg, kCarbonClip);
+                x += kCarbonH2 * x * x;                       // its DC goes in the highpasses that follow
+                for (int i = 0; i < 8; ++i) x = f[i].process(x);
+                if (noise > 0.0f) x += splat(lineBp.process(rng[0].nextBipolar()) * (line * noise));
+                return x;
+            }
+            default:   // kBoombox
+            {
+                x = capsule(x, noise) * (kAlcRecGain * alcG);
+                x = vclamp(x, kAlcRail);
+                x -= kAlcCubic * x * x * x;
+                // the detector: charges from the output's peaks, discharges in tick()
+                const Stereo a = vabs(x);
+                const float pk = maxf(a[0], a[1]);
+                if (pk > vc) vc += alcAtk * (pk - vc);
+                const float r = vc * (1.0f / kRefLevel);
+                if (r > 1.0f)
+                {
+                    // the gain for the next sample: r ^ -14, with 1 / r followed by one Newton
+                    // step a sample (r moves by a few percent a sample at most)
+                    u = clamp(u * (2.0f - r * u), 0.0f, 1.0f);
+                    const float u2 = u * u, u4 = u2 * u2;
+                    alcG = maxf(u4 * u4 * u4 * u2, kAlcMaxAtt);
+                }
+                else { u = 1.0f; alcG = 1.0f; }
+                if (noise > 0.0f) x += stereo(rng[0].nextBipolar(), rng[1].nextBipolar()) * (hiss * noise);
+                return f[3].process(f[2].process(x));
+            }
+        }
+    }
 };
 
 } // namespace
@@ -1027,6 +1355,7 @@ private:
         headInc_ = 59.94f / sr_;
         hsInc_   = 59.94f / sr_;
         agcHoldTicks_ = (int)(1.5f * sr_ * kCtrlInv);
+        micHoldTicks_ = (int)(0.020f * sr_ * kCtrlInv) + 1;
         agcRelease_   = 1.0f / (2.5f * sr_ * kCtrlInv);
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
@@ -1060,7 +1389,7 @@ private:
         // the dry copy's crossfade a knob move can start), and the filters after them carry
         // whatever they read on into the fade-in. Left in place, the old sound would be heard.
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
-        micHp_.reset(); micPk_.reset(); micLp_.reset();
+        mic_.reset();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
         tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = splat(0.0f);
         env_ = 0.0f; compGain_ = 1.0f; compTarget_ = 1.0f;
@@ -1107,6 +1436,7 @@ private:
         choBase_ = choDelayTarget_;
         choD_[0].snap(choBase_); choD_[1].snap(choBase_);
         choActive_ = rampT_[rChorus] > 0.0f;
+        micRun_ = rampT_[rMic] > 0.0f; micHold_ = 0;
 
         // The delays were just emptied. Keep the output shut until the sound has come through
         // them (their resting length), then fade in over about 20 ms instead of letting it cut in.
@@ -1114,6 +1444,7 @@ private:
         rampS_[rOut] = 0.0f;
         ramp_[rOut].snap(0.0f);
         fadeHold_ = (int)((wf1_.base + wf2_.base + (choActive_ ? choBase_ : 0.0f)) * kCtrlInv) + 1;
+        if (micRun_) fadeHold_ += micHoldTicks_;   // the mic starts from rest too: it settles unheard (see controlTick)
         // The chorus also swings: on the first tick one side's delay moves up to its depth (the
         // one controlTick gives it) further back, and until the sound has got there that side
         // would come in with a step in the middle of the fade-in. So the output waits those few
@@ -1343,10 +1674,10 @@ public:
                 }
             }
 
-            // ----- mic emulation ---------------------------------------------
-            if (micMix > 0.0f)
+            // ----- mic ---------------------------------------------------------
+            if (micRun_)
             {
-                const Stereo m = micLp_.process(micPk_.process(micHp_.process(x))) * cur_[cMicGain];
+                const Stereo m = mic_.process(x * cur_[cMicGain], cur_[cMicNoise]);
                 x += (m - x) * micMix;
             }
 
@@ -1753,6 +2084,7 @@ private:
             const float clicksPerSec = 2.0f + 60.0f * pct(kCrackle);
             crackleThresh_ = (uint32_t)(clicksPerSec / sr * 4294967296.0f);
             noisePre_ = getInt(kNoisePos) == 1;
+            tgt_[cMicNoise] = getBool(kNoiseOn) ? 1.0f : 0.0f;   // the mic's own noise: the switch only (see MicModel)
 
             // head switching: how long the signal is held at each switch, in samples. It follows
             // the Head Buzz knob and the noise master too, but not as the rasp does: in a straight
@@ -1770,10 +2102,10 @@ private:
         }
         if (groups & gMic)
         {
-            // A new Mic Type while the mic is heard would swap three filters under the running
+            // A new Mic Type while the mic is heard would swap its filters under the running
             // sound (a click at each position a Q-Link passes). So the mic fades out first, the
-            // new curve goes in while it is out, and it fades back in (see controlTick). At a
-            // reset, or while the mic is off and silent, the curve goes in at once.
+            // new type goes in while it is out, and it fades back in from rest (see controlTick).
+            // At a reset, or while the mic is off and silent, the type goes in at once.
             micWant_ = clamp(getInt(kMicType), 0, 3);
             if (groups == gAll || (!micSwap_ && rampT_[rMic] == 0.0f && ramp_[rMic].v == 0.0f)) { micSwap_ = false; setMicCurve(micWant_); }
             else micSwap_ = micWant_ != micType_;   // (turned back to the type that is in: no fade)
@@ -1804,10 +2136,7 @@ private:
 
     void setMicCurve(int type)
     {
-        const MicCurve& mc = kMicCurves[type];
-        micHp_.setCoeffs(BiquadCoeffs::highpass(sr_, mc.hpHz, 0.7071f));
-        micPk_.setCoeffs(BiquadCoeffs::peak(sr_, mc.peakHz, mc.peakQ, mc.peakDb));
-        micLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, mc.lpHz, 0.7071f));
+        mic_.set(type, sr_);
         micType_ = type;
     }
 
@@ -1827,12 +2156,11 @@ private:
         // the reset come (at the start of the next block). Asked for a tick earlier, a block
         // that ended inside the fade's last step would have cut it short, with a step.
         if (resetNextTick_) { resetNextTick_ = false; resetPending_.store(true); }
-        // Mic Type: the mic has faded out for its new curve (see readParams). Put it in, from
-        // rest, and fade the mic back in.
+        // Mic Type: the mic has faded out for its new type (see readParams). Put it in and fade
+        // the mic back in.
         if (micSwap_ && ramp_[rMic].v == 0.0f)
         {
             setMicCurve(micWant_);
-            micHp_.reset(); micPk_.reset(); micLp_.reset();
             micSwap_ = false;
             rampT_[rMic] = micOn_ ? 1.0f : 0.0f;
         }
@@ -1956,6 +2284,16 @@ private:
         }
         if (choHold_ > 0) { --choHold_; rampS_[rChorus] = 0.0f; ramp_[rChorus].snap(0.0f); }
         choActive_ = choWant;
+
+        // mic: the model runs while the mic is heard or on its way in or out. Coming in from
+        // silence (switched on, or a new type) it starts from rest and runs unheard for 20 ms
+        // before the fade-in: long enough for the filters to settle and for the Boombox's ALC
+        // to catch a loud sound (which takes it about 3 ms from rest, with a burst).
+        const bool micWant = rampT_[rMic] > 0.0f;
+        if (micWant && !micRun_) { mic_.reset(); micRun_ = true; micHold_ = micHoldTicks_; }
+        else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
+        if (micHold_ > 0) { --micHold_; rampS_[rMic] = 0.0f; ramp_[rMic].snap(0.0f); }
+        if (micRun_) mic_.tick();
         if (choActive_)
         {
             // L and R LFOs up to half a cycle apart. A jump of Cho Delay is followed at a
@@ -2438,9 +2776,11 @@ private:
     float choDelayTarget_ = 500.0f, choBase_ = 500.0f;
 
     // mic
-    PairBiquad micHp_, micPk_, micLp_;
-    int   micType_ = -1, micWant_ = 0;    // the curve in the filters; the one Mic Type asks for
-    bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of curve
+    MicModel mic_;
+    int   micType_ = -1, micWant_ = 0;    // the type in the model; the one Mic Type asks for
+    bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of type
+    bool  micRun_ = false;                    // the model runs (heard, fading, or settling unheard)
+    int   micHold_ = 0, micHoldTicks_ = 55;   // control ticks it settles unheard before it fades in (20 ms)
 
     // preamp, wear, compressor
     Stereo tiltLp_ = {0.0f, 0.0f}, slew_ = {0.0f, 0.0f};

@@ -365,7 +365,12 @@ int main()
                 const size_t at = out.size();
                 fx.play(128.0f / 44100.0f, 0.5f, 300.0f, &out, nullptr, 0.25f);
                 float pk = 0.0f; for (size_t j = at; j < out.size(); ++j) pk = std::fmax(pk, std::fabs(out[j]));
-                const bool quiet = pk < 0.5f * low;
+                // (Mic Type: a change of type crossfades the dry sound into the new type. Since 1.6
+                // the Phone turns a 300 Hz tone round by nearly half a cycle (the P.48 curve's
+                // steep low cut), so halfway through that crossfade the two cancel for a few ms:
+                // the sum dips to about 0.4 of the quietest type. That is not a fade, so for Mic
+                // Type only a dip below a quarter counts.)
+                const bool quiet = pk < (c.param == kMicType ? 0.25f : 0.5f) * low;
                 if (quiet && !inFade) ++fades;
                 inFade = quiet;
             }
