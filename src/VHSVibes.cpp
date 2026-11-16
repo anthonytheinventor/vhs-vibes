@@ -948,6 +948,7 @@ constexpr MicSec kPhoneSecs[8] = {
 constexpr float kCarbonH2    = 2.0f * 0.03f / kRefLevel;   // a: 3 % second harmonic at kRefLevel (estimate)
 constexpr float kCarbonClip  = 2.0f;                        // input held inside +/-2, where 1 + 2 a x stays positive
 constexpr float kCarbonFloor = 0.316228f;                   // the sensitivity falls by at most 10 dB (estimate)
+constexpr float kCarbonQuiet = 0.99f * kCarbonFloor * kCarbonFloor * kCarbonFloor * kCarbonFloor;   // below: at the floor (fourth root 0.3155)
 // The line's idle noise: CCITT G.712, PCM channel idle noise at most -65 dBm0p (report 3).
 // That limit is used as the level. dBm0 to plugin level: 1 Pa at the mouth gives -3.7 dB V/Pa
 // at the IRS junction (Table 1/P.48, 1 kHz) = -1.48 dBm in 600 ohm, the junction taken as a
@@ -1310,8 +1311,12 @@ struct MicModel
                 const float pk = std::fabs(m);
                 env += (pk > env ? envAtk : envRel) * (pk - env);
                 // sensitivity: r ^ (1/4) below reference (1 : 1.25), at most 10 dB down
+                // (the two square roots only where they decide the result: at and above reference
+                // the sensitivity is 1, and below kCarbonQuiet the fourth root is surely under the
+                // floor, so the floor is what maxf would have given)
                 const float r = env * (1.0f / kRefLevel);
-                const float g = r >= 1.0f ? 1.0f : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);
+                float g = 1.0f;
+                if (!(r >= 1.0f)) g = r < kCarbonQuiet ? kCarbonFloor : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);
                 m = clamp(m * g, -kCarbonClip, kCarbonClip);
                 m += kCarbonH2 * m * m;                       // its DC goes in the highpasses that follow
                 for (int i = 0; i < 8; ++i) m = mono(i, m);
