@@ -270,7 +270,9 @@ epigraph: What it was recorded through.
 
 ## The microphones: Simple and Modeled
 
-Mic Model chooses between two sets of the same four microphones. Switching it fades the mic out and back in, as a change of type does.
+The Mic plays the sound into a period microphone before the recorder hears it, as if it had been re-recorded through one. **Mic Type** chooses one of four: Camcorder, Dynamic, Phone or Boombox. **Mic Model** chooses which set of the four it is, Simple or Modeled. Switching either fades the mic out and back in.
+
+### Simple
 
 **Simple** is the set of the versions up to 1.5. Each type is one fixed tone curve, in stereo, with no noise and no level control of its own; Mic Gain is a level after it. Projects saved before 1.6 open on it, and the five older programs with the Mic on use it.
 
@@ -281,16 +283,31 @@ Mic Model chooses between two sets of the same four microphones. Switching it fa
 | ^PHONE^ | 350 Hz to 3.4 kHz, a 6 dB peak at 1.8 kHz |
 | ^BOOMBOX^ | 120 Hz to 6 kHz, a 4 dB peak at 900 Hz |
 
-**Modeled** does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Camcorder and the Boombox the level control of the recorder it sat in. A new instance starts on it; the five programs named Mic - ... use it.
+### Modeled
 
-| Type | Built on | What you hear |
+**Modeled** does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Camcorder and the Boombox the level control of the recorder it sat in. A new instance starts on it; the five programs named Mic - ... use it. The Camcorder, the Phone and the Boombox are mono, as the originals were; the Dynamic is in stereo.
+
+| Type | Built on | Its sound |
 |---|---|---|
-| ^CAMCORDER^ | a camcorder's record chain: the electret capsule, the mic amp and the record ALC, from service manuals, datasheets and one measured camera | everything above a murmur held at one level, the hiss swelling in every pause, crunch on loud sounds and sudden onsets; mono |
-| ^DYNAMIC^ | the Shure 515 stage microphone's published curve | a gentle low cut and a presence peak at 5 kHz |
-| ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with hard edges, a carbon microphone's grit, the line's faint noise; mono |
-| ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up; mono |
+| ^CAMCORDER^ | a camcorder's record chain: the electret capsule, the mic amp and the record ALC, from service manuals, datasheets and one measured camera | the camera across the room: it hears the source 16 dB quieter (estimate); a low cut near 50 Hz and a soft top |
+| ^DYNAMIC^ | the Shure 515 moving-coil stage microphone's published curve | a gentle low cut (8 dB down at 100 Hz), a 5 dB presence peak at 5 kHz, a smaller one at 8 kHz, falling away above 10 kHz |
+| ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with steep edges, a carbon microphone's grit, the line's faint noise |
+| ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | the cassette's 50 Hz to 10 kHz, with its hiss |
 
-On Modeled every type's response is 0 dB at 1 kHz. The Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+What each one does to loud and quiet sound:
+
+| Type | Its level | After a loud passage |
+|---|---|---|
+| ^CAMCORDER^ | the record level control holds everything from 61 to 83 dB SPL at the microphone within 1.2 dB of one level; louder than that, loud sounds and sudden onsets crunch. It catches a sound in 20 ms (estimate) | the gain comes back at 8 dB a second, the whole 21 dB in about 2.5 seconds (estimate), and the hiss in the pause rises by as much; after a sound louder than its range it first stays down longer, ten seconds or more |
+| ^DYNAMIC^ | no level control: Mic Gain is a plain level | nothing changes |
+| ^PHONE^ | no level control, but the carbon grows less sensitive as the sound gets quieter, so quiet words come through weaker still | nothing changes |
+| ^BOOMBOX^ | the record level control (ALC) turns everything from a whisper to a shout into nearly one level | the gain comes back over about seven seconds; the hiss, the room and every quiet sound come up with it |
+
+Sources, measurements and every estimate are in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+
+### Mic Gain: two meanings
+
+On Simple, **Mic Gain** is a level after the curve. On Modeled it sets how loud the sound is at the microphone, as if the source were louder or closer: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption. Every type's response is 0 dB at 1 kHz; the Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at, and Mic Gain changes how hard they work more than how loud they are.
 
 ::: page DECK
 toc: The machine's faults, B-Type NR and HQ
