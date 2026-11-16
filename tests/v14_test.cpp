@@ -131,7 +131,7 @@ static double residualDb(const std::vector<float>& v, double hz)
 }
 
 // A saved state as an older version wrote it: this version's state without the parameters
-// added in 1.4. (Format: "MPCP", version, count, then per parameter: id length, id, two floats.)
+// added in 1.4 and since. (Format: "MPCP", version, count, then per parameter: id length, id, two floats.)
 static std::vector<uint8_t> stateBefore14(AEffect* e)
 {
     void* data = nullptr;
@@ -145,7 +145,7 @@ static std::vector<uint8_t> stateBefore14(AEffect* e)
     {
         const size_t len = 1 + (size_t)d[pos] + 8;
         const std::string id(reinterpret_cast<const char*>(d) + pos + 1, d[pos]);
-        if (id != "scrape" && id != "whistle" && id != "hq") { out.insert(out.end(), d + pos, d + pos + len); ++kept; }
+        if (id != "scrape" && id != "whistle" && id != "hq" && id != "nr" && id != "sat_type" && id != "mic_model") { out.insert(out.end(), d + pos, d + pos + len); ++kept; }
         pos += len;
     }
     out.insert(out.end(), d + pos, d + size);
@@ -409,7 +409,7 @@ int main()
             for (int i = kScrape; i < kNumParams; ++i) rest = rest && b.get(i) == 0.0f;
             std::printf("   loaded into %s: Scrape %.0f, Whistle %.0f\n", first < 0 ? "a fresh instance" : first == 21 ? "Sticky Tape" : "Tube TV", b.get(kScrape), b.get(kWhistle));
             check(same, "every older parameter is as saved");
-            check(rest, "the parameters added in 1.4 are at rest");
+            check(rest, "the parameters added in 1.4 and since are at rest");
         }
         a.set(kScrape, 40); a.set(kWhistle, 25);
         void* data = nullptr;

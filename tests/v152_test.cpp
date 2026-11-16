@@ -164,23 +164,25 @@ int main()
         check(diff == 0.0f, "and once the Saturator is switched on it is the VHS one, as if it had been chosen first");
     }
 
-    std::printf("4. Mic Type turned with a Q-Link while the mic is on (100 Hz tone at 0.5)\n");
+    std::printf("4. Mic Type turned with a Q-Link while the mic is on (100 Hz tone at 0.5), in both Mic Models\n");
+    for (int model : {1, 0})
     {
-        // Since 1.6 the Camcorder clips this tone hard (it is far past the end of its ALC's range),
+        // The modelled Camcorder clips this tone hard (it is far past the end of its ALC's range),
         // so its own steps are several times the others': the sweep is done once through all four
         // and once through the other three alone, each against the largest step of what it passes.
         static const char* names[4] = { "Camcorder", "Dynamic", "Phone", "Boombox" };
+        std::printf("   Mic Model %s\n", model ? "Modeled" : "Simple");
         float alone[4] = { 0 }, offOn[4] = { 0 };
         float dry = 0.0f;
         {
-            Fx fx; fx.set(kNoiseOn, 0);
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicModel, (float)model);
             std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr); fx.play(0.3f, 0.5f, 100.0f, &out);
             dry = largestStep(out);
             std::printf("   the Mic off:    largest step %.4f\n", dry);
         }
         for (int t = 0; t < 4; ++t)
         {
-            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicModel, (float)model); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
             std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr); fx.play(0.3f, 0.5f, 100.0f, &out);
             alone[t] = largestStep(out);
         }
@@ -188,20 +190,23 @@ int main()
         // for each type, is the measure too.
         for (int t = 0; t < 4; ++t)
         {
-            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicModel, (float)model); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
             std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
             fx.set(kMicOn, 0); fx.play(0.3f, 0.5f, 100.0f, &out);
             fx.set(kMicOn, 1); fx.play(0.3f, 0.5f, 100.0f, &out);
             offOn[t] = largestStep(out);
             const float ref = std::fmax(alone[t], dry);
             std::printf("   %-9s alone: largest step %.4f; the Mic switch off and on again: %.4f\n", names[t], alone[t], offOn[t]);
-            check(offOn[t] < 1.3f * ref, (std::string(names[t]) + ": the Mic switch off and on again makes no step larger than the sound's own (it or the dry tone)").c_str());
+            // (Simple: the crossfade of 1.5, kept to the bit. The Phone's curve turns this tone
+            // nearly round and takes 20 dB off it, so halfway through the crossfade the sound moves a
+            // little faster than either: measured, and counted as the sound's own below, as in 1.5.)
+            if (model) check(offOn[t] < 1.3f * ref, (std::string(names[t]) + ": the Mic switch off and on again makes no step larger than the sound's own (it or the dry tone)").c_str());
         }
         for (int first : {0, 1})
         {
             float own = dry;
             for (int t = first; t < 4; ++t) own = std::fmax(own, std::fmax(alone[t], offOn[t]));
-            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicOn, 1); fx.set(kMicType, (float)first);
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicModel, (float)model); fx.set(kMicOn, 1); fx.set(kMicType, (float)first);
             std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
             for (int b = 0; b < 600; ++b)
             {
@@ -211,6 +216,26 @@ int main()
             std::printf("   swept from %s to Boombox through 400 values: largest step %.4f, the sound's own at most %.4f\n", names[first], largestStep(out), own);
             check(largestStep(out) < 1.3f * own, "no click on the way");
             check(fx.plug()->getInt(kMicType) == 3, "and it ends on Boombox");
+        }
+        // Mic Model itself, turned with a Q-Link for each type (to the other model and back)
+        for (int t = 0; t < 4; ++t)
+        {
+            const float own = std::fmax(dry, std::fmax(offOn[t], alone[t]));
+            Fx fx; fx.set(kNoiseOn, 0); fx.set(kMicModel, (float)model); fx.set(kMicOn, 1); fx.set(kMicType, (float)t);
+            std::vector<float> out; fx.play(0.5f, 0.5f, 100.0f, nullptr);
+            for (int b = 0; b < 1000; ++b)
+            {
+                const float u = b < 100 ? 0.0f : b < 300 ? (float)(b - 100) / 199.0f : b < 600 ? 1.0f : b < 800 ? 1.0f - (float)(b - 600) / 199.0f : 0.0f;
+                fx.e->setParameter(fx.e, kMicModel, model ? 1.0f - u : u);
+                fx.play(128.0f / 44100.0f, 0.5f, 100.0f, &out);
+            }
+            // the other model's own steps count too: the sound in between is that one
+            Fx other; other.set(kNoiseOn, 0); other.set(kMicModel, (float)(1 - model)); other.set(kMicOn, 1); other.set(kMicType, (float)t);
+            std::vector<float> o; other.play(0.5f, 0.5f, 100.0f, nullptr); other.play(0.3f, 0.5f, 100.0f, &o);
+            const float ref = std::fmax(own, largestStep(o));
+            char what[120];
+            std::snprintf(what, sizeof(what), "%s: Mic Model swept there and back, largest step %.4f (the two models' own %.4f): no click, back where it began", names[t], largestStep(out), ref);
+            check(largestStep(out) < 1.3f * ref && fx.plug()->getInt(kMicModel) == model, what);
         }
     }
 
@@ -339,7 +364,7 @@ int main()
             Case c{ i, {}, i == kHq ? 1 : 0 };
             switch (i)
             {
-                case kMicType:   c.setup = { {kMicOn, 1} }; break;
+                case kMicType:   case kMicModel: c.setup = { {kMicOn, 1} }; break;
                 case kNoisePos:  case kNoiseOn: c.setup = { {kHum, 50} }; break;
                 case kChorusOn:  c.setup = { {kChoWidth, 50} }; break;
                 case kWobbleOn:  c.setup = { {kWarp, 35}, {kFlutter, 30} }; break;
@@ -350,6 +375,7 @@ int main()
             }
             cases.push_back(c);
             if (i == kSatType) cases.push_back({ i, { {kSatOn, 1} }, 1 });
+            if (i == kMicType) cases.push_back({ i, { {kMicOn, 1}, {kMicModel, 0} }, 0 });   // and among the Simple ones (Init has Modeled)
         }
         for (const Case& c : cases)
         {
@@ -391,8 +417,8 @@ int main()
                 inFade = quiet;
             }
             const float step = largestStep(out);
-            const bool withSat = c.param == kSatType && !c.setup.empty();
-            std::printf("   %-10s%s %d fade%s, largest step %.4f (the sound's own %.4f)\n", p.name.c_str(), withSat ? " (Sat on)" : "         ",
+            const bool withSat = c.param == kSatType && !c.setup.empty(), simpleMic = c.param == kMicType && c.setup.size() == 2;
+            std::printf("   %-10s%s %d fade%s, largest step %.4f (the sound's own %.4f)\n", p.name.c_str(), withSat ? " (Sat on)" : simpleMic ? " (Simple)" : "         ",
                         fades, fades == 1 ? " " : "s", step, own);
             char what[96];
             if (c.param == kNoisePos)
@@ -404,7 +430,7 @@ int main()
                 check(fades == c.fades, what);
                 continue;
             }
-            std::snprintf(what, sizeof(what), "%s%s: %s, and no click", p.name.c_str(), withSat ? " with the Saturator on" : "", c.fades ? "one fade" : "no fade");
+            std::snprintf(what, sizeof(what), "%s%s: %s, and no click", p.name.c_str(), withSat ? " with the Saturator on" : simpleMic ? " among the Simple ones" : "", c.fades ? "one fade" : "no fade");
             check(fades == c.fades && step < 1.5f * own, what);
         }
     }

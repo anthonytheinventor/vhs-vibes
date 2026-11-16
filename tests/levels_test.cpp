@@ -67,9 +67,10 @@ int main()
 {
     const double inRms = 0.25 / std::sqrt(2.0);
     std::printf("Input: 1 kHz sine, peak 0.25 (-12 dBFS), rms %.1f dBFS\n\n", db(inRms));
-    std::printf("%-16s %8s %8s %8s | %9s | %7s %7s (cents, noise off)\n", "program", "rmsL", "rmsR", "peak", "silence", "min", "max");
-    // the first eight, and the five that use the mic (Camcorder 89 is one of the eight)
-    for (int p : {0, 1, 2, 3, 4, 5, 6, 7, 10, 15, 18, 22})
+    std::printf("%-21s %8s %8s %8s | %9s | %7s %7s (cents, noise off)\n", "program", "rmsL", "rmsR", "peak", "silence", "min", "max");
+    // the first eight, the five that use the mic (Camcorder 89 is one of the eight), and the same
+    // five on the modelled microphones
+    for (int p : {0, 1, 2, 3, 4, 5, 6, 7, 10, 15, 18, 22, 34, 35, 36, 37, 38})
     {
         char name[64] = {0};
         AEffect* e = make();
@@ -90,7 +91,7 @@ int main()
         const Result w = run(e, 0.25f, 1000.0f, 20.0f);
         e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f);
 
-        std::printf("%-16s %8.1f %8.1f %8.1f | %9.1f | %7.1f %7.1f\n", name, db(a.rmsL), db(a.rmsR), db(a.peak),
+        std::printf("%-21s %8.1f %8.1f %8.1f | %9.1f | %7.1f %7.1f\n", name, db(a.rmsL), db(a.rmsR), db(a.peak),
                     db(s.rmsL), cents(w.fMin, 1000.0), cents(w.fMax, 1000.0));
     }
 

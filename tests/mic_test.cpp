@@ -1,9 +1,9 @@
 // VHS Vibes 1.6: the four microphones (Mic Type), measured through the plugin against the
 // published figures they are built from (see MicModel in the source, and the manual's chapter
-// on them). Every case starts from the Init program (neutral), HQ off, and compares the output
-// with the Mic on against the same instance's output with it off, so only the mic is measured.
-// Only the plugin's parameters are used, so the file builds against older versions too (1.5.3
-// fails most of it). Ends with PASS or FAIL.
+// on them). Every case starts from the Init program (neutral), HQ off, Mic Model set to Modeled,
+// and compares the output with the Mic on against the same instance's output with it off, so
+// only the mic is measured. Sections 21 to 24: Mic Model = Simple, the microphones up to 1.5,
+// against their old curves; old states, new instances and the programs. Ends with PASS or FAIL.
 //
 // The level mapping the models use (an assumption, stated in the manual): a sine peaking at
 // kRefLevel (-8 dBFS) is 104 dB SPL, so 94 dB SPL peaks at -18 dBFS.
@@ -49,7 +49,7 @@ static double lawDb(double d) { return d <= 0.0 ? d : d <= 22.0 ? d / 19.0 : 22.
 struct Fx
 {
     AEffect* e; float sr;
-    Fx(float rate, int type, bool micOn, bool noiseOn = false, float micGain = 0.0f) : sr(rate)
+    Fx(float rate, int type, bool micOn, bool noiseOn = false, float micGain = 0.0f, int model = 1) : sr(rate)
     {
         e = VSTPluginMain(hostCb);
         e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, rate);
@@ -58,7 +58,7 @@ struct Fx
         e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
         e->dispatcher(e, effSetProgram, 0, kInit, nullptr, 0.0f);
         set(kNoiseOn, noiseOn ? 1.0f : 0.0f);
-        set(kMicOn, micOn ? 1.0f : 0.0f); set(kMicType, (float)type); set(kMicGain, micGain);
+        set(kMicModel, (float)model); set(kMicOn, micOn ? 1.0f : 0.0f); set(kMicType, (float)type); set(kMicGain, micGain);
     }
     ~Fx() { e->dispatcher(e, effMainsChanged, 0, 0, nullptr, 0.0f); e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f); }
     void set(int i, float plain) { static_cast<mpc::Plugin*>(e->object)->set(i, plain); }
@@ -97,10 +97,10 @@ static double partial(const std::vector<float>& v, float sr, double hz, size_t f
     return 2.0 * std::abs(acc) / wsum;
 }
 // The mic's gain at hz in dB (mic on against mic off, same input), from 0.4 s on
-static double gainDb(float sr, int type, double hz, double amp)
+static double gainDb(float sr, int type, double hz, double amp, int model = 1, float micGain = 0.0f)
 {
     const std::vector<float> in = sine(sr, hz, amp, 0.75);
-    Fx on(sr, type, true), off(sr, type, false);
+    Fx on(sr, type, true, false, micGain, model), off(sr, type, false, false, 0.0f, model);
     const std::vector<float> a = on.run(in), b = off.run(in);
     const size_t from = (size_t)(0.4 * sr), to = in.size();
     return dB(partial(a, sr, hz, from, to) / partial(b, sr, hz, from, to));
@@ -716,7 +716,7 @@ int main()
               "with the music 26 dB under its level at the microphone, inside the range: at least 6 dB less between loud and quiet, under 0.6 of the spread, the noise lifted in the gap to within 50 dB of the loud part");
     }
 
-    std::printf("17. The two programs with the Camcorder (Camcorder 89, Wedding Video): where typical material lands (the mic alone, 1 kHz)\n"
+    std::printf("17. The two programs with the modelled Camcorder (Mic - Camcorder 89, Mic - Wedding Video): where typical material lands (the mic alone, 1 kHz)\n"
                 "    the range ends at %.1f dBFS peak in at Mic Gain 0 (%.1f dB SPL at the microphone, %.0f dB of distance); typical: the levels_test tone (-12 dBFS peak) and a sine at -18 dBFS rms\n",
                 dB(knee(22.0)), kKneeSpl + 22.0, (double)kCamDistanceDb);
     {
@@ -738,7 +738,7 @@ int main()
                             gainDb, pk == -12.0 ? "-12 dBFS peak" : "-18 dBFS rms ", past, g, opk, 100 * dist);
             }
         std::printf("   a -18 dBFS rms sine stays inside the range up to Mic Gain %+.1f dB, the levels_test tone up to %+.1f dB\n", dB(knee(22.0)) - (-15.0), dB(knee(22.0)) - (-12.0));
-        for (int prog : {4, 15})
+        for (int prog : {34, 36})
         {
             Fx fx(sr, 0, true);
             fx.e->dispatcher(fx.e, effSetProgram, 0, prog, nullptr, 0.0f);
@@ -751,8 +751,8 @@ int main()
             at(g, -15.0, &past2, &g2, &d2, &p2);
             std::printf("   %-14s Mic %s, type %d, Mic Gain %+.1f dB, AGC %.0f %%: the tone %+.1f dB past the range (THD %.2f %%), the sine %+.1f dB past (THD %.2f %%)\n",
                         name, pl->getBool(kMicOn) ? "on" : "off", pl->getInt(kMicType), g, pl->get(kAgc), past1, 100 * d1, past2, 100 * d2);
-            check(pl->getInt(kMicType) == 0 && std::fabs(g - (prog == 4 ? 2.0 : 1.0)) < 0.01 && past1 <= 4.0 && past2 <= 4.0 && d1 < 0.01 && d2 < 0.01 && p1 < 1.0,
-                  std::string(name) + ": its original Mic Gain; with the distance, typical material at most 4 dB past the top of the ALC's range, not clipping (THD under 1 %)");
+            check(pl->getInt(kMicModel) == 1 && pl->getInt(kMicType) == 0 && std::fabs(g - (prog == 34 ? 2.0 : 1.0)) < 0.01 && past1 <= 4.0 && past2 <= 4.0 && d1 < 0.01 && d2 < 0.01 && p1 < 1.0,
+                  std::string(name) + ": Modeled, its original's Mic Gain; with the distance, typical material at most 4 dB past the top of the ALC's range, not clipping (THD under 1 %)");
         }
     }
 
@@ -847,6 +847,141 @@ int main()
             }
         std::printf("   %d filters, %d differ\n", filters, differ);
         check(differ == 0 && filters == 5 * (4 + 8 + 4), "MonoBiquad is PairBiquad on a mono signal, to the bit");
+    }
+
+    std::printf("21. Mic Model = Simple: the four microphones up to 1.5, each one curve (2nd-order highpass, peak, 2nd-order lowpass,\n"
+                "    the cookbook filters worked out here in double), Mic Gain 0; the old figures (Hz: highpass, peak Hz / Q / dB, lowpass)\n");
+    {
+        const double old[4][5] = { {180, 3200, 1.0, 5.0, 7500}, {90, 5000, 0.9, 4.0, 12000}, {350, 1800, 1.2, 6.0, 3400}, {120, 900, 0.8, 4.0, 6000} };
+        // |H| of one cookbook biquad at f
+        auto rbj = [](char kind, double sr, double f0, double q, double db, double f) {
+            const double w = kPi2 * f0 / sr, c = std::cos(w), al = std::sin(w) / (2.0 * q), A = std::pow(10.0, db / 40.0);
+            double b0, b1, b2, a0, a1, a2;
+            if (kind == 'h') { b0 = (1 + c) / 2; b1 = -(1 + c); b2 = b0; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; }
+            else if (kind == 'l') { b0 = (1 - c) / 2; b1 = 1 - c; b2 = b0; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; }
+            else { b0 = 1 + al * A; b1 = -2 * c; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * c; a2 = 1 - al / A; }
+            const std::complex<double> z = std::polar(1.0, -kPi2 * f / sr);
+            return std::abs((b0 + b1 * z + b2 * z * z) / (a0 + a1 * z + a2 * z * z));
+        };
+        auto curveDb = [&](int t, double sr, double f) {
+            return dB(rbj('h', sr, old[t][0], 0.7071, 0, f) * rbj('p', sr, old[t][1], old[t][2], old[t][3], f) * rbj('l', sr, old[t][4], 0.7071, 0, f));
+        };
+        const double pts[] = { 50, 100, 200, 500, 1000, 2000, 3200, 5000, 7500, 10000, 15000 };
+        for (float sr : { 44100.0f, 48000.0f, 96000.0f })
+            for (int t = 0; t < 4; ++t)
+            {
+                double worst = 0.0; std::string line;
+                for (double f : pts)
+                {
+                    if (f > 0.45 * sr) continue;
+                    const double got = gainDb(sr, t, f, 0.25, 0), want = curveDb(t, sr, f);
+                    char b[40]; std::snprintf(b, sizeof(b), " %g:%+.1f/%+.1f", f, got, want); line += b;
+                    if (want > -40.0) worst = std::fmax(worst, std::fabs(got - want));
+                }
+                std::printf("   %6.0f Hz %-9s (%g, %g/%g/%+g, %g):%s\n", sr, kNames[t], old[t][0], old[t][1], old[t][2], old[t][3], old[t][4], line.c_str());
+                char what[120]; std::snprintf(what, sizeof(what), "%.0f Hz %s: the old curve, within 0.05 dB down to -40 dB (worst %.3f)", sr, kNames[t], worst);
+                check(worst < 0.05, what);
+            }
+        // straight lines: the same gain loud and quiet, no noise, and stereo
+        for (int t = 0; t < 4; ++t)
+        {
+            const double loud = gainDb(44100.0f, t, 1000.0, 0.3, 0), quiet = gainDb(44100.0f, t, 1000.0, 0.001, 0);
+            Fx fx(44100.0f, t, true, false, 0.0f, 0);
+            std::vector<float> L(44100), R(44100, 0.0f);
+            for (size_t i = 0; i < L.size(); ++i) L[i] = (float)(0.3 * std::sin(kPi2 * 700.0 * (double)i / 44100.0));
+            for (size_t pos = 0; pos < L.size(); pos += 128) { float* io[2] = { L.data() + pos, R.data() + pos }; fx.e->processReplacing(fx.e, io, io, (VstInt32)std::min<size_t>(128, L.size() - pos)); }
+            double l = 0, r = 0;
+            for (size_t i = 22050; i < L.size(); ++i) { l = std::fmax(l, std::fabs(L[i])); r = std::fmax(r, std::fabs(R[i])); }
+            char what[160];
+            std::snprintf(what, sizeof(what), "%s: the same gain at 0.3 and at 0.001 (%+.3f / %+.3f dB): no overload; a tone in the left only stays there (right %.1e): stereo", kNames[t], loud, quiet, r);
+            check(std::fabs(loud - quiet) < 0.01 && l > 0.1 && r == 0.0, what);
+        }
+    }
+
+    std::printf("22. Each Mic Model has only its own noise and its own Mic Gain\n");
+    {
+        for (int t = 0; t < 4; ++t)
+        {
+            double m[2] = { 0, 0 };
+            for (int model = 0; model < 2; ++model)
+            {
+                Fx fx(44100.0f, t, true, true, 12.0f, model);
+                const std::vector<float> out = fx.run(std::vector<float>(44100 * 2, 0.0f));
+                for (float s : out) m[model] = std::fmax(m[model], std::fabs(s));
+            }
+            char what[140];
+            std::snprintf(what, sizeof(what), "%s, Noise switch on, Mic Gain +12 dB, silence in: Simple loudest sample %.1e, Modeled %.1e", kNames[t], m[0], m[1]);
+            check(m[0] == 0.0 && (t == 1 ? m[1] == 0.0 : m[1] > 1e-5), what);
+        }
+        // Mic Gain: in Simple a level after the curve, in Modeled the loudness at the microphone
+        // (the Boombox's ALC takes a louder sound in at nearly the same level)
+        for (int model = 0; model < 2; ++model)
+        {
+            const double g = gainDb(44100.0f, 3, 1000.0, 0.1, model, 12.0f) - gainDb(44100.0f, 3, 1000.0, 0.1, model, 0.0f);
+            char what[140];
+            std::snprintf(what, sizeof(what), "Boombox, %s: Mic Gain +12 dB on a -20 dBFS tone comes out %+.2f dB louder", model ? "Modeled" : "Simple", g);
+            check(model ? g < 3.0 : std::fabs(g - 12.0) < 0.01, what);
+        }
+    }
+
+    std::printf("23. A state saved before Mic Model existed loads on Simple; a new instance starts on Modeled\n");
+    {
+        AEffect* raw = VSTPluginMain(hostCb);
+        const float fresh = raw->getParameter(raw, kMicModel);
+        raw->dispatcher(raw, effClose, 0, 0, nullptr, 0.0f);
+        check(fresh == 1.0f, "a new instance has Mic Model on Modeled");
+        // a 1.5.3-style state: this one's values without "mic_model"
+        Fx saver(44100.0f, 2, true, false, 3.0f, 1);
+        void* data = nullptr;
+        const VstIntPtr size = saver.e->dispatcher(saver.e, effGetChunk, 0, 0, &data, 0.0f);
+        const uint8_t* d = static_cast<const uint8_t*>(data);
+        const std::vector<uint8_t> modeled(d, d + size);
+        std::vector<uint8_t> old(d, d + 12); size_t pos = 12; uint32_t kept = 0;
+        const uint32_t count = (uint32_t)d[8] | (uint32_t)d[9] << 8 | (uint32_t)d[10] << 16 | (uint32_t)d[11] << 24;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const size_t len = 1 + (size_t)d[pos] + 8;
+            if (std::string(reinterpret_cast<const char*>(d) + pos + 1, d[pos]) != "mic_model") { old.insert(old.end(), d + pos, d + pos + len); ++kept; }
+            pos += len;
+        }
+        old.insert(old.end(), d + pos, d + size);
+        for (int i = 0; i < 4; ++i) old[8 + (size_t)i] = (uint8_t)(kept >> (8 * i));
+        Fx loader(44100.0f, 0, false, false, 0.0f, 1);
+        loader.run(std::vector<float>(4410, 0.0f));
+        const VstIntPtr r = loader.e->dispatcher(loader.e, effSetChunk, 0, (VstIntPtr)old.size(), old.data(), 0.0f);
+        mpc::Plugin* pl = static_cast<mpc::Plugin*>(loader.e->object);
+        char what[160];
+        std::snprintf(what, sizeof(what), "a state without it (%u of %u values) loaded into an instance on Modeled: loads, Mic Model %s, Mic on, Phone, Mic Gain %+.0f dB", kept, count, pl->getInt(kMicModel) ? "Modeled" : "Simple", pl->get(kMicGain));
+        check(r == 1 && kept == count - 1 && pl->getInt(kMicModel) == 0 && pl->getBool(kMicOn) && pl->getInt(kMicType) == 2 && pl->get(kMicGain) == 3.0f, what);
+        Fx back(44100.0f, 0, false, false, 0.0f, 0);
+        back.e->dispatcher(back.e, effSetChunk, 0, (VstIntPtr)modeled.size(), const_cast<uint8_t*>(modeled.data()), 0.0f);
+        check(static_cast<mpc::Plugin*>(back.e->object)->getInt(kMicModel) == 1, "a state saved on Modeled loads on Modeled, also into an instance on Simple");
+    }
+
+    std::printf("24. The programs: the five with the Mic on keep the Simple microphones; 34 to 38 are the same five on Modeled\n");
+    {
+        Fx a(44100.0f, 0, false), b(44100.0f, 0, false);
+        mpc::Plugin* pa = static_cast<mpc::Plugin*>(a.e->object);
+        mpc::Plugin* pb = static_cast<mpc::Plugin*>(b.e->object);
+        const int orig[5] = { 4, 10, 15, 18, 22 };
+        int micOn = 0;
+        for (int p = 0; p < 34; ++p) { a.e->dispatcher(a.e, effSetProgram, 0, p, nullptr, 0.0f); if (pa->getBool(kMicOn)) ++micOn; }
+        check(micOn == 5 && a.e->numPrograms == 39, "39 programs; of 0 to 33, five have the Mic on");
+        for (int k = 0; k < 5; ++k)
+        {
+            char na[64] = {0}, nb[64] = {0};
+            a.e->dispatcher(a.e, effSetProgram, 0, orig[k], nullptr, 0.0f);
+            b.e->dispatcher(b.e, effSetProgram, 0, 34 + k, nullptr, 0.0f);
+            a.e->dispatcher(a.e, effGetProgramNameIndexed, orig[k], 0, na, 0.0f);
+            b.e->dispatcher(b.e, effGetProgramNameIndexed, 34 + k, 0, nb, 0.0f);
+            int differ = 0;
+            for (int i = 0; i < kNumParams; ++i) if (isSetting(i) && i != kMicModel && pa->get(i) != pb->get(i)) ++differ;
+            char what[200];
+            std::snprintf(what, sizeof(what), "%2d %-16s Simple, Mic Gain %+.0f dB; %2d %-21s Modeled, Mic Gain %+.0f dB, %d other settings differ",
+                          orig[k], na, pa->get(kMicGain), 34 + k, nb, pb->get(kMicGain), differ);
+            check(pa->getBool(kMicOn) && pa->getInt(kMicModel) == 0 && pb->getInt(kMicModel) == 1 && differ == 0
+                  && std::string(nb) == std::string("Mic - ") + na && std::strlen(nb) <= 24, what);
+        }
     }
 
     std::printf(fails ? "FAIL\n" : "PASS\n");
