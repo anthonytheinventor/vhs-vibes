@@ -1292,7 +1292,10 @@ struct MicModel
         else { u = 1.0f; alcG = 1.0f; }
         return m;
     }
-    Stereo process(Stereo x, float noise)
+    // Kept out of line: inlined into the plugin's sample loop, its many values crowded the
+    // loop's registers, which cost the whole plugin something even with the Mic off, and made
+    // the model itself reload more. A call a sample is cheaper than either.
+    __attribute__((noinline)) Stereo process(Stereo x, float noise)
     {
         switch (type)
         {
@@ -2947,8 +2950,7 @@ private:
     float choPhase_ = 0.0f, choSpeed_ = 0.6f, choWidth_ = 0.7f;
     float choDelayTarget_ = 500.0f, choBase_ = 500.0f;
 
-    // mic
-    MicModel mic_;
+    // mic (the model itself is the last member, see there)
     int   micType_ = -1, micWant_ = 0;    // the type in the model; the one Mic Type asks for
     bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of type
     bool  micRun_ = false;                    // the model runs (heard, fading, or settling unheard)
@@ -3023,6 +3025,11 @@ private:
     Xorshift32 dropRng_{0xd20b0075u};
     float dropAmount_ = 0, dropGain_ = 1.0f, dropTarget_ = 1.0f;
     int   dropTicks_ = 0;
+
+    // The mic model, last: it is large (its filters), and placed among the other members it
+    // moved the ones after it further into the object; with it here the sample loop compiles
+    // 13 instructions a sample shorter with the Mic off (32-bit ARM build, counted).
+    MicModel mic_;
 };
 
 // The framework's dispatcher with five additions:
