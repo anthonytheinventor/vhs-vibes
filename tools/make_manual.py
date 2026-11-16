@@ -163,12 +163,22 @@ def parse_entries(path, keyed):
                         % (os.path.basename(path), n, key, name))
                 entries[name][key] = m.group(2).strip()
             elif key:
-                entries[name][key] += " " + line.strip()
+                entries[name][key] += ("\n- " + line.strip()[2:].strip()) if line.strip().startswith("- ") else (" " + line.strip())
             else:
                 die("%s line %d: expected 'what: ...' in entry '%s'" % (os.path.basename(path), n, name))
         else:
             entries[name]["text"] = (entries[name]["text"] + " " + line.strip()).strip()
     return entries
+
+
+def entry_parts(text):
+    """A control entry's value: its opening sentence(s) and the list items that follow (lines that began "- ")."""
+    parts = text.split("\n- ")
+    return parts[0].strip(), [p.strip() for p in parts[1:]]
+
+
+def entry_list(items, cls):
+    return ('<ul class="%s">%s</ul>' % (cls, "".join("<li>%s</li>" % md_inline(i) for i in items))) if items else ""
 
 
 class Data:
@@ -597,7 +607,7 @@ class Book:
                         if c["kind"] == "switch":
                             rows.append('<tr><td class="cap">%s</td><td class="place">%s \u203a %s</td><td>%s</td><td>%s</td></tr>'
                                         % (esc(c["caption"]), esc(c["page"]), esc(c["block_title"]), esc(c["default"]),
-                                           md_inline(d.controls[c["name"]]["what"])))
+                                           md_inline(d.controls[c["name"]]["what"].replace("\n- ", " "))))
             return ('<table class="switches whole"><thead><tr><th>SWITCH</th><th>PAGE, BLOCK</th><th>DEFAULT</th><th>WHAT IT DOES</th></tr></thead>'
                     '<tbody>%s</tbody></table>' % "".join(rows))
         if name == "screenshot":
@@ -638,15 +648,17 @@ class Book:
                 more = ""
                 for key, tag in (("listen", "LISTEN FOR"), ("try", "START AT"), ("note", "NOTE")):
                     if e.get(key):
-                        more += '<p class="more"><span class="tag">%s</span>%s</p>' % (tag, md_inline(e[key]))
+                        head, items = entry_parts(e[key])
+                        more += '<p class="more"><span class="tag">%s</span>%s</p>%s' % (tag, md_inline(head), entry_list(items, "more"))
                 place = "%s \u203a %s" % (c["page"], c["block_title"])
                 if c.get("qlink"):
                     place += " \u00b7 Q-Link %d" % c["qlink"]
                 rows = [("WHERE", place, ""), ("RANGE", c["range"], ""), ("DEFAULT", c["default"], "v"), ("PARAMETER", c["name"], "")]
                 dl = "".join('<dt>%s</dt><dd class="%s">%s</dd>' % (k, cls, esc(v)) for k, v, cls in rows)
                 out.append('<div class="ctl" id="ctl-%s"><div class="meta"><div class="id"><span class="n">%d</span><span class="cap">%s</span>%s</div>'
-                           '<dl>%s</dl></div><div class="txt"><p class="what">%s</p>%s</div></div>'
-                           % (slug(c["name"]), c["number"], esc(c["caption"]), icon_svg(d, c["kind"]), dl, md_inline(e["what"]), more))
+                           '<dl>%s</dl></div><div class="txt"><p class="what">%s</p>%s%s</div></div>'
+                           % (slug(c["name"]), c["number"], esc(c["caption"]), icon_svg(d, c["kind"]), dl,
+                              md_inline(entry_parts(e["what"])[0]), entry_list(entry_parts(e["what"])[1], "what"), more))
         return "".join(out)
 
     # ---- blocks -----------------------------------------------------------------------------

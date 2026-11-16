@@ -202,17 +202,25 @@ what: Plays the sound into one of four period microphones before it reaches the 
 note: On Modeled the mic adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. The Noise switch silences it; the Master knob does not change it. The Simple ones add none.
 
 ## Mic Type
-what: Which of the four microphones the Mic plays the sound into. What each one is depends on **Mic Model**.
-On **Simple** each is a tone curve and nothing more: **Camcorder** thin and forward, **Dynamic** the widest, with a presence lift, **Phone** narrow and nasal, **Boombox** dull and boxy.
-On **Modeled** each is a real kind of microphone, with the recorder it sat in. **Camcorder**: a camcorder across the room; loud and quiet pulled to one level, hiss swelling in every pause, loud hits crunching. **Dynamic**: a stage microphone; a gentle low cut and a presence lift, nothing more. **Phone**: a telephone line; narrow, nasal, no bass or top; quiet words fade more than loud ones. **Boombox**: a radio cassette's built-in microphone; a whisper and a shout come out at nearly one level, with tape hiss and a rounded top.
-The figures for each are in the tables of *The microphones: Simple and Modeled*, after this page's controls.
-listen: On Modeled, stop the music: the hiss and the room climb back up, over about seven seconds on the Boombox and two and a half on the Camcorder (ten or more after a sound too loud for it). On the Phone, quiet words sink further than loud ones.
+what: Which of the four microphones the Mic plays the sound into. What each one is depends on **Mic Model**: on Simple a tone curve and nothing more, on Modeled a real kind of microphone with the recorder it sat in.
+- **Camcorder.** Simple: thin and forward. Modeled: a camcorder across the room. Loud and quiet are pulled to one level, the hiss swells in every pause, loud hits crunch.
+- **Dynamic.** Simple: the widest, with a presence lift. Modeled: a stage microphone. A gentle low cut and a presence lift, nothing more.
+- **Phone.** Simple: narrow and nasal. Modeled: a telephone line. No bass, no top, and quiet words fade more than loud ones.
+- **Boombox.** Simple: dull and boxy. Modeled: a radio cassette's built-in microphone. A whisper and a shout come out at nearly one level, with tape hiss and a rounded top.
+listen: On Modeled, stop the music and the hiss and the room climb back up.
+- Boombox: over about seven seconds.
+- Camcorder: over about two and a half, or ten or more after a sound too loud for it.
+- Phone: nothing climbs, but quiet words sink further than loud ones.
 try: On Simple, Camcorder 89 and Wedding Video use Camcorder, Answer Machine uses Phone, Bootleg Concert and Tube TV use Boombox. The five programs named Mic - ... are the same on Modeled.
-note: Changing the type fades the mic out, puts the new one in and fades it back in.
+note: Changing the type fades the mic out, puts the new one in and fades it back in. The figures for each microphone are in *The microphones: Simple and Modeled*, after this page's controls.
 
 ## Mic Gain
 what: On **Simple**, the level of the microphone, after its curve. On **Modeled**, how loud the sound is at the microphone, as if the source were louder or closer: it comes before the microphone, so it decides how hard the mic is driven. It works only while Mic is on.
-listen: On Modeled. Camcorder: turned down, everything sits at one level and the hiss swells in the gaps; turned up, loud sounds crunch and the hiss waits longer to come back; the level that comes out changes little. Boombox: the level hardly moves, only how close the hiss sits. Phone: turned down, quiet words sink. Dynamic: a plain level.
+listen: On Modeled, each microphone answers differently.
+- Camcorder: turned down, everything sits at one level and the hiss swells in the gaps. Turned up, loud sounds crunch and the hiss waits longer to come back. The level that comes out changes little.
+- Boombox: the level hardly moves, only how close the hiss sits.
+- Phone: turned down, quiet words sink.
+- Dynamic: a plain level.
 try: Mic - Answer Machine uses +3 dB, Mic - Camcorder 89 and Mic - Bootleg Concert +2 dB, Mic - Wedding Video +1 dB.
 note: The microphone comes before AGC and the preamp, so more gain here also drives those harder. On Modeled a sound peaking at -8 dBFS counts as 104 dB SPL at the microphone; this mapping is an assumption. What each step of Mic Gain does to the Camcorder is in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 

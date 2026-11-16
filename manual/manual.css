@@ -133,6 +133,10 @@ figcaption { font-size: 8.4pt; color: #5a3c85; margin-top: 2.2mm; }
 .ctl .txt p { margin: 0 0 1.5mm; }
 .ctl .txt p.what { font-size: 10pt; }
 .ctl .txt p.more { font-size: 9.2pt; padding-left: 19mm; text-indent: -19mm; }
+.ctl .txt ul { margin: -.5mm 0 1.5mm; padding-left: 4.2mm; }
+.ctl .txt ul li { margin: 0 0 .7mm; }
+.ctl .txt ul.what { font-size: 10pt; }
+.ctl .txt ul.more { font-size: 9.2pt; margin-left: 19mm; }
 .ctl .txt p.more .tag { display: inline-block; width: 19mm; text-indent: 0; font: 6.4pt var(--f-gothic); letter-spacing: .1em; color: var(--pink-lo); }
 
 /* ---------------------------------------------------------------- tables */
