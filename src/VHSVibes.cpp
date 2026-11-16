@@ -10,7 +10,9 @@
 //
 //   in -> [noise, if Noise Pos = Pre]
 //      -> CHORUS      short modulated delay, L/R out of phase for width
-//      -> MIC         one of four period microphones ("re-recorded through a mic"): camcorder
+//      -> MIC         one of four period microphones ("re-recorded through a mic"), in one of
+//                     two sets (Mic Model): Simple, a three-filter curve each, as up to 1.5
+//                     (see SimpleMic); Modeled, built from published figures: camcorder
 //                     electret with its mic amp and record ALC, dynamic, telephone, boombox
 //                     with its record ALC (see MicModel)
 //      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
@@ -71,8 +73,9 @@
 // sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type 2-Band). Programs keep
 // their numbers: 0 to 20 leave Scrape and Whistle at 0, 0 to 24 (the 1.4 set) leave NR and
 // Sat Type at rest, 25 to 33 are the 1.5 programs. So a project saved with an older version
-// loads with every setting in place. 1.6 rebuilt the four Mic Types from published figures
-// (see MicModel): with the Mic on such a project sounds different, with it off as before.
+// loads with every setting in place. 1.6 added the modelled microphones beside the old ones
+// (Mic Model): a state saved before it loads on Simple, the old ones, and the five older
+// programs with the Mic on keep them; a new instance starts on Modeled.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -188,6 +191,10 @@ enum ParamIndex
                    //        played without), Play (the opposite), On (both)
     kSatType,      // choice the saturator stage: 2-Band (as before) or VHS (the linear track's tape;
                    //        Lo Sat = record level, Hi Sat = tape speed SP..EP, Split = bias)
+    // added in 1.6
+    kMicModel,     // choice which set of microphones Mic Type picks from: Simple (as up to 1.5)
+                   //        or Modeled (built from published figures). On Modeled in a new
+                   //        instance, on Simple in a state saved before it existed.
     kNumParams
 };
 
@@ -253,7 +260,7 @@ inline uint32_t groupOf(int param)
         case kHum: case kBuzz: case kHeadBuzz: case kHiss: case kCrackle:
         case kNoise: case kNoisePos: case kNoiseOn: case kWhistle:          return gNoise;
         case kChoSpeed: case kChoDelay: case kChoWidth:                     return gChorus;
-        case kMicType: case kMicGain:                                       return gMic;
+        case kMicType: case kMicGain: case kMicModel:                       return gMic;
         case kDeckOn: case kAgc: case kDrift: case kTracking: case kBreathing: return gDeck;
         case kHq:                                                           return gQuality;
         case kNr:                                                           return gNr;
@@ -860,10 +867,37 @@ enum CtlIndex
 enum RampIndex { rOut, rMono, rChorus, rMic, rSat, rMix, kNumRamp };
 
 // ---------------------------------------------------------------------------
-// MIC: four period microphones (Mic Type), each built from published figures. The research
-// notes behind them ("the report": VHS Vibes mic research, 2026-11-15) give every source with
-// its link; the section numbers below are the report's. A value that no source gave is marked
-// "estimate", with the reason.
+// MIC, Mic Model = Simple: the four microphones as they were up to 1.5, one curve each (a
+// highpass, a presence peak, a lowpass), in stereo, without noise, and Mic Gain a level after
+// them. Kept exactly as they were, so a project made with them sounds as it did.
+// ---------------------------------------------------------------------------
+struct MicCurve { float hpHz, peakHz, peakQ, peakDb, lpHz; };
+constexpr MicCurve kMicCurves[4] = {
+    { 180.0f, 3200.0f, 1.0f, 5.0f,  7500.0f },   // Camcorder
+    {  90.0f, 5000.0f, 0.9f, 4.0f, 12000.0f },   // Dynamic
+    { 350.0f, 1800.0f, 1.2f, 6.0f,  3400.0f },   // Phone
+    { 120.0f,  900.0f, 0.8f, 4.0f,  6000.0f },   // Boombox
+};
+struct SimpleMic
+{
+    PairBiquad hp, pk, lp;
+    void set(int type, float sr)
+    {
+        const MicCurve& mc = kMicCurves[type];
+        hp.setCoeffs(BiquadCoeffs::highpass(sr, mc.hpHz, 0.7071f));
+        pk.setCoeffs(BiquadCoeffs::peak(sr, mc.peakHz, mc.peakQ, mc.peakDb));
+        lp.setCoeffs(BiquadCoeffs::lowpass(sr, mc.lpHz, 0.7071f));
+    }
+    void reset() { hp.reset(); pk.reset(); lp.reset(); }
+    // out of line, like MicModel::process (see there)
+    __attribute__((noinline)) Stereo process(Stereo x) { return lp.process(pk.process(hp.process(x))); }
+};
+
+// ---------------------------------------------------------------------------
+// MIC, Mic Model = Modeled: four period microphones (Mic Type), each built from published
+// figures. The research notes behind them ("the report": VHS Vibes mic research, 2026-11-15)
+// give every source with its link; the section numbers below are the report's. A value that no
+// source gave is marked "estimate", with the reason.
 //
 //   Camcorder  a camera across the room (kCamDistanceDb) and its record chain: the electret
 //              capsule (HF rise -> gate highpass -> + self-noise -> JFET overload) -> the mic
@@ -1419,6 +1453,7 @@ public:
         addParam(boolParam  ("hq",         "HQ",         true));    // on in a new instance since 1.5
         addParam(choiceParam("nr",         "B-Type NR",  {"Off", "Rec", "Play", "On"}, 0));
         addParam(choiceParam("sat_type",   "Sat Type",   {"2-Band", "VHS"}, 0));
+        addParam(choiceParam("mic_model",  "Mic Model",  {"Simple", "Modeled"}, 1));   // Simple in a state from before 1.6
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -1557,7 +1592,7 @@ private:
         // the dry copy's crossfade a knob move can start), and the filters after them carry
         // whatever they read on into the fade-in. Left in place, the old sound would be heard.
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
-        mic_.reset();
+        simple_.reset(); mic_.reset();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
         tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = splat(0.0f);
         env_ = 0.0f; compGain_ = 1.0f; compTarget_ = 1.0f;
@@ -1612,7 +1647,7 @@ private:
         rampS_[rOut] = 0.0f;
         ramp_[rOut].snap(0.0f);
         fadeHold_ = (int)((wf1_.base + wf2_.base + (choActive_ ? choBase_ : 0.0f)) * kCtrlInv) + 1;
-        if (micRun_) fadeHold_ += micHoldFor();   // the mic starts from rest too: it settles unheard (see controlTick)
+        if (micRun_ && !micSimple_) fadeHold_ += micHoldFor();   // the model starts from rest too: it settles unheard (see controlTick)
         // The chorus also swings: on the first tick one side's delay moves up to its depth (the
         // one controlTick gives it) further back, and until the sound has got there that side
         // would come in with a step in the middle of the fade-in. So the output waits those few
@@ -1843,9 +1878,11 @@ public:
             }
 
             // ----- mic ---------------------------------------------------------
-            if (micRun_)
+            // (Simple: Mic Gain after the curve, and its filters only while the mic is heard, as
+            // up to 1.5. Modeled: Mic Gain is how loud the sound reaches the microphone.)
+            if (micRun_ && (!micSimple_ || micMix > 0.0f))
             {
-                const Stereo m = mic_.process(x * cur_[cMicGain], cur_[cMicNoise]);
+                const Stereo m = micSimple_ ? simple_.process(x) * cur_[cMicGain] : mic_.process(x * cur_[cMicGain], cur_[cMicNoise]);
                 x += (m - x) * micMix;
             }
 
@@ -2270,12 +2307,12 @@ private:
         }
         if (groups & gMic)
         {
-            // A new Mic Type while the mic is heard would swap its filters under the running
-            // sound (a click at each position a Q-Link passes). So the mic fades out first, the
-            // new type goes in while it is out, and it fades back in from rest (see controlTick).
-            // At a reset, or while the mic is off and silent, the type goes in at once.
-            micWant_ = clamp(getInt(kMicType), 0, 3);
-            if (groups == gAll || (!micSwap_ && rampT_[rMic] == 0.0f && ramp_[rMic].v == 0.0f)) { micSwap_ = false; setMicCurve(micWant_); }
+            // A new Mic Type or Mic Model while the mic is heard would swap its filters under the
+            // running sound (a click at each position a Q-Link passes). So the mic fades out
+            // first, the new one goes in while it is out, and it fades back in from rest (see
+            // controlTick). At a reset, or while the mic is off and silent, it goes in at once.
+            micWant_ = clamp(getInt(kMicType), 0, 3) + 4 * clamp(getInt(kMicModel), 0, 1);
+            if (groups == gAll || (!micSwap_ && rampT_[rMic] == 0.0f && ramp_[rMic].v == 0.0f)) { micSwap_ = false; setMic(micWant_); }
             else micSwap_ = micWant_ != micType_;   // (turned back to the type that is in: no fade)
             rampT_[rMic] = micOn_ && !micSwap_ ? 1.0f : 0.0f;
             tgt_[cMicGain] = dbToGain(get(kMicGain));
@@ -2308,10 +2345,12 @@ private:
     // under 20 ms), so it waits 100 ms. The others: 20 ms.
     int micHoldFor() const { return mic_.type == MicModel::kCamcorder ? micHoldCamTicks_ : micHoldTicks_; }
 
-    void setMicCurve(int type)
+    // mic: Mic Type + 4 x Mic Model (0 to 3 the Simple ones, 4 to 7 the Modeled ones)
+    void setMic(int mic)
     {
-        mic_.set(type, sr_);
-        micType_ = type;
+        micSimple_ = mic < 4;
+        if (micSimple_) simple_.set(mic, sr_); else mic_.set(mic - 4, sr_);
+        micType_ = mic;
     }
 
     // amount 0..1 -> clipper gain, make-up and clean/driven blend.
@@ -2330,11 +2369,15 @@ private:
         // the reset come (at the start of the next block). Asked for a tick earlier, a block
         // that ended inside the fade's last step would have cut it short, with a step.
         if (resetNextTick_) { resetNextTick_ = false; resetPending_.store(true); }
-        // Mic Type: the mic has faded out for its new type (see readParams). Put it in and fade
-        // the mic back in.
+        // Mic Type or Mic Model: the mic has faded out for the new one (see readParams). Put it
+        // in, from rest, and fade the mic back in. (A Simple one is cleared here, as up to 1.5;
+        // a model starts from rest when it starts to run, below, and settles unheard first.)
         if (micSwap_ && ramp_[rMic].v == 0.0f)
         {
-            setMicCurve(micWant_);
+            const bool fromSimple = micSimple_;
+            setMic(micWant_);
+            if (micSimple_) { simple_.reset(); micHold_ = 0; }
+            else if (fromSimple) micRun_ = false;
             micSwap_ = false;
             rampT_[rMic] = micOn_ ? 1.0f : 0.0f;
         }
@@ -2462,9 +2505,10 @@ private:
         // mic: the model runs while the mic is heard or on its way in or out. Coming in from
         // silence (switched on, or a new type) it starts from rest and runs unheard for 20 ms
         // before the fade-in: long enough for the filters to settle and for the Boombox's ALC
-        // to catch a loud sound (which takes it about 5 ms from rest, with a burst).
+        // to catch a loud sound (which takes it about 5 ms from rest, with a burst). A Simple
+        // one carries on from where it stopped and fades in at once, as up to 1.5.
         const bool micWant = rampT_[rMic] > 0.0f;
-        if (micWant && !micRun_) { mic_.reset(); micRun_ = true; micHold_ = micHoldFor(); }
+        if (micWant && !micRun_) { micRun_ = true; if (!micSimple_) { mic_.reset(); micHold_ = micHoldFor(); } }
         else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
         if (micHold_ > 0) { --micHold_; rampS_[rMic] = 0.0f; ramp_[rMic].snap(0.0f); }
         if (choActive_)
@@ -2681,13 +2725,11 @@ private:
             {kWow, 40}, {kWowRate, 0.4f}, {kHiss, 25}, {kCrackle, 10},
             {kChorusOn, 1}, {kChoMix, 55}, {kChoSpeed, 0.35f}, {kChoDelay, 18}, {kChoWidth, 90},
             {kDrift, 20} });
-        // The camcorder's level control does the squashing here. With the camera's distance
-        // (kCamDistanceDb) the levels_test tone sits 3 dB past the top of its ALC's range (in
-        // Wedding Video 2 dB): squashed, with a little crunch.
+        // The camcorder's level control does the squashing here.
         program("Camcorder 89", {
             {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
             {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
-            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 2},
+            {kMicOn, 1}, {kMicModel, 0}, {kMicType, 0}, {kMicGain, 2},
             {kAgc, 80}, {kDrift, 10} });
         // A tape that will not track: buzz on the music, static, drops to the backup track.
         program("Tracking Error", {
@@ -2726,7 +2768,7 @@ private:
             {kDrive, 50}, {kWear, 30}, {kComp, 60}, {kHiCut, 3500}, {kHiSat, 50},
             {kWarp, 25}, {kRpm, 60}, {kFlutter, 40}, {kFlutRate, 11}, {kWow, 20}, {kLoCut, 300}, {kHiCut2, 4000},
             {kHum, 20}, {kHeadBuzz, 0}, {kHiss, 45}, {kCrackle, 10}, {kNoise, 40},
-            {kMicOn, 1}, {kMicType, 2}, {kMicGain, 3}, {kMono, 1},
+            {kMicOn, 1}, {kMicModel, 0}, {kMicType, 2}, {kMicGain, 3}, {kMono, 1},
             {kAgc, 60} });
         // Wide, slow and hazy, with hardly any noise.
         program("Dream Sequence", {
@@ -2758,7 +2800,7 @@ private:
         program("Wedding Video", {
             {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
             {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
-            {kMicOn, 1}, {kMicType, 0}, {kMicGain, 1},
+            {kMicOn, 1}, {kMicModel, 0}, {kMicType, 0}, {kMicGain, 1},
             {kAgc, 90}, {kDrift, 20} });
         // The best VHS could do, the Hi-Fi track on a good day: wide, steady, quiet, breathing a little.
         program("Hi-Fi Master", {
@@ -2775,7 +2817,7 @@ private:
         program("Bootleg Concert", {
             {kDrive, 60}, {kWear, 25}, {kComp, 50}, {kHiCut, 7000}, {kLoSat, 45}, {kHiSat, 50},
             {kWarp, 30}, {kFlutter, 35}, {kHum, 15}, {kHiss, 50}, {kNoise, 35}, {kNoisePos, 1},
-            {kMicOn, 1}, {kMicType, 3}, {kMicGain, 2}, {kMono, 1},
+            {kMicOn, 1}, {kMicModel, 0}, {kMicType, 3}, {kMicGain, 2}, {kMono, 1},
             {kAgc, 65}, {kDrift, 30} });
         // Local cable studio: hum, buzz and a level control doing its best.
         program("Public Access", {
@@ -2805,7 +2847,7 @@ private:
             {kDrive, 30}, {kWear, 15}, {kComp, 45}, {kHiCut, 7500},
             {kWarp, 15}, {kFlutter, 20}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 140}, {kHiCut2, 9000},
             {kHum, 30}, {kBuzz, 25}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 5}, {kWhistle, 60},
-            {kMicOn, 1}, {kMicType, 3}, {kMono, 1},
+            {kMicOn, 1}, {kMicModel, 0}, {kMicType, 3}, {kMono, 1},
             {kAgc, 25}, {kDrift, 10} });
         // A good Hi-Fi deck with tired heads: buzz that rides on the music and sinks in the
         // pauses, the right channel crackling, now and then a moment on the backup track.
@@ -2950,10 +2992,11 @@ private:
     float choPhase_ = 0.0f, choSpeed_ = 0.6f, choWidth_ = 0.7f;
     float choDelayTarget_ = 500.0f, choBase_ = 500.0f;
 
-    // mic (the model itself is the last member, see there)
-    int   micType_ = -1, micWant_ = 0;    // the type in the model; the one Mic Type asks for
-    bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of type
-    bool  micRun_ = false;                    // the model runs (heard, fading, or settling unheard)
+    // mic (its filters are the last members, see there)
+    int   micType_ = -1, micWant_ = 0;    // the mic that is in; the one Mic Type and Mic Model ask for (see setMic)
+    bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of type or model
+    bool  micSimple_ = false;                 // the mic that is in is a Simple one
+    bool  micRun_ = false;                    // it runs (heard, fading, or settling unheard)
     int   micHold_ = 0, micHoldTicks_ = 55;   // control ticks it settles unheard before it fades in (20 ms)
     int   micHoldCamTicks_ = 276;              // the same for the Camcorder (100 ms, see micHoldFor)
 
@@ -3028,7 +3071,9 @@ private:
 
     // The mic model, last: it is large (its filters), and placed among the other members it
     // moved the ones after it further into the object; with it here the sample loop compiles
-    // 13 instructions a sample shorter with the Mic off (32-bit ARM build, counted).
+    // 13 instructions a sample shorter with the Mic off (32-bit ARM build, counted). The Simple
+    // filters go with it.
+    SimpleMic simple_;
     MicModel mic_;
 };
 
@@ -3037,8 +3082,9 @@ private:
 //    every value a program lists, and the parameters added after Animation have to be in that
 //    list, so the program is first told the present position of the two switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
-//    their resting values before any state is loaded, so such a state sounds as it was saved
-//    whatever this instance was doing before; a newer state then sets them.
+//    their resting values before any state is loaded (HQ off, Mic Model Simple: a new instance
+//    has them otherwise), so such a state sounds as it was saved whatever this instance was
+//    doing before; a newer state then sets them.
 //  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was.
 //  - While a program or a state is being written, the audio thread takes in none of the new
 //    values: they arrive with the reset, after the old sound has faded out.
@@ -3062,7 +3108,8 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     for (int i = 0; i < kNumParams; ++i) before[i] = p->getNormalised(i);
     if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
-        for (int i = kScrape; i < kNumParams; ++i) p->set(i, i == kHq ? 0.0f : p->param(i).def);   // a state from before HQ existed: off
+        for (int i = kScrape; i < kNumParams; ++i)   // a state from before HQ existed: off; from before Mic Model: Simple
+            p->set(i, i == kHq || i == kMicModel ? 0.0f : p->param(i).def);
     const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
     if (opcode == effSetChunk && result == 0)
         for (int i = 0; i < kNumParams; ++i) if (isSetting(i)) p->setNormalised(i, before[i]);
