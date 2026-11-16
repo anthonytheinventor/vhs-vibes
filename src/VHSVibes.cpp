@@ -72,10 +72,10 @@
 // Compatibility: parameters are only ever appended, and a new one rests where the plugin
 // sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type 2-Band). Programs keep
 // their numbers: 0 to 20 leave Scrape and Whistle at 0, 0 to 24 (the 1.4 set) leave NR and
-// Sat Type at rest, 25 to 33 are the 1.5 programs. So a project saved with an older version
-// loads with every setting in place. 1.6 added the modelled microphones beside the old ones
-// (Mic Model): a state saved before it loads on Simple, the old ones, and the five older
-// programs with the Mic on keep them; a new instance starts on Modeled.
+// Sat Type at rest, 25 to 33 are the 1.5 programs, 34 to 38 the 1.6 ones. So a project saved
+// with an older version loads with every setting in place. 1.6 added the modelled microphones
+// beside the old ones (Mic Model): a state saved before it loads on Simple, the old ones, and
+// the five older programs with the Mic on keep them; a new instance starts on Modeled.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -2933,6 +2933,41 @@ private:
             {kWarp, 30}, {kFlutter, 30}, {kScrape, 30}, {kWow, 20}, {kFlutter2, 15}, {kLoCut, 80}, {kHiCut2, 7000},
             {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
             {kAgc, 25}, {kDrift, 45} });
+
+        // Added in 1.6, after the others: the five programs with the Mic on, with the modelled
+        // microphones (Mic Model = Modeled). Everything else is as in the program they are named
+        // after, which keeps the Simple ones.
+        // The camera across the room: with its distance (kCamDistanceDb) the levels_test tone sits
+        // 3 dB past the top of its ALC's range (in Wedding Video 2 dB): squashed, with a little crunch.
+        program("Mic - Camcorder 89", {
+            {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
+            {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
+            {kMicOn, 1}, {kMicModel, 1}, {kMicType, 0}, {kMicGain, 2},
+            {kAgc, 80}, {kDrift, 10} });
+        // Into a carbon handset, down the line.
+        program("Mic - Answer Machine", {
+            {kDrive, 50}, {kWear, 30}, {kComp, 60}, {kHiCut, 3500}, {kHiSat, 50},
+            {kWarp, 25}, {kRpm, 60}, {kFlutter, 40}, {kFlutRate, 11}, {kWow, 20}, {kLoCut, 300}, {kHiCut2, 4000},
+            {kHum, 20}, {kHeadBuzz, 0}, {kHiss, 45}, {kCrackle, 10}, {kNoise, 40},
+            {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 3}, {kMono, 1},
+            {kAgc, 60} });
+        program("Mic - Wedding Video", {
+            {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
+            {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
+            {kMicOn, 1}, {kMicModel, 1}, {kMicType, 0}, {kMicGain, 1},
+            {kAgc, 90}, {kDrift, 20} });
+        // The radio cassette's own level control rides the crowd.
+        program("Mic - Bootleg Concert", {
+            {kDrive, 60}, {kWear, 25}, {kComp, 50}, {kHiCut, 7000}, {kLoSat, 45}, {kHiSat, 50},
+            {kWarp, 30}, {kFlutter, 35}, {kHum, 15}, {kHiss, 50}, {kNoise, 35}, {kNoisePos, 1},
+            {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMicGain, 2}, {kMono, 1},
+            {kAgc, 65}, {kDrift, 30} });
+        program("Mic - Tube TV", {
+            {kDrive, 30}, {kWear, 15}, {kComp, 45}, {kHiCut, 7500},
+            {kWarp, 15}, {kFlutter, 20}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 140}, {kHiCut2, 9000},
+            {kHum, 30}, {kBuzz, 25}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 5}, {kWhistle, 60},
+            {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMono, 1},
+            {kAgc, 25}, {kDrift, 10} });
     }
 
     // ----- state ------------------------------------------------------------------
