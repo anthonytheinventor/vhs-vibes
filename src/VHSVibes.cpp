@@ -120,7 +120,7 @@ enum ParamIndex
     kOutput = 0,   // dB    output level. Index 0 is nudged by the MPC on load: harmless here.
     // preamp / tape
     kDrive,        // %     preamp soft clip amount
-    kTone,         // -100..100  tilt: negative = darker, positive = brighter
+    kTone,         // -100..100  tilt (shown as "Tilt", read out in dB): negative = darker, positive = brighter
     kWear,         // %     slew limiter amount (shown as "Slew", read out as a swing time in microseconds)
     kComp,         // %     compressor amount (threshold down, make-up up)
     kHiCut,        // Hz    4-pole lowpass
@@ -1382,7 +1382,7 @@ public:
         addParam(floatParam ("out",       "Output",     -24.0f, 12.0f, 0.0f, "dB", 1));
 
         addParam(floatParam ("drive",     "Drive",        0.0f, 100.0f, 25.0f, "%", 0));
-        addParam(floatParam ("tone",      "Tone",      -100.0f, 100.0f,  0.0f, "",  0));
+        addParam(floatParam ("tone",      "Tilt",      -100.0f, 100.0f,  0.0f, "",  0));
         addParam(floatParam ("wear",      "Slew",         0.0f, 100.0f, 20.0f, "%", 0));
         addParam(floatParam ("comp",      "Comp",         0.0f, 100.0f, 40.0f, "%", 0));
         addParam(logParam   ("hicut",     "Hi Cut",    1000.0f, 18000.0f, 9000.0f, "Hz", 0));
@@ -1909,7 +1909,7 @@ public:
                 tiltLp_ += tiltCoeff_ * (x - tiltLp_);
                 x = tiltLp_ * cur_[cTiltLo] + (x - tiltLp_) * cur_[cTiltHi];
             }
-            else tiltLp_ = x;   // stays with the sound, so Tone can come in without a click
+            else tiltLp_ = x;   // stays with the sound, so Tilt can come in without a click
             if (nrEncRun_)
             {
                 if (nrEncSeed_) { nrEnc_.seed(x); nrEncSeed_ = false; }
@@ -2154,9 +2154,9 @@ public:
                 break;
             case 4: std::snprintf(buf, sizeof(buf), "%.1f ms", (double)v); break;
             case 5: std::snprintf(buf, sizeof(buf), "%.2f Hz", (double)v * (1.0 / 60.0)); break;   // Warp Rate: 0.10 to 5.00 Hz
-            default:   // Tone: a signed amount, no unit
-                if (std::fabs(v) < 0.5f) std::snprintf(buf, sizeof(buf), "0");
-                else std::snprintf(buf, sizeof(buf), "%+.0f", (double)v);
+            default:   // Tilt: what the highs get, in dB (the lows get the opposite): 6 dB at either end
+                if (std::fabs(v) < 0.5f) std::snprintf(buf, sizeof(buf), "0.0 dB");
+                else std::snprintf(buf, sizeof(buf), "%+.1f dB", 0.06 * (double)v);
                 break;
         }
         out = buf;

@@ -25,9 +25,11 @@ what: Soft clipping in the preamp, the recorder's input stage. 0 % is clean; the
 listen: Peaks round off and the sound thickens. Sound around -8 dBFS keeps its loudness; quieter sound comes up, louder sound is held down.
 try: 25 % is Home Recording. Subtle Glue uses 20 %, Bootleg Concert 60 %.
 
-## Tone
-what: A tilt in front of the Drive clipper. Left of centre is darker, right of centre is brighter, about 6 dB each way. 0 is flat.
-try: Training Video sits at -15, Dream Sequence at +10.
+## Tilt
+what: Tilts the balance of lows against highs, in front of the Drive clipper. The sound is split at 800 Hz: to the right the highs come up and the lows go down by the same amount, to the left the reverse. The read-out is what the highs get, up to 6 dB either way; 0.0 dB is flat.
+listen: To the left, darker and heavier; to the right, brighter and thinner. With Drive up it also changes what the clipper bites on.
+try: Training Video sits at -0.9 dB, Dream Sequence at +0.6 dB.
+range: -6.0 to +6.0 dB
 
 ## Slew
 what: A slew limiter: it limits how fast the signal can move. The number under the knob is the shortest time, in microseconds, the limit leaves for a swing from silence to full level. Sound that moves more slowly than that passes untouched; sound that tries to move faster is straightened into a ramp. That dulls and smears loud, bright sound and leaves quiet sound alone, which a filter cannot do.

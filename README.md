@@ -52,7 +52,7 @@ VHS Vibes is free. If it ends up on your tracks, you can leave a tip at
 The sound goes through the machine in this order:
 
 ```
-in -> Chorus -> Mic -> AGC -> Preamp (Tone, NR record side, Drive) -> Slew -> Comp
+in -> Chorus -> Mic -> AGC -> Preamp (Tilt, NR record side, Drive) -> Slew -> Comp
    -> Saturator (2-Band or VHS) -> Hi Cut
    -> Wobble 1 (Warp, Flutter, Scrape) -> Noise -> Wobble 2 (Wow, Flutter) -> Lo Cut / Hi Cut
    -> Drift -> Tracking -> Head Buzz -> Whistle -> Dropouts -> NR playback side -> Mono -> Mix -> Output
@@ -68,7 +68,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Control | What it does |
 |---|---|
 | Drive | Preamp soft clipping. 0 % is clean. |
-| Tone | Tilt: left is darker, right is brighter (about 6 dB each way). |
+| Tilt | Tilts lows against highs around 800 Hz: left is darker, right is brighter. Reads as what the highs get, -6.0 to +6.0 dB. |
 | Slew | A slew limiter: limits how fast the signal can move, which dulls and smears loud, bright sound like an old or copied tape. Reads as the shortest time left for a swing from silence to full level, from 12 to 1890 µs; off at the bottom. |
 | Comp | One-knob compressor. Past about a third it squashes and brings quiet sound (and noise) up. |
 | Dropouts | Short random dips, as when the tape lifts off the head: the highs go first and furthest, the lows only sag. 0 % is off. |

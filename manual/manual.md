@@ -177,7 +177,7 @@ Noise | NOISE | if Position is Pre | optional
 Chorus | INPUT | modulated delay |
 Mic | INPUT | period microphone |
 AGC | DECK | level control, seconds |
-Tone | TAPE | tilt |
+Tilt | TAPE | lows against highs |
 NR record | DECK | lifts quiet highs |
 Drive | TAPE | preamp soft clip | hq
 Slew | TAPE | rate limit | hq
@@ -205,7 +205,7 @@ Output | TAPE | level |
 - **The stages marked HQ are the ones that distort.** With the HQ switch on they run at twice the sample rate.
 - **Two wobbles.** Wobble 1 is the tape. Wobble 2 is the tape after one more copy, with its own two filters behind it.
 - **The Whistle comes late**, after every filter and both wobbles, so it never wavers. Dropouts dip it with the rest of the sound, unless the NR playback side is on: then it comes after that, at the very end.
-- **NR is in two halves.** The record side sits between Tone and Drive, the playback side just before Mono. Everything between them is the tape, and whatever the tape does there makes the playback side mistrack.
+- **NR is in two halves.** The record side sits between Tilt and Drive, the playback side just before Mono. Everything between them is the tape, and whatever the tape does there makes the playback side mistrack.
 - **Breathing is not a stage.** It makes the hiss rise and fall with the signal and holds the head buzz down in the pauses.
 - **Mix blends the untouched input back in** at the end. The dry signal is delayed by the resting length of the two wobble delays so that it lines up with the tape path. At 100 % the dry path is not computed at all.
 

@@ -227,6 +227,17 @@ int main()
             check(r == "0.10 Hz | 0.55 Hz | 1.50 Hz | 5.00 Hz" && std::string(name) == "Warp Rate", "Warp Rate reads in Hz, from 0.10 to 5.00");
         }
 
+        // Tilt reads as what the highs get, in dB
+        {
+            Fx tl;
+            auto shown = [&](float pc) { tl.set(kTone, pc); char t[64] = {0}; tl.e->dispatcher(tl.e, effGetParamDisplay, kTone, 0, t, 0.0f); return std::string(t); };
+            const std::string r = shown(-100) + " | " + shown(-15) + " | " + shown(0) + " | " + shown(10) + " | " + shown(100);
+            char name[64] = {0};
+            tl.e->dispatcher(tl.e, effGetParamName, kTone, 0, name, 0.0f);
+            std::printf("   %s reads \"%s\"\n", name, r.c_str());
+            check(r == "-6.0 dB | -0.9 dB | 0.0 dB | +0.6 dB | +6.0 dB" && std::string(name) == "Tilt", "Tilt reads in dB, from -6.0 to +6.0");
+        }
+
         // Slew reads as the time a swing from silence to full level takes, and that is what it does
         {
             Fx sl;

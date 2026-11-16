@@ -110,7 +110,7 @@ def font(spec, px, scale=S):
 # --------------------------------------------------------------------------------------------
 PAGES = [
     {"name": "TAPE", "jp": "テープ", "file": "bg_tape.png", "blocks": [
-        ("PREAMP", "プリアンプ", ["Drive", "Tone", "Slew", "Comp"]),
+        ("PREAMP", "プリアンプ", ["Drive", "Tilt", "Slew", "Comp"]),
         ("OUTPUT", "アウトプット", ["Dropouts", "Mono", "Mix", "Output"]),
         ("SATURATOR", "サチュレーター", ["Saturator", "Split", "Lows", "Lo Sat"]),
         ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
@@ -153,7 +153,7 @@ CAPTIONS = {
     "Wobble On": "WOBBLE", "Noise On": "NOISE",
     "Deck On": "POWER",
 }
-BIPOLAR = {"Tone", "Lows", "Mic Gain"}
+BIPOLAR = {"Tilt", "Lows", "Mic Gain"}
 # The 16 parameters on the knobs in Program (track) Q-Link mode, Q-Link 1..16.
 PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Slew", "Comp", "Hi Cut",
                   "Hiss", "Crackle", "Hum", "Noise", "Hi Sat", "Dropouts", "Mix", "Output"]

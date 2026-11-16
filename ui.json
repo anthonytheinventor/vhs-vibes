@@ -5,7 +5,7 @@
       "name": "TAPE",
       "controls": [
         { "param": "Drive",     "widget": "knob" },
-        { "param": "Tone",      "widget": "knob", "polarity": "bipolar" },
+        { "param": "Tilt",      "widget": "knob", "polarity": "bipolar" },
         { "param": "Slew",      "widget": "knob" },
         { "param": "Comp",      "widget": "knob" },
         { "param": "Hi Cut",    "widget": "knob" },
