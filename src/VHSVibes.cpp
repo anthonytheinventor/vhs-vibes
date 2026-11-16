@@ -1302,9 +1302,9 @@ struct MicModel
                 m = micAmp(mono(3, mono(2, m)));                    // the mic amp: its band, its overload
                 return splat(alc<18>(m, kCamRecGain, 1.0f / kCamThresh, kCamMaxAtt));
             }
-            case kDynamic:
-                for (int i = 0; i < n; ++i) x = f[i].process(x);
-                return x;
+            case kDynamic:   // four filters, five from 70 kHz up (written out: no loop to run)
+                x = f[3].process(f[2].process(f[1].process(f[0].process(x))));
+                return n == 5 ? f[4].process(x) : x;
             case kPhone:
             {
                 float m = 0.5f * (x[0] + x[1]);                // one line
