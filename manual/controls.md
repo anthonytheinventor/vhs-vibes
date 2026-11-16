@@ -196,24 +196,30 @@ what: The length of the chorus delay.
 what: Spreads the chorus left and right. 0 % moves both sides together; 100 % moves them half a cycle apart.
 
 ## Mic
-what: Plays the sound into one of four period microphones before it reaches the recorder, as if it had been re-recorded through one. Each is built from published figures: the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ lists them. The mic fades in and out when switched.
-note: While the Mic is on it adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. The Noise switch silences it; the Master knob does not change it.
+what: Plays the sound into one of four period microphones before it reaches the recorder, as if it had been re-recorded through one. Mic Model chooses which set of four. The mic fades in and out when switched.
+note: On Modeled the mic adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. The Noise switch silences it; the Master knob does not change it. The Simple ones add none.
 
 ## Mic Type
-what: Which microphone.
+what: Which microphone. On **Simple** each is one fixed tone curve, in stereo: **Camcorder** 180 Hz to 7.5 kHz with a 5 dB peak at 3.2 kHz, **Dynamic** 90 Hz to 12 kHz with 4 dB at 5 kHz, **Phone** 350 Hz to 3.4 kHz with 6 dB at 1.8 kHz, **Boombox** 120 Hz to 6 kHz with 4 dB at 900 Hz. On **Modeled**:
 **Camcorder**: a camcorder's built-in microphone and the record chain behind it, with the camera across the room (it hears the source 16 dB quieter). The camera's record level control holds everything from 61 to 83 dB SPL within 1.2 dB of one level, and in every pause lifts the hiss by up to 21 dB. Louder than that range, loud sounds and sudden onsets crunch. Its timing (20 ms to catch a sound, 8 dB a second back) is an estimate. Mono, as the camera was.
 **Dynamic**: a moving-coil stage microphone of the Shure 515 kind: a gentle low cut (8 dB down at 100 Hz), a presence peak of 5 dB at 5 kHz, a smaller one at 8 kHz, falling away above 10 kHz.
 **Phone**: the CCITT P.48 reference telephone: 300 Hz to 3.4 kHz with steep edges, the grit of a carbon microphone, and the line's faint noise. The carbon grows less sensitive as the sound gets quieter, so quiet words come through weaker still. Mono, as a phone line is.
 **Boombox**: the same electret as the Camcorder, a record level control (ALC) that turns everything from a whisper to a shout into nearly the same level, and the cassette's 50 Hz to 10 kHz with its hiss. Mono, as a radio cassette's built-in microphone was.
 The capsule's and the mic amp's own figures are in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
-listen: Boombox: after a loud passage the ALC lets go over about seven seconds and the room, the hiss and every quiet sound come up with it. Camcorder: the same in about two and a half seconds, but after a sound louder than its range it first holds the gain down for longer, ten seconds or more. Phone: quiet words sink further than loud ones.
-try: Camcorder 89 and Wedding Video use Camcorder, Answer Machine uses Phone, Bootleg Concert and Tube TV use Boombox.
+listen: On Modeled. Boombox: after a loud passage the ALC lets go over about seven seconds and the room, the hiss and every quiet sound come up with it. Camcorder: the same in about two and a half seconds, but after a sound louder than its range it first holds the gain down for longer, ten seconds or more. Phone: quiet words sink further than loud ones.
+try: Camcorder 89 and Wedding Video use Camcorder, Answer Machine uses Phone, Bootleg Concert and Tube TV use Boombox, all on Simple. The five programs named Mic - ... are the same on Modeled.
 note: Changing the type fades the mic out, puts the new one in and fades it back in.
 
 ## Mic Gain
-what: How loud the sound is at the microphone: as if the source were louder or closer. It is applied before the microphone, so it decides how hard the mic itself is driven. It works only while Mic is on.
-listen: Camcorder: from -12 to -6 dB ordinary material is inside its level control's range: everything at one level, the hiss swelling in the gaps. At 0 it is at the top of the range: loud passages held down, a little crunch. From +6 dB up it is past the range: loud sounds crunch and after the music stops the hiss takes about 22 seconds to come up. The level that comes out changes little. Phone: down, and quiet words sink. Boombox: the ALC keeps the level almost the same; what changes is how close the noise sits. Dynamic: a plain level.
-note: The microphone comes before AGC and the preamp, so more gain here also drives those harder. A sound peaking at -8 dBFS counts as 104 dB SPL at the microphone; this mapping is an assumption (see the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ).
+what: On **Simple**, the level of the microphone, after its curve. On **Modeled**, how loud the sound is at the microphone, as if the source were louder or closer: it is applied before the microphone, so it decides how hard the mic itself is driven. It works only while Mic is on.
+listen: On Modeled. Camcorder: from -12 to -6 dB ordinary material is inside its level control's range: everything at one level, the hiss swelling in the gaps. At 0 it is at the top of the range: loud passages held down, a little crunch. From +6 dB up it is past the range: loud sounds crunch and after the music stops the hiss takes about 22 seconds to come up. The level that comes out changes little. Phone: down, and quiet words sink. Boombox: the ALC keeps the level almost the same; what changes is how close the noise sits. Dynamic: a plain level.
+note: The microphone comes before AGC and the preamp, so more gain here also drives those harder. On Modeled a sound peaking at -8 dBFS counts as 104 dB SPL at the microphone; this mapping is an assumption (see the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ).
+
+## Mic Model
+what: Which set of four microphones Mic Type chooses from. **Simple**: the microphones as they were up to version 1.5, each one fixed tone curve, in stereo, with no noise of its own; Mic Gain is a level after it. **Modeled**: the microphones built from published figures, from version 1.6: their response, how they overload, their noise, and for the Camcorder and the Boombox the level control of the recorder they sat in.
+listen: Simple colours the sound and leaves its loud and quiet parts as they were. Modeled also moves them: the level controls pull them together and lift the hiss in the pauses.
+try: Camcorder 89, Answer Machine, Wedding Video, Bootleg Concert and Tube TV use Simple; the five programs named Mic - ... are the same on Modeled.
+note: A new instance starts on Modeled. A project saved before version 1.6 opens on Simple, so it sounds as it did. Switching fades the mic out, puts the other one in and fades it back in.
 
 <!-- ======================================================================== DECK -->
 

@@ -22,7 +22,7 @@ A copy of a copy of a copy: dull, clipped highs, deep wobble, plenty of noise.
 Slow warble and a wide chorus under dimmed lights.
 
 ## Camcorder 89
-Built-in microphone, the camera's level control squashing everything and the deck's AGC after it, noise recorded with the picture.
+Built-in microphone, level control squashing everything, noise recorded with the picture.
 
 ## Tracking Error
 Buzz on the music, static, and the sound dropping to the backup track.
@@ -55,7 +55,7 @@ A good tape in a deck that cannot quite follow it.
 Recorded at the slowest speed: about 100 Hz to 6 kHz, more hiss, more wobble.
 
 ## Wedding Video
-A camcorder at the back of the hall: the camera's level control rides everything, and the deck's AGC rides it again.
+A camcorder at the back of the hall; the level control rides everything.
 
 ## Hi-Fi Master
 The best VHS could do: wide, steady, quiet, breathing a little.
@@ -110,3 +110,18 @@ Sticky Tape on the tape model: too little bias, so it is brighter and grittier a
 
 ## VHS - Dirty Heads
 Dirty Heads on the tape model: too much bias, so the highs give way sooner still.
+
+## Mic - Camcorder 89
+Camcorder 89 on the modelled microphone: the camera's level control squashing everything and the deck's AGC after it, a little crunch on the loud parts.
+
+## Mic - Answer Machine
+Answer Machine on the modelled microphone: a carbon handset and a phone line, the quiet words sinking.
+
+## Mic - Wedding Video
+Wedding Video on the modelled microphone: the camera's level control rides everything, and the deck's AGC rides it again.
+
+## Mic - Bootleg Concert
+Bootleg Concert on the modelled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause.
+
+## Mic - Tube TV
+Tube TV on the modelled microphone: the boombox held up to the set, its level control lifting the hiss in every pause.

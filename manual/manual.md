@@ -67,7 +67,7 @@ epigraph: Press it. What comes back is almost your song.
 - {{controls}} controls on {{pages}} pages, {{programs}} built-in programs.
 - A hot pink cassette on the MPC's screen, with reels that turn when sound passes.
 - Every noise is synthesised: no samples, nothing to load.
-- Three parts are built from published figures: the tape of the VHS linear track, the noise reduction circuit of early stereo decks, and the four microphones of the INPUT page. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
+- Three parts are built from published figures: the tape of the VHS linear track, the noise reduction circuit of early stereo decks, and the four modelled microphones of the INPUT page. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
 - This manual describes version {{version}}.
 
 [[screenshot TAPE | The first of the five pages, as the MPC shows it.]]
@@ -259,7 +259,7 @@ epigraph: Everything the tape adds when nobody is talking.
 
 - The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a silent background.
 - With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops. That is how a real recorder's level control behaves; turn Master down if it is too much.
-- While the Mic is on, the microphone adds its own noise: the capsule's hiss, or the phone line's. The Noise switch silences it; Master does not change it.
+- While the Mic is on Modeled, the microphone adds its own noise: the capsule's hiss, or the phone line's. The Noise switch silences it; Master does not change it.
 
 ::: page INPUT
 toc: Chorus and microphone
@@ -268,9 +268,20 @@ epigraph: What it was recorded through.
 
 [[controls INPUT]]
 
-## The four microphones
+## The microphones: Simple and Modeled
 
-Mic Type does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Camcorder and the Boombox the level control of the recorder it sat in.
+Mic Model chooses between two sets of the same four microphones. Switching it fades the mic out and back in, as a change of type does.
+
+**Simple** is the set of the versions up to 1.5. Each type is one fixed tone curve, in stereo, with no noise and no level control of its own; Mic Gain is a level after it. Projects saved before 1.6 open on it, and the five older programs with the Mic on use it.
+
+| Type | The curve |
+|---|---|
+| ^CAMCORDER^ | 180 Hz to 7.5 kHz, a 5 dB peak at 3.2 kHz |
+| ^DYNAMIC^ | 90 Hz to 12 kHz, a 4 dB peak at 5 kHz |
+| ^PHONE^ | 350 Hz to 3.4 kHz, a 6 dB peak at 1.8 kHz |
+| ^BOOMBOX^ | 120 Hz to 6 kHz, a 4 dB peak at 900 Hz |
+
+**Modeled** does not choose an EQ curve. Each type is a model of one kind of microphone people recorded through in the 1980s, built from its published figures: the response, how it overloads, how much it hisses, and for the Camcorder and the Boombox the level control of the recorder it sat in. A new instance starts on it; the five programs named Mic - ... use it.
 
 | Type | Built on | What you hear |
 |---|---|---|
@@ -279,7 +290,7 @@ Mic Type does not choose an EQ curve. Each type is a model of one kind of microp
 | ^PHONE^ | CCITT P.48, the reference telephone of the phone companies' standards body | 300 Hz to 3.4 kHz with hard edges, a carbon microphone's grit, the line's faint noise; mono |
 | ^BOOMBOX^ | the same capsule, a radio cassette's record ALC and its tape | everything at nearly one level; in every pause the hiss and the room climb up; mono |
 
-Every type's response is 0 dB at 1 kHz. The Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+On Modeled every type's response is 0 dB at 1 kHz. The Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at. **Mic Gain** sets how loud the sound is at the microphone: a sound peaking at -8 dBFS counts as 104 dB SPL. That mapping is an assumption, explained with the figures in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: page DECK
 toc: The machine's faults, B-Type NR and HQ
@@ -486,7 +497,9 @@ Built to take something away. Set wrong, it adds.
 
 [[pagebreak]]
 
-## Four microphones: Mic Type
+## Four microphones: Mic Model = Modeled
+
+This section is about the Modeled set. The Simple one, the curves of the versions up to 1.5, is listed on the INPUT page.
 
 Before the recorder hears the sound, the Mic stage plays it into a microphone. Each of the four types is built from published figures for one kind of microphone of the period. Where a figure was missing, the value is an estimate, and is called one below.
 
@@ -504,7 +517,7 @@ Its level control works from 60.8 to 82.8 dB SPL at the microphone. With the dis
 - **0 dB: at the top of the range.** The sine sits 1.8 dB inside it; a tone peaking at -12 dBFS sits 1.2 dB past it. The music's loud passages hold the level control at its lowest, so they keep their 15 dB over the quiet ones, with a little crunch. After the music stops, the hiss comes up some seconds later (7 seconds after this music).
 - **+6 to +12 dB: past the range.** Loud sounds crunch. The sine has 0.7 % distortion at +6 dB and 3.1 % at +12 dB; the music's peaks come out 4 to 9 dB lower against the rest. After the music stops, the gap stays quiet for about 22 seconds before the hiss comes up.
 
-Camcorder 89 (Mic Gain +2 dB) and Wedding Video (+1 dB) put that -12 dBFS tone 3 and 2 dB past the top of the range: squashed, with a little crunch (0.6 and 0.5 % distortion).
+Mic - Camcorder 89 (Mic Gain +2 dB) and Mic - Wedding Video (+1 dB) put that -12 dBFS tone 3 and 2 dB past the top of the range: squashed, with a little crunch (0.6 and 0.5 % distortion).
 
 ### The figures they are built on
 
@@ -614,7 +627,7 @@ At 44.1 kHz; the responses hold at every rate from 44.1 to 192 kHz.
 - **Left out, for want of figures:** a camcorder's wind filter, its motor noise, how a microphone's housing colours it, the proximity effect at ordinary distances, the carbon's own noise, and the 8-bit coding of digital phone lines.
 
 ::: note Hear it
-Load **Bootleg Concert** and stop the music: within seconds the hiss and the room climb up as the ALC lets go, and the next note slams them down. Load **Answer Machine** and play a voice that goes from loud to soft: the soft words sink further than they should. In **Camcorder 89**, turn ^MIC GAIN^ up and listen to kicks and loud chords crunch; stop the music and, some seconds later, the hiss and the room come up behind the camera's level control. For the Dynamic, choose Init, switch the Mic on and pick it: a presence lift, nothing more.
+Load **Mic - Bootleg Concert** and stop the music: within seconds the hiss and the room climb up as the ALC lets go, and the next note slams them down. Load **Mic - Answer Machine** and play a voice that goes from loud to soft: the soft words sink further than they should. In **Mic - Camcorder 89**, turn ^MIC GAIN^ up and listen to kicks and loud chords crunch; stop the music and, some seconds later, the hiss and the room come up behind the camera's level control. For the Dynamic, choose Init, switch the Mic on and pick it: a presence lift, nothing more.
 :::
 
 ::: aside
@@ -640,7 +653,7 @@ Every section of the machine has its own switch, so a part can be taken out with
 
 - **Saturator Power** off: Hi Cut stays in.
 - **Wobble** off: the two filters of the WOBBLE page stay in.
-- **Noise** off: silences every noise, the Whistle, the head-switching buzz and the microphones' own noise included.
+- **Noise** off: silences every noise, the Whistle, the head-switching buzz and the modelled microphones' own noise included.
 - **Deck Power** off: B-Type NR, HQ and Animation are not affected.
 
 ::: chapter
@@ -688,7 +701,7 @@ epigraph: In pencil, on the inside of the sleeve.
 | A dropout is the tape lifting off the head, which costs the highs far more than the lows. | Dropouts |
 | The line whistle of a TV set sits at 15.734 kHz. | Whistle |
 
-The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS**, in **B-Type NR** and in the four microphones of **Mic Type** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS**, in **B-Type NR** and in the four modelled microphones of **Mic Type** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: chapter
 id: compat
@@ -701,11 +714,11 @@ epigraph: Nothing you recorded is lost. It only waits.
 
 **Projects made with an older version load with every setting in place.**
 
-- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band.
-- No older program uses the newer controls.
+- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band, Mic Model at Simple.
+- No older program uses the newer controls: the five with the Mic on keep the Simple microphones.
 - The newer programs come after Init, so every older program keeps its number.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
-- **The Mic** was rebuilt in 1.6. Its settings load as they were saved, but with the Mic on the sound is that of the new models; with it off nothing has changed.
+- **Mic Model** is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did.
 
 ## What arrived when
 
@@ -716,7 +729,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.3 | Animation | |
 | 1.4 | Scrape, Whistle, HQ | Sticky Tape, Tube TV, Worn Heads, Dirty Heads |
 | 1.5 | B-Type NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
-| 1.6 | The four Mic Types rebuilt from published figures (the same controls) | |
+| 1.6 | Mic Model: the four Mic Types built from published figures (Modeled), beside the ones before (Simple) | the five programs with the Mic on again, on the modelled microphones: Mic - Camcorder 89, Mic - Answer Machine, Mic - Wedding Video, Mic - Bootleg Concert, Mic - Tube TV |
 
 ::: chapter
 id: trouble
@@ -731,7 +744,8 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 |---|---|
 | VHS Vibes is not in the plugin browser. | Check that the MPC runs MPC OS 3.10.1 or later; that **Enable Enhancements** and **External Plugin Support** are both on under Preferences > Enhancements (Beta); that the MPC was restarted afterwards; and that the folder `{{vendor}} - VST - VHS Vibes` sits inside a folder named `VST2 Plugins` at the top of the drive. Look under **External Plugins**. |
 | It hisses and hums with nothing playing. | That is the tape noise. Switch **Noise** off on the NOISE page, or set **Master** to 0 %. |
-| The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on with Type **Camcorder** or **Boombox**: its level control turns the gain up in every pause, as the real one did. |
+| The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on Modeled with Type **Camcorder** or **Boombox**: its level control turns the gain up in every pause, as the real one did. |
+| The Mic sounds different in a new instance from an older project. | A new instance starts on **Mic Model** Modeled; a project saved before 1.6 opens on Simple. Set Mic Model to the one you want. |
 | With Mix below 100 % it sounds like a chorus. | The dry input is steady and the tape path wobbles. Switch **Wobble** off for a clean blend, or keep Mix at 100 %. |
 | The pitch bends or blurs when I turn a wobble knob. | The knob changes the plugin's own delay. It settles as soon as the knob rests. |
 | The sound dips for a moment when I choose a program, or switch HQ or Sat Type. | Each of these fades the sound out and back in. |

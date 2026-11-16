@@ -21,7 +21,7 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 54 controls on five pages, 34 built-in programs
+- 55 controls on five pages, 39 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
 - version 1.6
@@ -120,9 +120,10 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Control | What it does |
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
-| Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. Adds the microphone's own noise (silenced by the Noise switch). |
-| Mic Type | Camcorder: a camcorder's record chain, mono, the camera across the room (16 dB further off): the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output; past that range loud sounds crunch; in every pause the hiss comes up). Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
-| Mic Gain | How loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. For the Camcorder, -12 to -6 dB keeps ordinary material inside its ALC's range, 0 is at the top of it, +6 to +12 dB is past it and crunches. |
+| Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. On Modeled it adds the microphone's own noise (silenced by the Noise switch). |
+| Mic Type | On Simple, one fixed tone curve each, in stereo: Camcorder 180 Hz to 7.5 kHz with a 5 dB peak at 3.2 kHz, Dynamic 90 Hz to 12 kHz with 4 dB at 5 kHz, Phone 350 Hz to 3.4 kHz with 6 dB at 1.8 kHz, Boombox 120 Hz to 6 kHz with 4 dB at 900 Hz. On Modeled: Camcorder: a camcorder's record chain, mono, the camera across the room (16 dB further off): the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output; past that range loud sounds crunch; in every pause the hiss comes up). Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
+| Mic Gain | On Simple, the level of the microphone, after its curve. On Modeled, how loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. For the Camcorder, -12 to -6 dB keeps ordinary material inside its ALC's range, 0 is at the top of it, +6 to +12 dB is past it and crunches. |
+| Mic Model | Which set of four microphones Mic Type chooses from. **Simple**: the microphones up to 1.5, a tone curve each. **Modeled**: the microphones built from published figures (1.6), with their overload, noise and level controls. A new instance starts on Modeled; a project saved before 1.6 opens on Simple. Switching fades the mic out and back in. |
 
 ### ＤＥＣＫ　デッキ
 
@@ -149,7 +150,7 @@ the Hi Sat knob (captioned TAPE SPEED there) runs the tape itself from SP to EP.
 
 ## 🗃 ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ
 
-Thirty-four programs. The labels are handwritten.
+Thirty-nine programs. The labels are handwritten.
 
 | Program | What is on it |
 |---|---|
@@ -157,7 +158,7 @@ Thirty-four programs. The labels are handwritten.
 | Fresh Rental | Friday night, new release. Clean, a trace of breathing, loses lock once in a long while. |
 | 3rd Gen Copy | A copy of a copy of a copy: dull, clipped highs, deep wobble, plenty of noise. |
 | Vaporwave Mall | Slow warble and a wide chorus under dimmed lights. |
-| Camcorder 89 | Built-in microphone, the camera's level control squashing everything and the deck's AGC after it, noise recorded with the picture. |
+| Camcorder 89 | Built-in microphone, level control squashing everything, noise recorded with the picture. |
 | Tracking Error | Buzz on the music, static, and the sound dropping to the backup track. |
 | Late Night TV | Mono, narrow, hum from the studio. |
 | Clean Widener | No tape at all: only the chorus, used as a stereo widener. |
@@ -168,7 +169,7 @@ Thirty-four programs. The labels are handwritten.
 | Subtle Glue | Just a little tape: gentle clipping, the faintest wobble, no noise. |
 | Bad Tracking | A good tape in a deck that cannot quite follow it. |
 | Six Hour Tape | Recorded at the slowest speed: about 100 Hz to 6 kHz, more hiss, more wobble. |
-| Wedding Video | A camcorder at the back of the hall: the camera's level control rides everything, and the deck's AGC rides it again. |
+| Wedding Video | A camcorder at the back of the hall; the level control rides everything. |
 | Hi-Fi Master | The best VHS could do: wide, steady, quiet, breathing a little. |
 | Edge Damage | The top edge of the tape is creased: the sound comes and goes. |
 | Bootleg Concert | Taped from the crowd on a boombox and copied a few times. |
@@ -187,6 +188,11 @@ Thirty-four programs. The labels are handwritten.
 | VHS - Six Hour Tape | Six Hour Tape on the tape model: EP speed, with the wear, hiss and wobble that EP Tape leaves out. |
 | VHS - Sticky Tape | Sticky Tape on the tape model: too little bias, so it is brighter and grittier as it drags. |
 | VHS - Dirty Heads | Dirty Heads on the tape model: too much bias, so the highs give way sooner still. |
+| Mic - Camcorder 89 | Camcorder 89 on the modelled microphone: the camera's level control squashing everything and the deck's AGC after it, a little crunch on the loud parts. |
+| Mic - Answer Machine | Answer Machine on the modelled microphone: a carbon handset and a phone line, the quiet words sinking. |
+| Mic - Wedding Video | Wedding Video on the modelled microphone: the camera's level control rides everything, and the deck's AGC rides it again. |
+| Mic - Bootleg Concert | Bootleg Concert on the modelled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause. |
+| Mic - Tube TV | Tube TV on the modelled microphone: the boombox held up to the set, its level control lifting the hiss in every pause. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
@@ -210,11 +216,15 @@ The Animation switch on the DECK page turns them off.
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR and Sat Type
-  rest at 0, off or 2-Band, no older program uses them, and the newer programs come after Init so
-  every older one keeps its number.
+- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR, Sat Type
+  and Mic Model rest at 0, off, 2-Band or Simple, no older program uses them, and the newer programs
+  come after Init so every older one keeps its number.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
+- Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one
+  saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did. The
+  five older programs with the Mic on keep Simple; the five programs named Mic - ... are the same
+  on Modeled.
 - Sat Type = VHS follows the figures an AES tutorial on videotape duplication gives for the
   VHS linear track in SP: 33.35 mm/s, a record pre-emphasis of 120 microseconds, reference
   level 100 nWb/m (taken as -8 dBFS, the same as the NR's Dolby level) and 3 % third-harmonic
@@ -225,8 +235,8 @@ The Animation switch on the DECK page turns them off.
   bias effects. There is no head bump: at these tape speeds it lies below 20 Hz. Driven hard,
   the stage clips highs it has just lifted, which folds back into the band without HQ; HQ is
   on in a new instance for that reason.
-- The four Mic Types are built from published figures (the manual's chapter INSIDE THE MACHINE
-  has the table). Camcorder and Boombox: J. Kean's account of electret capsules (first-order
+- On Mic Model = Modeled the four Mic Types are built from published figures (the manual's chapter
+  INSIDE THE MACHINE has the table). Camcorder and Boombox: J. Kean's account of electret capsules (first-order
   low cut, 100 MOhm and 30 pF; overload above 110 dB SPL, negative peaks first), J. Neal's
   measurements of ten Panasonic WM-61A capsules (the rise at 13 to 17 kHz) and its 26 dB SPL(A)
   self-noise. Camcorder: the JVC GR-C1 service manual's audio chain (mic amp, VCA, ALC detector
@@ -242,7 +252,8 @@ The Animation switch on the DECK page turns them off.
   pressure (-8 dBFS peak = 104 dB SPL), the amounts of the carbon microphone's distortion and
   level-dependence (documented only in kind), how much later the electret's positive half
   overloads, the Boombox ALC's attack (5 ms), the Camcorder ALC's attack (20 ms) and recovery
-  (8.2 dB a second), and the Camcorder's distance from the source (16 dB). With the Mic off the plugin is exactly as before.
+  (8.2 dB a second), and the Camcorder's distance from the source (16 dB). On Simple, and with the
+  Mic off, the plugin is exactly as 1.5 was.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
@@ -309,11 +320,11 @@ Builds nine small programs and runs them on the computer: `host_test` (what the 
 the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `nr_test` (the noise reduction
 against the chip makers' figures), `tape_test` (Sat Type = VHS against the figures it is built to), `v152_test`
 (everything that changed in 1.5.2: resets at any block size, Q-Links across every switch, cut-short
-states), `mic_test` (the four Mic Types against the figures they are built from), `deck_test` and
+states), `mic_test` (the four Mic Types against the figures they are built from, and the Simple ones against their old curves), `deck_test` and
 `levels_test` (measurements of each stage to read through). The first seven end in
 PASS or FAIL. Then `ab14_test`, built once against the 1.4.0 source from git and once against this one,
-checks that the 25 programs that existed in 1.4 still come out the same with the Mic off, sample for
-sample from 100 ms on (the git tags are fetched if they are missing). `tools/mic_fit.py` holds the
+checks that the 25 programs that existed in 1.4 still come out the same, with the chorus and the Mic
+(on Simple) switched on for every third one, sample for sample from 100 ms on (the git tags are fetched if they are missing). `tools/mic_fit.py` holds the
 fits and constants behind the microphones and checks the filters against their targets.
 `race_test` is not run by the script: it hammers the plugin from several threads and is meant
 to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
