@@ -80,7 +80,20 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Lows / Lo Sat | Level and clipping of the low band. |
 | Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
 | Hi Cut | 4-pole lowpass after the saturator. |
-| Sat Type | **2-Band**: the saturator described above. **VHS**: a model of what the tape of a VHS deck's linear track does (the Hi-Fi track does not saturate this way). Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. In VHS three knobs change their meaning, and their captions on the screen change with them (the MPC still lists them as Split, Lo Sat and Hi Sat), and so do the numbers under them: Rec Level reads in dB, Tape Speed reads SP, LP or EP at those three speeds and the speed in mm/s between them, Bias reads "right" or a signed percentage (minus is too little): **Lo Sat** becomes **Rec Level**, the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. **Hi Sat** becomes **Tape Speed**, the tape speed from SP (0 %) to EP (100 %): the slower, the sooner the highs give way and the lower the top of the band; **Split** becomes **Bias**, how well the deck is set up for the tape: 2.5 kHz (where the knob rests) is right, lower is too little bias (brighter, grittier, distorting sooner), higher is too much (duller, the highs giving way sooner). Lows and Highs still trim the result, below and above 1 kHz. |
+| Sat Type | **2-Band**: the saturator described above. **VHS**: a model of the tape of a VHS deck's linear track. Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. Three knobs change their job (below). |
+
+**Sat Type = VHS**
+
+This is the linear track; the Hi-Fi track does not saturate this way. Three knobs change their meaning,
+their caption on the screen and the number under them. The MPC still lists them as Split, Lo Sat and Hi Sat.
+
+| Knob | Becomes | Reads | What it does |
+|---|---|---|---|
+| Lo Sat | **Rec Level** | dB | The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %. There a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
+| Hi Sat | **Tape Speed** | SP, LP or EP at those three speeds, the speed in mm/s between them | From SP (0 %) to EP (100 %). The slower, the sooner the highs give way and the lower the top of the band. |
+| Split | **Bias** | "right", or a signed percentage (minus is too little) | How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. |
+
+Lows and Highs still trim the result, below and above 1 kHz.
 
 ### ＷＯＢＢＬＥ　ゆらぎ
 
@@ -121,9 +134,18 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
 | Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. On Modeled it adds the microphone's own noise (silenced by the Noise switch). |
-| Mic Type | On Simple, one fixed tone curve each, in stereo: Camcorder 180 Hz to 7.5 kHz with a 5 dB peak at 3.2 kHz, Dynamic 90 Hz to 12 kHz with 4 dB at 5 kHz, Phone 350 Hz to 3.4 kHz with 6 dB at 1.8 kHz, Boombox 120 Hz to 6 kHz with 4 dB at 900 Hz. On Modeled: Camcorder: a camcorder's record chain, mono, the camera across the room (16 dB further off): the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output; past that range loud sounds crunch; in every pause the hiss comes up). Dynamic: the Shure 515's curve, a presence peak at 5 kHz. Phone: the CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity and the line's noise; mono. Boombox: the same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds) and the cassette's 50 Hz to 10 kHz and hiss; mono, as the built-in mic was. |
+| Mic Type | Camcorder, Dynamic, Phone or Boombox. What each one is depends on Mic Model (below). |
 | Mic Gain | On Simple, the level of the microphone, after its curve. On Modeled, how loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. For the Camcorder, -12 to -6 dB keeps ordinary material inside its ALC's range, 0 is at the top of it, +6 to +12 dB is past it and crunches. |
-| Mic Model | Which set of four microphones Mic Type chooses from. **Simple**: the microphones up to 1.5, a tone curve each. **Modeled**: the microphones built from published figures (1.6), with their overload, noise and level controls. A new instance starts on Modeled; a project saved before 1.6 opens on Simple. Switching fades the mic out and back in. |
+| Mic Model | Which set of four microphones Mic Type chooses from. **Simple**: the microphones up to 1.5, a tone curve each. **Modeled**: the microphones built from published figures (1.6), with their overload, noise and level controls. Switching fades the mic out and back in. |
+
+**The four microphones**
+
+| Type | Simple: a fixed tone curve, in stereo | Modeled |
+|---|---|---|
+| Camcorder | 180 Hz to 7.5 kHz, a 5 dB peak at 3.2 kHz | A camcorder's record chain, the camera across the room (16 dB further off): the electret capsule with its faint hiss, the mic amp's band and overload, and the camera's record ALC (42 dB of gain, then 22 dB of input into 1.2 dB of output). Past that range loud sounds crunch; in every pause the hiss comes up. Mono. |
+| Dynamic | 90 Hz to 12 kHz, 4 dB at 5 kHz | The Shure 515's curve, a presence peak at 5 kHz. |
+| Phone | 350 Hz to 3.4 kHz, 6 dB at 1.8 kHz | The CCITT P.48 reference telephone, 300 Hz to 3.4 kHz, with a carbon microphone's second harmonic and level-dependent sensitivity, and the line's noise. Mono. |
+| Boombox | 120 Hz to 6 kHz, 4 dB at 900 Hz | The same electret into a radio cassette's record ALC (45 dB of input into 3 dB of output, letting go over seconds), and the cassette's 50 Hz to 10 kHz and hiss. Mono, as the built-in mic was. |
 
 ### ＤＥＣＫ　デッキ
 
@@ -137,8 +159,24 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
-| HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate. Without it, bright sounds that hit those stages fold back into the midrange as tones that were never played. With it, that is gone for highs at ordinary levels; a full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter. Off, the plugin sounds as it always has; on, it takes about a quarter more CPU. Switching it fades the sound out and back in at the other rate. Choosing a program does not change it. |
-| B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. **Off**: none. **Rec**: recorded with it, played without: bright, airy, a little squashed, all the hiss. **Play**: the opposite: dull, the highs ducking in quiet passages. **On**: both, which on a clean tape only removes hiss; the more the tape has lost in between (Hi Cut, Slew, Dropouts, Drift), the more the decoder mistracks and the duller and more unsteady the top end gets. Loud sounds pass untouched. |
+| HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
+| B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. Four positions (below). |
+
+**B-Type NR positions**
+
+| Position | The tape was | What you hear |
+|---|---|---|
+| Off | recorded without, played without | No noise reduction. |
+| Rec | recorded with it, played without | Bright, airy, a little squashed, all the hiss. |
+| Play | recorded without, played with it | Dull, the highs ducking in quiet passages. |
+| On | recorded with it, played with it | On a clean tape it only removes hiss. The more the tape has lost in between (Hi Cut, Slew, Dropouts, Drift), the more the decoder mistracks and the duller and more unsteady the top end gets. |
+
+**HQ**
+
+- Off, the plugin sounds as it always has. On, the fold-back is gone for highs at ordinary levels; a
+  full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter.
+- Switching it fades the sound out and back in at the other rate.
+- Choosing a program does not change it.
 
 In 2-Band, tape speed has no control of its own. For a slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut
 near 100 Hz and raise Hiss; SP is about 10 kHz and 50 Hz. With Sat Type on VHS (TAPE page),
