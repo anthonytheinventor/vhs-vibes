@@ -36,7 +36,7 @@ ul, ol { margin: 0 0 3mm; padding-left: 5.5mm; }
 li { margin-bottom: 1.5mm; break-inside: avoid; }
 ul li::marker { color: var(--pink); }
 ol li::marker { color: var(--pink-lo); font-weight: 700; }
-.fw { font-family: var(--f-gothic); }
+.fw { font-family: var(--f-gothic); word-break: keep-all; }   /* a full-width title breaks only at its spaces, never inside a word */
 
 /* ---------------------------------------------------------------- headings on paper */
 h2 { font: italic bold 16pt/1.15 var(--f-head); color: var(--pink-lo); margin: 7mm 0 3mm; display: flex; align-items: center; gap: 3.5mm; break-after: avoid; break-inside: avoid; }
