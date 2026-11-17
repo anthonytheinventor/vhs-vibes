@@ -40,6 +40,25 @@ elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "-DSRC=\"$OUT/VHSVibes_v1
 else
   "$OUT/ab14_v140" write - | "$OUT/ab14_test" compare - || status=1
 fi
-# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test and ab14_test end with PASS or FAIL;
+# Sat Type = Hi-Fi (1.7, see hifi_test.cpp). It is given a state saved by 1.6.0 with Sat Type on VHS:
+# the same test program built against the 1.6.0 source, taken from git, writes it.
+echo "===== hifi_test ====="
+if ! git -C "$REPO" rev-parse -q --verify "v1.6.0^{commit}" > /dev/null 2>&1; then
+  git -C "$REPO" fetch -q --tags origin 2> "$OUT/hifi_test.log"
+fi
+if ! git -C "$REPO" show "v1.6.0:src/VHSVibes.cpp" > "$OUT/VHSVibes_v160.cpp" 2>> "$OUT/hifi_test.log"; then
+  echo "cannot get src/VHSVibes.cpp of v1.6.0 from git (see $OUT/hifi_test.log)"
+  echo "FAIL"
+  status=1
+elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE160 "-DSRC=\"$OUT/VHSVibes_v160.cpp\"" "$HERE/hifi_test.cpp" -o "$OUT/hifi_write160" 2>> "$OUT/hifi_test.log" \
+  || ! "$OUT/hifi_write160" "$OUT/state160.bin" \
+  || ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/hifi_test.cpp" -o "$OUT/hifi_test" 2>> "$OUT/hifi_test.log"; then
+  grep -E "error" -A6 "$OUT/hifi_test.log" | head -30
+  echo "FAIL"
+  status=1
+else
+  "$OUT/hifi_test" "$OUT/state160.bin" || status=1
+fi
+# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, ab14_test and hifi_test end with PASS or FAIL;
 # deck_test and levels_test print measurements to read.
 exit $status

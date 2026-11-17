@@ -377,7 +377,7 @@
                     }
                 },
                 {
-                    "key": "vvKnobUni plain0 vhs1",
+                    "key": "vvKnobUni plain0 vhs1 plain2",
                     "value": {
                         "version": 2,
                         "actions": [
@@ -473,7 +473,7 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/0/2/Parameter 55"
+                                        "IndexedEnabling/0/3/Parameter 55"
                                     ]
                                 }
                             },
@@ -504,7 +504,38 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/1/2/Parameter 55"
+                                        "IndexedEnabling/1/3/Parameter 55"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob plain",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/2/3/Parameter 55"
                                     ]
                                 }
                             },
@@ -622,7 +653,7 @@
                                         "onImage": "seg_sattype_0_on.png",
                                         "offImage": "seg_sattype_0_off.png",
                                         "buttonId": 0,
-                                        "numButtonsInGroup": 2,
+                                        "numButtonsInGroup": 3,
                                         "handleName": "Data",
                                         "gestureBehaviour": "Instant"
                                     }
@@ -651,7 +682,7 @@
                                         "onImage": "seg_sattype_1_on.png",
                                         "offImage": "seg_sattype_1_off.png",
                                         "buttonId": 1,
-                                        "numButtonsInGroup": 2,
+                                        "numButtonsInGroup": 3,
                                         "handleName": "Data",
                                         "gestureBehaviour": "Instant"
                                     }
@@ -667,6 +698,35 @@
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
                                     "bounds": "72 50 64 40"
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "seg 2",
+                                    "type": "Button",
+                                    "data": {
+                                        "version": 2,
+                                        "onImage": "seg_sattype_2_on.png",
+                                        "offImage": "seg_sattype_2_off.png",
+                                        "buttonId": 2,
+                                        "numButtonsInGroup": 3,
+                                        "handleName": "Data",
+                                        "gestureBehaviour": "Instant"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 1,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "38 96 64 40"
                                 }
                             }
                         ]
@@ -1686,7 +1746,8 @@
                 "key": "Parameter 55",
                 "value": [
                     "2-Band",
-                    "VHS"
+                    "VHS",
+                    "Hi-Fi"
                 ]
             },
             {
@@ -1896,7 +1957,7 @@
                                 "boundsType": "Absolute",
                                 "bounds": "220 444 140 25",
                                 "additionalInvalidatingHandles": [
-                                    "IndexedEnabling/1/2/Parameter 55"
+                                    "IndexedEnabling/1/3/Parameter 55"
                                 ]
                             }
                         },
@@ -1925,7 +1986,7 @@
                                 "boundsType": "Absolute",
                                 "bounds": "500 444 140 25",
                                 "additionalInvalidatingHandles": [
-                                    "IndexedEnabling/1/2/Parameter 55"
+                                    "IndexedEnabling/1/3/Parameter 55"
                                 ]
                             }
                         },
@@ -1954,7 +2015,7 @@
                                 "boundsType": "Absolute",
                                 "bounds": "780 444 140 25",
                                 "additionalInvalidatingHandles": [
-                                    "IndexedEnabling/1/2/Parameter 55"
+                                    "IndexedEnabling/1/3/Parameter 55"
                                 ]
                             }
                         },
@@ -2224,7 +2285,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Split",
-                                "type": "vvKnobUni plain0 vhs1",
+                                "type": "vvKnobUni plain0 vhs1 plain2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2282,7 +2343,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Lo Sat",
-                                "type": "vvKnobUni plain0 vhs1",
+                                "type": "vvKnobUni plain0 vhs1 plain2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2340,7 +2401,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Hi Sat",
-                                "type": "vvKnobUni plain0 vhs1",
+                                "type": "vvKnobUni plain0 vhs1 plain2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"

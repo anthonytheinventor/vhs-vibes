@@ -182,7 +182,9 @@ int main()
             float L[128], R[128]; float* io[2] = { L, R }; long pos = 0; int quiet = 0, quietAway = 0;
             for (int b = 0; b < 600; ++b)
             {
-                if (b >= 100 && b < 500) q.e->setParameter(q.e, which, (float)(b - 100) / 400.0f);   // crosses 0.5 at block 300
+                // crosses the switch point at block 300 (Type: from 2-Band to VHS, the first half of its
+                // travel since Hi-Fi (1.7) is its third position; hifi_test turns it all the way)
+                if (b >= 100 && b < 500) q.e->setParameter(q.e, which, (float)(b - 100) / 400.0f * (which == kSatType ? 0.5f : 1.0f));
                 for (int i = 0; i < 128; ++i, ++pos) L[i] = R[i] = 0.5f * (float)std::sin(6.283185307179586 * 300.0 * pos / 44100.0);
                 q.e->processReplacing(q.e, io, io, 128);
                 float peak = 0.0f;

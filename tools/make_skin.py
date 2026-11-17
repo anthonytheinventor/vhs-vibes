@@ -227,7 +227,7 @@ def knob_file(bipolar, mode=None):
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
 SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
-    "Sat Type": ((64, 40), [(4, 50), (72, 50)], ["2-BAND", "VHS"]),
+    "Sat Type": ((64, 40), [(4, 50), (72, 50), (38, 96)], ["2-BAND", "VHS", "HI-FI"]),   # three do not fit in a row: HI-FI under the two (1.7)
     "Mic Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # stacked, as Mic Type beside it: MODELED does not fit 64 px
     "AGC Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # the same, beside AGC
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),

@@ -353,7 +353,7 @@ int main()
         // Each one with something for it to switch: the mic on for Mic Type, hum for Noise Pos
         // and Noise On, and so on. The measure is the sound at each position, settled: its
         // largest step and its quietest call. HQ restarts the sound (one fade), and so does Sat
-        // Type with the Saturator on; nothing else may fade.
+        // Type with the Saturator on, at each change of type; nothing else may fade.
         struct Case { int param; std::vector<std::pair<int, float>> setup; int fades; };
         std::vector<Case> cases;
         Fx probe;
@@ -375,7 +375,8 @@ int main()
                 default: break;
             }
             cases.push_back(c);
-            if (i == kSatType) cases.push_back({ i, { {kSatOn, 1} }, 1 });
+            // (Sat Type with the Saturator on: one fade at each change of type, two since Hi-Fi (1.7))
+            if (i == kSatType) cases.push_back({ i, { {kSatOn, 1} }, (int)probe.plug()->param(i).choices.size() - 1 });
             if (i == kMicType) cases.push_back({ i, { {kMicOn, 1}, {kMicModel, 0} }, 0 });   // and among the Simple ones (Init has Modeled)
         }
         for (const Case& c : cases)
@@ -431,7 +432,8 @@ int main()
                 check(fades == c.fades, what);
                 continue;
             }
-            std::snprintf(what, sizeof(what), "%s%s: %s, and no click", p.name.c_str(), withSat ? " with the Saturator on" : simpleMic ? " among the Simple ones" : "", c.fades ? "one fade" : "no fade");
+            std::snprintf(what, sizeof(what), "%s%s: %s, and no click", p.name.c_str(), withSat ? " with the Saturator on" : simpleMic ? " among the Simple ones" : "",
+                          c.fades == 0 ? "no fade" : c.fades == 1 ? "one fade" : c.fades == 2 ? "two fades" : "a fade per change");
             check(fades == c.fades && step < 1.5f * own, what);
         }
     }
