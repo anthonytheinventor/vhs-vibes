@@ -134,7 +134,7 @@ PAGES = [
         ("", "", ["Mic Model", None, None, None]),
     ]},
     {"name": "DECK", "jp": "デッキ", "file": "bg_deck.png", "blocks": [
-        ("DECK", "デッキ", ["Deck On", "AGC", "Drift", None]),
+        ("DECK", "デッキ", ["Deck On", "AGC", "Drift", "AGC Model"]),
         ("HI-FI TRACK", "ハイファイ", ["Tracking", "Breathing", None, None]),
         ("SCREEN", "スクリーン", ["Animation", None, None, None]),
         ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
@@ -145,7 +145,7 @@ PAGES = [
 CAPTIONS = {
     "Saturator": "POWER", "Chorus": "POWER", "Mic": "POWER",
     "Cho Mix": "MIX", "Cho Speed": "SPEED", "Cho Delay": "DELAY", "Cho Width": "WIDTH",
-    "Mic Type": "TYPE", "Mic Gain": "GAIN", "Mic Model": "MIC MODEL",
+    "Mic Type": "TYPE", "Mic Gain": "GAIN", "Mic Model": "MIC MODEL", "AGC Model": "AGC MODEL",
     "Flutter": "DEPTH", "Flut Rate": "RATE",
     "Wow Rate": "RATE", "Flutter 2": "FLUTTER", "Flut2 Rate": "RATE",
     "Hi Cut 2": "HI CUT", "Noise": "MASTER", "Noise Pos": "POSITION",
@@ -176,6 +176,7 @@ SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
     "Sat Type": ((64, 40), [(4, 50), (72, 50)], ["2-BAND", "VHS"]),
     "Mic Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # stacked, as Mic Type beside it: MODELED does not fit 64 px
+    "AGC Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # the same, beside AGC
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
     "B-Type NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
 }

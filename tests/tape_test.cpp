@@ -141,7 +141,7 @@ int main()
         fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 27, 0, name, 0.0f);
         fx.e->dispatcher(fx.e, effSetProgram, 0, 27, nullptr, 0.0f);
         check(std::strcmp(name, "SP Tape") == 0 && fx.get(kSatType) == 1.0f && fx.e->numPrograms == 39, "39 programs; SP Tape is number 27 and uses the tape");
-        check(fx.e->numParams == 57 && kSatType == 55 && kMicModel == 56, "57 parameters; Sat Type is number 55, Mic Model (1.6) the last");
+        check(fx.e->numParams == 58 && kSatType == 55 && kMicModel == 56 && kAgcModel == 57, "58 parameters; Sat Type is number 55, Mic Model and AGC Model (1.6) the last two");
         bool sib = true;
         for (int p = 29; p < 34; ++p)
         {

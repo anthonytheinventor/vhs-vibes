@@ -67,9 +67,10 @@ int main()
     }
     std::printf("\n");
 
-    std::printf("\n1. AGC at 100 %%: a quiet tone, a loud one for 2 s, then quiet again\n");
+    for (int model = 0; model < 2; ++model)
     {
-        Fx fx; fx.set(kDeckOn, 1); fx.set(kAgc, 100);
+        std::printf("\n1%s. AGC at 100 %%, AGC Model %s: a quiet tone, a loud one for 2 s, then quiet again\n", model ? "b" : "", model ? "Modeled" : "Simple");
+        Fx fx; fx.set(kDeckOn, 1); fx.set(kAgcModel, (float)model); fx.set(kAgc, 100);
         std::vector<float> L = tone(0.01f, 440, 30.0f);                  // -40 dBFS
         for (size_t i = (size_t)(12 * 44100); i < (size_t)(14 * 44100); ++i) L[i] *= 50.0f;   // 2 s at -6 dBFS
         std::vector<float> R = L, inL = L;

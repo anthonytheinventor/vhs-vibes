@@ -145,7 +145,7 @@ static std::vector<uint8_t> stateBefore14(AEffect* e)
     {
         const size_t len = 1 + (size_t)d[pos] + 8;
         const std::string id(reinterpret_cast<const char*>(d) + pos + 1, d[pos]);
-        if (id != "scrape" && id != "whistle" && id != "hq" && id != "nr" && id != "sat_type" && id != "mic_model") { out.insert(out.end(), d + pos, d + pos + len); ++kept; }
+        if (id != "scrape" && id != "whistle" && id != "hq" && id != "nr" && id != "sat_type" && id != "mic_model" && id != "agc_model") { out.insert(out.end(), d + pos, d + pos + len); ++kept; }
         pos += len;
     }
     out.insert(out.end(), d + pos, d + size);
@@ -211,14 +211,16 @@ int main()
     }
 
     std::printf("2. AGC 100 %% and Comp 100 %%: a quiet passage, then a loud hit (input peak 0.80)\n");
+    for (int model = 0; model < 2; ++model)   // AGC Model: Simple (as in 1.4), Modeled (1.6)
     for (int satOn = 0; satOn < 2; ++satOn)
     {
-        Fx fx; fx.set(kDeckOn, 1); fx.set(kAgc, 100); fx.set(kComp, 100);
+        Fx fx; fx.set(kDeckOn, 1); fx.set(kAgcModel, (float)model); fx.set(kAgc, 100); fx.set(kComp, 100);
         if (satOn) { fx.set(kSatOn, 1); fx.set(kLoSat, 35); fx.set(kHiSat, 35); }
         fx.play(10.0f, 0.01f, nullptr);
         std::vector<float> hit; fx.play(0.5f, 0.8f, &hit);
         double pk = 0; for (float v : hit) pk = std::fmax(pk, std::fabs((double)v));
-        std::printf("   saturator %s: loudest output sample %.2f (1.3: %s)\n", satOn ? "at 35 %" : "off   ", pk, satOn ? "1.3" : "5.8");
+        std::printf("   AGC %s, saturator %s: loudest output sample %.2f%s\n", model ? "Modeled" : "Simple ", satOn ? "at 35 %" : "off   ", pk,
+                    model ? "" : satOn ? " (1.3: 1.3)" : " (1.3: 5.8)");
         check(pk < 2.0, "the hit stays below 2.0 (the clip is at 1.5; the filters after it overshoot a little)");
     }
     {

@@ -21,7 +21,7 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 55 controls on five pages, 39 built-in programs
+- 56 controls on five pages, 39 built-in programs
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes
 - every noise is synthesised: no samples, nothing to load
 - version 1.6
@@ -154,13 +154,28 @@ Lows and Highs still trim the result, below and above 1 kHz.
 | Control | What it does |
 |---|---|
 | Power | AGC, Drift, Tracking and Breathing on or off together. (HQ and B-Type NR have their own switches.) |
-| AGC | The recorder's automatic level control. A loud sound pulls the gain down at once; it stays down for a second and a half, then creeps back up over a few seconds and brings the background up with it (up to 14 dB). Comp works in milliseconds; this works in seconds. |
+| AGC | The recorder's automatic level control: loud sound is pulled down, the quiet after it swells back up. Two kinds (AGC Model, below). Comp works in milliseconds; this works in seconds. |
 | Drift | The sound slowly comes and goes: quieter and duller for a moment, then back, like the audio track wandering off the head. (Dropouts are short dips; this is slow.) |
+| AGC Model | Which AGC the AGC knob turns up: Simple or Modeled (below). |
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 | HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
 | B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. Four positions (below). |
+
+**The two AGCs**
+
+| | Simple (up to 1.5) | Modeled (1.6) |
+|---|---|---|
+| What it is | set by ear | an early VHS deck's record level circuit |
+| A loud sound | pulled down at once | 10 dB down in 11 ms, the rest within half a second |
+| Then | held 1.5 s, back up over a few seconds | back up at about 1 dB a second |
+| Quiet sound | lifted up to 14 dB | lifted 9.1 dB |
+| At -8 dBFS | unchanged | unchanged |
+| Louder | pulled toward -8 dBFS | 10 dB more in, about 1 dB more out |
+
+The knob scales either one: 50 % is half of every change in dB. Switching crossfades to the
+other one once it has settled (Modeled: a second).
 
 **B-Type NR positions**
 
@@ -254,8 +269,8 @@ The Animation switch on the DECK page turns them off.
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR, Sat Type
-  and Mic Model rest at 0, off, 2-Band or Simple, no older program uses them, and the newer programs
+- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR, Sat Type,
+  Mic Model and AGC Model rest at 0, off, 2-Band or Simple, no older program uses them, and the newer programs
   come after Init so every older one keeps its number.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
@@ -263,6 +278,17 @@ The Animation switch on the DECK page turns them off.
   saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did. The
   five older programs with the Mic on keep Simple; the five programs named Mic - ... are the same
   on Modeled.
+- AGC Model rests on Modeled, but every program with the AGC up uses Simple, Home Recording
+  included, and a project saved before 1.6 opens on Simple. Init and the programs with the AGC
+  at 0 % are on Modeled.
+- AGC Model = Modeled is the record level circuit of an early VHS deck, part by part from its
+  service manual's schematic and parts list: the coupling capacitor, the germanium diode
+  detector, the 47 uF capacitor that holds the level and the 1.76 MOhm that drains it. Its gain
+  law is fitted to the compression of the replacement for its AGC chip (40 dB more input give
+  3.25 dB more output), with the knee taken 10 dB under -8 dBFS, the level the service manual's
+  adjustment sets to 1.1 V peak. Estimates: the shape of the gain law, the knee, the diode, and
+  that the chip follows its control input at once. The manual's chapter INSIDE THE MACHINE has
+  the parts and the measurements.
 - Sat Type = VHS follows the figures an AES tutorial on videotape duplication gives for the
   VHS linear track in SP: 33.35 mm/s, a record pre-emphasis of 120 microseconds, reference
   level 100 nWb/m (taken as -8 dBFS, the same as the NR's Dolby level) and 3 % third-harmonic

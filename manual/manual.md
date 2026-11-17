@@ -67,7 +67,7 @@ epigraph: Press it. What comes back is almost your song.
 - {{controls}} controls on {{pages}} pages, {{programs}} built-in programs.
 - A hot pink cassette on the MPC's screen, with reels that turn when sound passes.
 - Every noise is synthesised: no samples, nothing to load.
-- Three parts are built from published figures: the tape of the VHS linear track, the noise reduction circuit of early stereo decks, and the four modelled microphones of the INPUT page. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
+- Four parts are built from published figures: the tape of the VHS linear track, the noise reduction circuit of early stereo decks, the four modelled microphones of the INPUT page, and the record level control of an early VHS deck. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
 - This manual describes version {{version}}.
 
 [[screenshot TAPE | The first of the five pages, as the MPC shows it.]]
@@ -350,11 +350,11 @@ id: inside
 title: ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ
 jp: 内部
 word: INSIDE
-toc: How the VHS saturator, B-Type NR and the microphones are modelled
+toc: How the VHS saturator, B-Type NR, the microphones and the AGC are modelled
 epigraph: Somebody took the lid off and wrote down what was there.
 :::
 
-Three parts of VHS Vibes are not tuned by ear to sound like tape. They are built from what was published about the machines: a format's own figures, a chip's circuit diagram, and the datasheets, standards and measurements of four microphones. This chapter says what each is made of, what was measured, and what had to be estimated.
+Four parts of VHS Vibes are not tuned by ear to sound like tape. They are built from what was published about the machines: a format's own figures, a chip's circuit diagram, the datasheets, standards and measurements of four microphones, and a deck's service manual. This chapter says what each is made of, what was measured, and what had to be estimated.
 
 ## The tape itself: Type = VHS
 
@@ -651,6 +651,83 @@ Load **Mic - Bootleg Concert** and stop the music: within seconds the hiss and t
 Not the best part. The part nearest the sound.
 :::
 
+[[pagebreak]]
+
+## The deck's level control: AGC Model = Modeled
+
+In an early VHS deck the record level was set by an automatic gain control. **AGC Model = Modeled** is the record level circuit of one early VHS deck, rebuilt from its service manual: the schematic, the parts list and the description of the circuit. The Simple AGC, the one up to version 1.5, is described on the DECK page.
+
+### The circuit
+
+The deck's audio chip has a gain element at its input and an output amplifier after it. The output does two jobs: it is the deck's audio out, and it feeds a detector that sets the gain. So the control is a loop: it listens to what it has already turned down, not to what comes in.
+
+| Part | Value | What it does |
+|---|---|---|
+| C70 | 4.7 uF | couples the output into the detector |
+| R103 | 1 kOhm | in series with C70 |
+| R104 | 22 kOhm | to ground: the path that lets C70's charge drain |
+| D21 | germanium diode | passes the positive half of the wave only |
+| C80 | 47 uF | holds the rectified peak: its voltage sets the gain |
+| R107 + R108 | 1.2 MOhm + 560 kOhm | drain C80 slowly; their junction carries the control voltage to the chip |
+| C81 | 0.01 uF | at the control input: a lag of 3.8 ms |
+| a switch | | shorts C80 in playback, so every recording starts at full gain |
+
+The values are read from the schematic and checked against the parts list.
+
+### How it moves
+
+**Down, in two steps.** When a loud sound arrives, C70 and C80 charge together through the diode. C70 is ten times smaller, so it fills ten times faster and then blocks: within a few cycles C80 has taken about 9 % of the excess, in about 5 ms. Because the gain law is steep, that alone is a cut of 10 dB or more. The rest follows as C70's charge drains through R104, over about half a second.
+
+**Back up, slowly.** When the sound stops, the diode stops conducting, and C80 can only drain through R107 and R108. That takes over a minute to empty it, and the gain comes back at about 1 dB per second. Nothing holds the gain down on purpose; the slow drain does it.
+
+### The gain law and the levels
+
+The chip's own datasheet was not found. The replacement part's datasheet gives two points at 1 kHz: 0.55 V out for 0.25 mV in, and 0.8 V out for 25 mV in, "AGC 40 dB". That is 40 dB more input for 3.25 dB more output, about 12 : 1. It gives no curve and no timing.
+
+So the model takes the simplest law that meets those points: above a knee, the gain falls in a straight line in dB as C80's voltage rises (as a transistor junction used as a variable resistance would make it), down to at most 40 dB. Two numbers of that law were fitted on the circuit itself, with a steady 1 kHz tone: where it starts (0.769 V on C80) and how steep it is (88.3 dB per volt).
+
+The level comes from the service manual's adjustment: the reference input is set to give 2.2 V peak to peak at the output, 1.1 V peak. The plugin's reference level, a peak of -8 dBFS, is taken to be that input.
+
+Where the knee lies is not printed. The manual's adjustment procedure checks a tone 10 dB below the reference and expects it back near full level, which only works if the AGC is already at work there. So the knee is taken to be 10 dB below the reference, peaks of about -18 dBFS.
+
+### In the plugin
+
+- **Stereo.** The deck was mono. The detector hears the louder of the two channels, and both get the same gain.
+- **Unity at reference.** At the reference level the circuit cuts by 9.1 dB. The plugin lifts everything by that much, so a steady tone peaking at -8 dBFS passes at its own level, quieter sound comes up by 9.1 dB, and louder sound is cut.
+- **The knob.** The detector always works on the circuit's full gain, so its timing never changes. The knob sets how much of its gain change you hear, in dB: at 50 % half of it, at 0 % none, and then the stage is skipped.
+- **The start.** C80 is empty after a program change, as the deck's was at the start of each recording. For most of the first second, loud sound comes through lifted.
+
+### What comes out, measured
+
+A 1 kHz tone, AGC at 100 %. The same at 44.1, 48 and 96 kHz within 0.01 dB, and within 0.1 ms.
+
+| Test | Result |
+|---|---|
+| A steady tone at the knee, 10 dB under reference | no cut: lifted by 9.08 dB |
+| At reference | cut by 9.08 dB: out at its own level |
+| 10 dB over reference | cut by 18.23 dB (the circuit simulated alone: 18.2) |
+| 30 dB over reference, 40 dB over the knee | cut by 36.75 dB: 3.25 dB louder out, as the datasheet gives |
+| A jump of 20 dB from the knee | 10 dB of cut after 10.9 ms, 13.0 dB after 50 ms, 17.6 dB after half a second (of 18.2) |
+| After that sound stops | the gain comes back at 0.98 dB per second; all of it in about 19 seconds |
+| From rest, a tone at reference | within 1 dB of its level after 0.85 s |
+
+### What is estimated
+
+- **The gain law:** its shape. Only the two datasheet points are known; the straight line in dB is an assumption, and its steepness and starting point follow from it and from where the knee is put.
+- **Where the knee lies:** 10 dB under the reference, read from the adjustment procedure. The evidence is not all one way, and anything from 20 dB under the reference to the reference itself is possible.
+- **The diode:** as a germanium diode, 0.15 V and 100 Ohm; the resistance of the chip's output, 100 Ohm; that the output clips at 4.5 V either side (it decides only how hard a sudden loud sound charges the detector).
+- **The control range:** 40 dB, the datasheet's test condition. The datasheet gives no maximum.
+- **That the chip's gain follows its control input at once.** Only C81's lag is in the model.
+- **Left out, for want of figures:** any leakage of the germanium diode and any current drawn by the chip's control input, which could only make the recovery faster (up to about 2.5 dB per second); any load on the audio output that would speed up the second step of the attack.
+
+::: note Hear it
+Choose **Init**, switch the deck's **Power** on, set **AGC** to 100 % and **AGC Model** to Modeled. Play a drum loop with a quiet break: the hits are held down, and in the break the room and the hiss rise slowly, a dB a second, long after a Simple AGC would have come back. Then set AGC to 50 % for half of that.
+:::
+
+::: aside
+It listened to itself, and it never forgot a loud moment quickly.
+:::
+
 ::: chapter
 id: switches
 title: ＳＷＩＴＣＨＥＳ
@@ -718,7 +795,7 @@ epigraph: In pencil, on the inside of the sleeve.
 | A dropout is the tape lifting off the head, which costs the highs far more than the lows. | Dropouts |
 | The line whistle of a TV set sits at 15.734 kHz. | Whistle |
 
-The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS**, in **B-Type NR** and in the four modelled microphones of **Mic Type** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+The other times and depths are not documented anywhere the author could find, and are set by ear. What is published and what is estimated in **Type = VHS**, in **B-Type NR**, in the four modelled microphones of **Mic Type** and in the Modeled **AGC** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: chapter
 id: compat
@@ -731,11 +808,12 @@ epigraph: Nothing you recorded is lost. It only waits.
 
 **Projects made with an older version load with every setting in place.**
 
-- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band, Mic Model at Simple.
-- No older program uses the newer controls: the five with the Mic on keep the Simple microphones.
+- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band, Mic Model and AGC Model at Simple.
+- No older program uses the newer controls: the five with the Mic on keep the Simple microphones, and every program with the AGC up keeps the Simple AGC.
 - The newer programs come after Init, so every older program keeps its number.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
 - **Mic Model** is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did.
+- **AGC Model** rests on Modeled, but every program with the AGC up uses Simple, Home Recording included. A project saved before 1.6 opens on Simple, so it sounds as it did.
 
 ## What arrived when
 
@@ -746,7 +824,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.3 | Animation | |
 | 1.4 | Scrape, Whistle, HQ | Sticky Tape, Tube TV, Worn Heads, Dirty Heads |
 | 1.5 | B-Type NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
-| 1.6 | Mic Model: the four Mic Types built from published figures (Modeled), beside the ones before (Simple) | the five programs with the Mic on again, on the modelled microphones: Mic - Camcorder 89, Mic - Answer Machine, Mic - Wedding Video, Mic - Bootleg Concert, Mic - Tube TV |
+| 1.6 | Mic Model: the four Mic Types built from published figures (Modeled), beside the ones before (Simple). AGC Model: the record level control of an early VHS deck (Modeled), beside the AGC before (Simple) | the five programs with the Mic on again, on the modelled microphones: Mic - Camcorder 89, Mic - Answer Machine, Mic - Wedding Video, Mic - Bootleg Concert, Mic - Tube TV |
 
 ::: chapter
 id: trouble
@@ -763,6 +841,7 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | It hisses and hums with nothing playing. | That is the tape noise. Switch **Noise** off on the NOISE page, or set **Master** to 0 %. |
 | The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on Modeled with Type **Camcorder** or **Boombox**: its level control turns the gain up in every pause, as the real one did. |
 | The Mic sounds different in a new instance from an older project. | A new instance starts on **Mic Model** Modeled; a project saved before 1.6 opens on Simple. Set Mic Model to the one you want. |
+| The AGC sounds different from one program to another, or after turning it up on Init. | **AGC Model**: every program with the AGC up, and a project saved before 1.6, use Simple; Init and the programs with the AGC at 0 % are on Modeled. Set AGC Model to the one you want. |
 | With Mix below 100 % it sounds like a chorus. | The dry input is steady and the tape path wobbles. Switch **Wobble** off for a clean blend, or keep Mix at 100 %. |
 | The pitch bends or blurs when I turn a wobble knob. | The knob changes the plugin's own delay. It settles as soon as the knob rests. |
 | The sound dips for a moment when I choose a program, or switch HQ or Sat Type. | Each of these fades the sound out and back in. |

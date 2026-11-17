@@ -237,15 +237,23 @@ what: Switches AGC, Drift, Tracking and Breathing off or on together.
 note: NR, HQ and Animation are not affected; each has its own switch. The Init and Clean Widener programs switch the deck off.
 
 ## AGC
-what: The recorder's automatic level control. A loud sound pulls the gain down at once; it stays down for a second and a half, then creeps back up over a few seconds and brings the background up with it, by up to 14 dB.
-listen: After a loud hit, the quiet that follows slowly swells, noise included.
-try: 25 % is Home Recording. Camcorder 89 uses 80 %, Wedding Video 90 %.
-note: Comp works in milliseconds; this works in seconds.
+what: The recorder's automatic level control, in one of two kinds (**AGC Model**). The knob sets how much of it you hear: 100 % is the whole effect, 50 % half of every change in dB, 0 % off.
+- **Simple.** A loud sound pulls the gain down at once; it stays down for a second and a half, then creeps back up over a few seconds and brings the background up with it, by up to 14 dB.
+- **Modeled.** An early VHS deck's record level circuit. Sound peaking at -8 dBFS passes at its own level. Quieter sound is lifted by 9.1 dB, up to the point where the circuit starts to work, 10 dB below that (peaks around -18 dBFS). Louder sound is cut: every 10 dB more going in comes out only about 1 dB louder. A sudden loud sound is cut by 10 dB in about 11 ms, and most of the rest within half a second. When it stops, the gain comes back at about 1 dB per second: after a big hit, 18 dB takes about 19 seconds.
+listen: After a loud hit, the quiet that follows slowly swells, noise included. On Modeled it swells for far longer, and the first moments of a loud entry come through louder before the cut lands.
+try: 25 % is Home Recording. Camcorder 89 uses 80 %, Wedding Video 90 %. All of them use Simple.
+note: Comp works in milliseconds; this works in seconds. On Modeled the AGC starts from full gain after a program change, the way the deck started each recording: for most of the first second, loud sound comes through lifted (the clip after Comp keeps it in bounds).
 
 ## Drift
 what: The sound slowly comes and goes: quieter and duller for a moment, then back, like the audio track wandering off the head.
 try: 10 % is Home Recording. Chewed Tape uses 85 %, Edge Damage 95 %.
 note: Dropouts are short dips; this is slow.
+
+## AGC Model
+what: Which automatic level control the AGC knob turns up. **Simple**: the AGC as it was up to version 1.5. **Modeled**: an early VHS deck's record level circuit, rebuilt part by part from its service manual, from version 1.6. It ducks fast, lifts quiet sound by 9.1 dB and comes back at about 1 dB per second (the numbers are under AGC).
+listen: Simple pumps: down, a pause, back up within seconds. Modeled holds a loud passage down and lets the quiet after it rise slowly, over tens of seconds.
+try: Every program with the AGC up uses Simple. Turn the AGC up on Init with the deck on to hear Modeled.
+note: It rests on Modeled: Init and every program that leaves the AGC at 0 % are on Modeled, so turning the AGC up there gives the Modeled one. Every program with the AGC up, Home Recording included, uses Simple. A project saved before version 1.6 opens on Simple, so it sounds as it did. Switching while sound plays does not click: the new AGC starts from rest and settles unheard (Modeled for a second, Simple for a moment), then the sound crossfades to it in 0.1 s. How the Modeled one was built is in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ## Tracking
 what: The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, and back. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often.

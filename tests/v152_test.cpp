@@ -369,6 +369,7 @@ int main()
                 case kChorusOn:  c.setup = { {kChoWidth, 50} }; break;
                 case kWobbleOn:  c.setup = { {kWarp, 35}, {kFlutter, 30} }; break;
                 case kDeckOn:    c.setup = { {kAgc, 50} }; break;
+                case kAgcModel:  c.setup = { {kDeckOn, 1}, {kAgc, 100} }; break;
                 case kSatOn:     c.setup = { {kLoSat, 50}, {kHiSat, 50} }; break;
                 case kHq:        c.setup = { {kDrive, 50} }; break;
                 default: break;

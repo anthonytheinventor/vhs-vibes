@@ -15,7 +15,9 @@
 //                     (see SimpleMic); Modeled, built from published figures: camcorder
 //                     electret with its mic amp and record ALC, dynamic, telephone, boombox
 //                     with its record ALC (see MicModel)
-//      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up
+//      -> AGC         (deck) the recorder's automatic level control: ducks fast, creeps back up.
+//                     Two of them (AGC Model): Simple, as up to 1.5; Modeled, an early VHS
+//                     deck's record level circuit (see ModeledAgc)
 //      -> PREAMP      tilt tone control into a soft clipper (the VCR's input stage). Between
 //                     the two: NR ENCODE, (deck) B-type noise reduction, record side: lifts
 //                     quiet highs
@@ -75,7 +77,10 @@
 // Sat Type at rest, 25 to 33 are the 1.5 programs, 34 to 38 the 1.6 ones. So a project saved
 // with an older version loads with every setting in place. 1.6 added the modelled microphones
 // beside the old ones (Mic Model): a state saved before it loads on Simple, the old ones, and
-// the five older programs with the Mic on keep them; a new instance starts on Modeled.
+// the five older programs with the Mic on keep them; a new instance starts on Modeled. The
+// same for the AGC (AGC Model): an older state loads on Simple, every program with the AGC up
+// keeps the Simple one (Home Recording too), the parameter itself rests on Modeled (Init and
+// the programs with the AGC at 0 have it).
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -195,6 +200,10 @@ enum ParamIndex
     kMicModel,     // choice which set of microphones Mic Type picks from: Simple (as up to 1.5)
                    //        or Modeled (built from published figures). On Modeled in a new
                    //        instance, on Simple in a state saved before it existed.
+    kAgcModel,     // choice which AGC the AGC knob sets: Simple (as up to 1.5) or Modeled (an early
+                   //        VHS deck's record level circuit, see ModeledAgc). Rests on Modeled;
+                   //        Simple in a state saved before it existed and in every program
+                   //        with the AGC up.
     kNumParams
 };
 
@@ -261,7 +270,8 @@ inline uint32_t groupOf(int param)
         case kNoise: case kNoisePos: case kNoiseOn: case kWhistle:          return gNoise;
         case kChoSpeed: case kChoDelay: case kChoWidth:                     return gChorus;
         case kMicType: case kMicGain: case kMicModel:                       return gMic;
-        case kDeckOn: case kAgc: case kDrift: case kTracking: case kBreathing: return gDeck;
+        case kDeckOn: case kAgc: case kDrift: case kTracking: case kBreathing:
+        case kAgcModel:                                                     return gDeck;
         case kHq:                                                           return gQuality;
         case kNr:                                                           return gNr;
         case kSatType:                                                      return gQuality;   // fade out, restart
@@ -1371,6 +1381,111 @@ struct MicModel
     }
 };
 
+// ---------------------------------------------------------------------------
+// AGC, AGC Model = Modeled: the record level circuit of an early VHS deck, built from its
+// service manual (schematic and parts list) and the published figures of the equivalent of its
+// AGC chip (NTE1263 for the AN262). The research notes behind it ("the AGC report", VHS Vibes
+// record AGC, second reading, 2026-11-16) mark each value: [R] read from the source, [D]
+// derived from read values, [E] estimated.
+//
+//   The AGC is a feedback leveller: the chip's line output goes through C70 into a half-wave
+//   detector, whose capacitor C80 sets the gain. The detector, per sample (explicit Euler):
+//     source (R_src) -> C70 -> R103 -> node A;  A -> R104 -> ground;  A -> diode -> K;
+//     K: C80 to ground, and R107 + R108 to ground (the slow discharge).
+//   Two stages of attack follow from it: C70 dumps charge into C80 within a few cycles (about
+//   9 % of the excess peak, through R103: 4 to 5 ms), then the offset left on C70 bleeds off
+//   through R104 (about a second). Recovery is C80 through R107 + R108: about 1 dB a second.
+//   The control voltage reaches the chip through C81, which lags it by 3.8 ms [D].
+//
+//   Gain law: GR = clamp(S * (vK - Vth), 0, 40) dB, linear in dB on C80's voltage [E: the shape;
+//   a junction-like control input]. S and Vth are fitted (tools/agc_fit.py fit) so that a steady
+//   1 kHz tone gives the chip's typical compression: the knee 10 dB below the nominal input [E],
+//   and 40 dB over it comes out 3.25 dB louder [D: NTE1263, 0.55 V out at 0.25 mV in, 0.8 V at
+//   25 mV]. The level mapping: the deck's nominal input is kRefLevel (-8 dBFS), which settles to
+//   1.1 V peak at the detector [R: 2.2 Vp-p line out at the reference level]; the fit gives the
+//   detector volts for a sample of 1.0 at full gain (kVolts). Steady state (tools/agc_fit.py
+//   table): 0 dB re knee 0 dB GR, +10 dB (nominal) 9.1 dB, +20 dB 18.2 dB, +40 dB 36.75 dB.
+//
+//   In the plugin: the deck was mono, so the detector sees the larger of the two channels and
+//   one gain goes to both. The gain the detector works with is the full model's; the sound gets
+//   Amount x (the model's gain in dB + kBoostDb), where kBoostDb is the gain reduction at the
+//   nominal level: a steady tone at nominal passes at unity, quieter sound below the knee is
+//   lifted by 9.1 dB, louder sound is cut. The gain is worked out once per control tick and
+//   ramped across it (16 samples, 0.36 ms, against the circuit's fastest 4.7 ms).
+// ---------------------------------------------------------------------------
+struct ModeledAgc
+{
+    static constexpr float kC70 = 4.7e-6f, kR103 = 1000.0f, kR104 = 22000.0f, kC80 = 47e-6f;   // [R]
+    static constexpr float kRdis = 1.2e6f + 560e3f;                 // R107 + R108 [R]
+    static constexpr float kRsrc = 100.0f;                          // the chip's output and R106 path [E]
+    static constexpr float kVd = 0.15f, kRd = 100.0f;               // germanium diode, piecewise linear [E]
+    static constexpr float kLagSec = 0.01e-6f * (1.2e6f * 560e3f / (1.2e6f + 560e3f));   // C81 x R107 || R108: 3.82 ms [D]
+    static constexpr float kGrMax = 40.0f;                          // control range, dB [D/E]
+    static constexpr float kSwing = 4.5f;                           // the line output clips at +-4.5 V (12 V supply) [E, the
+                                                                    // AGC report's attack simulation, 4.1]: only a sudden loud
+                                                                    // sound reaches it, before the gain has come down
+    // fitted by tools/agc_fit.py (at 192 kHz, to the three figures above) [D]
+    static constexpr float kS = 88.297348f;        // dB of gain reduction per volt on C80
+    static constexpr float kVth = 0.768954f;       // C80's voltage at the knee
+    static constexpr float kVolts = 7.818492f;     // detector volts for a sample of 1.0 at full gain
+    static constexpr float kBoostDb = 9.075806f;   // gain reduction at the nominal level: the lift below the knee
+    static constexpr float kDbToLn = 0.115129255f; // ln(10) / 20
+
+    float aOff = 0, onE = 0, onK = 0, onN = 0, k70 = 0;   // per sample rate
+    double kK = 0, kDis = 0, lag = 0;
+    // C80 and the control voltage after C81 (in C80 volts) are doubles: in the slow recovery each
+    // moves by about four float steps (ulps) a sample, and rounding that in float would make the
+    // recovery up to 9 % slower at some sample rates. C70's voltage is the float v70.
+    double vK = 0, vc = 0;
+    float v70 = 0;
+    float gv = kVolts, gvTo = kVolts, gvInc = 0;    // the model's gain x kVolts, ramped across the tick
+    float a = 1.0f, aTo = 1.0f, aInc = 0;           // the gain the sound gets, ramped across the tick
+
+    void prepare(float sr)
+    {
+        const float dt = 1.0f / sr, rs = kRsrc + kR103;
+        aOff = kR104 / (rs + kR104);                // diode off: the divider
+        onE = 1.0f / rs; onK = 1.0f / kRd;          // diode on: node A between the three branches
+        onN = 1.0f / (1.0f / rs + 1.0f / kR104 + 1.0f / kRd);
+        k70 = dt / (kC70 * rs);
+        const double dtd = 1.0 / (double)sr;
+        kK = dtd / (double)kC80; kDis = dtd / ((double)kC80 * (double)kRdis);
+        lag = 1.0 - std::exp(-dtd / (double)kLagSec);
+    }
+    // C80 and C70 empty, full gain: the deck at the start of a recording (its playback switch
+    // shorts C80)
+    void reset() { vK = vc = 0.0; v70 = 0.0f; gv = gvTo = kVolts; gvInc = 0.0f; a = aTo = 1.0f; aInc = 0.0f; }
+
+    // Once per control tick: the gains for the next 16 samples. amount 0..1 scales the change in dB.
+    void tick(float amount)
+    {
+        if (!(vK < 1.0e3 && std::fabs(v70) < 1.0e3f && vc < 1.0e3)) reset();     // never stuck on a NaN
+        if (vK < 1.0e-20) vK = 0.0;                                               // no denormals in long silence
+        if (std::fabs(v70) < 1.0e-20f) v70 = 0.0f;
+        if (vc < 1.0e-20) vc = 0.0;
+        const float gr = clamp((float)(vc - (double)kVth) * kS, 0.0f, kGrMax);
+        gv = gvTo; a = aTo;                                                       // land exactly where the ramps went
+        gvTo = kVolts * std::exp(-gr * kDbToLn);
+        aTo = std::exp(amount * (kBoostDb - gr) * kDbToLn);
+        gvInc = (gvTo - gv) * kCtrlInv; aInc = (aTo - a) * kCtrlInv;
+    }
+
+    // One sample: the detector hears the input at the model's gain; returns the sound's gain.
+    float step(Stereo x)
+    {
+        gv += gvInc; a += aInc;
+        const float e = clamp(maxf(x[0], x[1]) * gv, -kSwing, kSwing);   // the line output, within its swing
+        const float d = e - v70;                       // across R_src + R103 and node A (C70's offset taken off)
+        const float on = (float)vK + kVd;
+        float va = d * aOff, i = 0.0f;
+        if (va > on) { va = (d * onE + on * onK) * onN; i = (va - on) * onK; }
+        vK += kK * (double)i - kDis * vK;
+        v70 += k70 * (d - va);
+        vc += lag * (vK - vc);
+        return a;
+    }
+};
+
 } // namespace
 
 class VHSVibes : public mpc::Plugin
@@ -1454,6 +1569,7 @@ public:
         addParam(choiceParam("nr",         "B-Type NR",  {"Off", "Rec", "Play", "On"}, 0));
         addParam(choiceParam("sat_type",   "Sat Type",   {"2-Band", "VHS"}, 0));
         addParam(choiceParam("mic_model",  "Mic Model",  {"Simple", "Modeled"}, 1));   // Simple in a state from before 1.6
+        addParam(choiceParam("agc_model",  "AGC Model",  {"Simple", "Modeled"}, 1));   // the same
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -1560,6 +1676,15 @@ private:
         micHoldTicks_ = (int)(0.020f * sr_ * kCtrlInv) + 1;
         micHoldCamTicks_ = (int)(0.100f * sr_ * kCtrlInv) + 1;
         agcRelease_   = 1.0f / (2.5f * sr_ * kCtrlInv);
+        agcm_.prepare(sr_);
+        // AGC Model switched: the new one starts from rest and settles unheard, then the sound
+        // crossfades to it in 100 ms. The Modeled one takes a second (from rest, on a 1 kHz
+        // tone, the gain comes within 1 dB of its steady value after 0.73 s at 8 dB over the
+        // nominal level, 0.85 s at it, 1.3 s at 5 dB under it), the Simple one 20 ms (its
+        // attack is at once).
+        agcSettleTicks_ = (int)(1.0f * sr_ * kCtrlInv) + 1;
+        agcSettleSimpleTicks_ = (int)(0.020f * sr_ * kCtrlInv) + 1;
+        agcXfStep_      = (float)kCtrl / (0.100f * sr_);
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
         fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
@@ -1608,6 +1733,7 @@ private:
         fbLp_.reset();
         fbHp_ = edgeLp_ = dropLp_ = hsHeld_ = splat(0.0f);
         agcEnv_ = kRefLevel; agcGain_ = agcTarget_ = 1.0f; agcHold_ = 0; agcAmt_ = 0.0f; agcActive_ = false;
+        agcm_.reset(); agcMRun_ = agcBlend_ = false; agcSettle_ = 0; agcBInc_ = 0.0f;   // (agcB_: see readParams)
         edgeN1_ = edgeN2_ = edgeMuffle_ = 0.0f; edgeGain_ = 1.0f; edgeActive_ = false;
         hsPhase_ = 0.0f; hsLeft_ = 0; hsFrac_ = 0.0f; hsOn_ = false;
         fbState_ = 0; fbTicks_ = 0; staticAmp_ = 0.0f; fbMono_ = 0.0f;
@@ -1719,6 +1845,31 @@ private:
             x += (lo + hi - x) * satMix;
         }
         return x;
+    }
+
+    // The Modeled AGC for one sample, with the Simple one beside it while AGC Model is switched
+    // (agcB_: how much of the Modeled one is heard; the Simple one's lines as in process()). Out
+    // of line, like MicModel::process: the sample loop stays as it was for the Simple AGC.
+    __attribute__((noinline)) Stereo agcModeled(Stereo x)
+    {
+        Stereo simple = x;
+        if (agcActive_)
+        {
+            const Stereo a = vabs(x);
+            const float pk = maxf(a[0], a[1]);
+            if (pk > agcEnv_)
+            {
+                agcEnv_ = pk;
+                agcHold_ = agcHoldTicks_;
+                agcTarget_ = 1.0f + agcAmt_ * (clamp(kRefLevel / pk, 0.25f, 5.0f) - 1.0f);
+            }
+            agcGain_ += (agcTarget_ < agcGain_ ? 0.25f : 0.002f) * (agcTarget_ - agcGain_);
+            simple = x * agcGain_;
+        }
+        const float g = agcMRun_ ? agcm_.step(x) : 1.0f;
+        if (agcBInc_ == 0.0f && agcB_ == 1.0f) return x * g;
+        agcB_ += agcBInc_;
+        return simple + (x * g - simple) * agcB_;
     }
 
 public:
@@ -1887,9 +2038,10 @@ public:
             }
 
             // ----- deck: automatic level control -----------------------------
-            // A new peak pulls the gain down at once; controlTick() holds it there and then
-            // lets it creep back up.
-            if (agcActive_)
+            // Simple: a new peak pulls the gain down at once; controlTick() holds it there and
+            // then lets it creep back up. Modeled: see ModeledAgc and agcModeled().
+            if (__builtin_expect(agcBlend_, 0)) x = agcModeled(x);   // (the Simple one alone: below, as up to 1.5)
+            else if (agcActive_)
             {
                 const Stereo a = vabs(x);
                 const float pk = maxf(a[0], a[1]);
@@ -2324,6 +2476,12 @@ private:
             tgt_[cDrift]  = deck ? pct(kDrift) : 0.0f;
             tgt_[cBreath] = deck ? pct(kBreathing) : 0.0f;
             trackErr_     = deck ? pct(kTracking) : 0.0f;
+            // AGC Model: at a reset straight in; a switch while sound plays goes through
+            // controlTick (the new one settles unheard first, then a crossfade)
+            const bool wantM = getInt(kAgcModel) == 1;
+            if (groups == gAll) { agcB_ = agcBTo_ = wantM ? 1.0f : 0.0f; agcBInc_ = 0.0f; agcSettle_ = 0; }
+            else if (wantM != agcWantM_) agcSettle_ = wantM ? agcSettleTicks_ : agcSettleSimpleTicks_;
+            agcWantM_ = wantM;
         }
         if (groups & gNr)
         {
@@ -2360,6 +2518,29 @@ private:
         tgt_[gIdx]   = g;
         tgt_[mkIdx]  = kRefLevel / softClip(g * kRefLevel);
         tgt_[mixIdx] = clamp(amount * 6.0f, 0.0f, 1.0f);
+    }
+
+    // controlTick's part for the Modeled AGC and the crossfade between the two, out of line so the
+    // control tick (inlined into the sample loop) stays as small as it was.
+    __attribute__((noinline)) void agcModelTick(bool agcOn, float agcBWant)
+    {
+        // The Modeled one: off (and free) at 0 %. It starts from rest, as the deck does at the
+        // start of a recording; at 0 % its gain is exactly 1, so it stops without a step.
+        const bool agcM = agcOn && (agcB_ > 0.0f || agcBWant > 0.0f);
+        if (agcM && !agcMRun_) agcm_.reset();
+        agcMRun_ = agcM;
+        if (agcMRun_) agcm_.tick(agcAmt_);
+        // AGC Model switched while an AGC is heard: the new one settles unheard (agcSettle_,
+        // from readParams), then the sound crossfades to it. With neither heard, it switches at once.
+        agcB_ = agcBTo_;
+        if (!agcActive_ && !agcMRun_) { agcB_ = agcBTo_ = agcBWant; agcSettle_ = 0; }
+        else if (agcBTo_ != agcBWant)
+        {
+            if (agcSettle_ > 0) --agcSettle_;
+            else agcBTo_ = agcBWant > agcBTo_ ? minf(agcBTo_ + agcXfStep_, 1.0f) : maxf(agcBTo_ - agcXfStep_, 0.0f);
+        }
+        agcBInc_ = (agcBTo_ - agcB_) * kCtrlInv;
+        agcBlend_ = agcMRun_ || agcBInc_ != 0.0f || (agcB_ > 0.0f && agcB_ < 1.0f);
     }
 
     // ----- every 16 samples: smoothing, modulation, compressor gain -----------
@@ -2542,8 +2723,13 @@ private:
         // ----- deck ------------------------------------------------------------
         // AGC: after the last peak the gain holds for a second and a half, then creeps back
         // up over a few seconds and brings the background up with it.
+        // Each AGC runs while it is heard, or on its way in or out after AGC Model was switched
+        // (agcB_: how much of the Modeled one is heard; agcBTo_: where it is at the next tick).
+        // The Simple one runs exactly as up to 1.5 while it is the one in.
         agcAmt_ = cur_[cAgc];
-        agcActive_ = agcAmt_ > 0.0f || tgt_[cAgc] > 0.0f || std::fabs(agcGain_ - 1.0f) > 1.0e-3f;
+        const bool agcOn = agcAmt_ > 0.0f || tgt_[cAgc] > 0.0f;
+        const float agcBWant = agcWantM_ ? 1.0f : 0.0f;
+        agcActive_ = (agcB_ < 1.0f || agcBWant < 1.0f) && (agcOn || (agcB_ < 1.0f && std::fabs(agcGain_ - 1.0f) > 1.0e-3f));
         if (agcActive_)
         {
             if (agcHold_ > 0) --agcHold_;
@@ -2551,10 +2737,11 @@ private:
             agcTarget_ = 1.0f + agcAmt_ * (clamp(kRefLevel / agcEnv_, 0.25f, 5.0f) - 1.0f);
         }
         else { agcGain_ = agcTarget_ = 1.0f; agcEnv_ = kRefLevel; }
+        agcModelTick(agcOn, agcBWant);
         // The clip after the compressor is needed while something may turn the sound up, unless
         // the 2-band saturator, whose clippers have the same rail, is fully in. (With Sat Type on
         // VHS those clippers are not in the path, and Lo Sat and Hi Sat mean something else.)
-        boost_ = (agcActive_ || cur_[cMakeup] > 1.0f)
+        boost_ = (agcActive_ || agcMRun_ || cur_[cMakeup] > 1.0f)
               && !(!tape_ && ramp_[rSat].v == 1.0f && cur_[cLoMix] == 1.0f && cur_[cHiMix] == 1.0f);
 
         // Tracking: now and then the Hi-Fi carrier drops. A burst of static, the deck falls
@@ -2708,7 +2895,7 @@ private:
             addProgram(name, v);
         };
 
-        program("Home Recording", { {kAgc, 25}, {kDrift, 10} });
+        program("Home Recording", { {kAgcModel, 0}, {kAgc, 25}, {kDrift, 10} });
         // A new rental tape: clean, a trace of breathing, loses lock once in a long while.
         program("Fresh Rental", {
             {kDrive, 15}, {kWear, 8}, {kComp, 15}, {kHiCut, 12000}, {kHiSat, 20},
@@ -2719,7 +2906,7 @@ private:
             {kDrive, 45}, {kWear, 45}, {kComp, 45}, {kHiCut, 6000}, {kHighs, -8}, {kHiSat, 60}, {kLoSat, 35},
             {kWarp, 50}, {kFlutter, 45}, {kWow, 45}, {kFlutter2, 40}, {kLoCut, 100}, {kHiCut2, 7000},
             {kHum, 25}, {kHeadBuzz, 25}, {kHiss, 55}, {kCrackle, 30},
-            {kAgc, 40}, {kDrift, 35} });
+            {kAgcModel, 0}, {kAgc, 40}, {kDrift, 35} });
         program("Vaporwave Mall", {
             {kDrive, 30}, {kComp, 35}, {kHiCut, 7000}, {kWarp, 60}, {kRpm, 20}, {kShape, 50}, {kFlutter, 20},
             {kWow, 40}, {kWowRate, 0.4f}, {kHiss, 25}, {kCrackle, 10},
@@ -2730,7 +2917,7 @@ private:
             {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
             {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
             {kMicOn, 1}, {kMicModel, 0}, {kMicType, 0}, {kMicGain, 2},
-            {kAgc, 80}, {kDrift, 10} });
+            {kAgcModel, 0}, {kAgc, 80}, {kDrift, 10} });
         // A tape that will not track: buzz on the music, static, drops to the backup track.
         program("Tracking Error", {
             {kWarp, 70}, {kRpm, 90}, {kShape, 80}, {kFlutter, 60}, {kFlutRate, 16}, {kWow, 30},
@@ -2739,7 +2926,7 @@ private:
         program("Late Night TV", {
             {kDrive, 40}, {kWear, 35}, {kComp, 50}, {kHiCut, 5000}, {kWarp, 25}, {kLoCut, 180},
             {kHum, 40}, {kBuzz, 25}, {kHiss, 45}, {kMono, 1},
-            {kAgc, 30}, {kDrift, 15} });
+            {kAgcModel, 0}, {kAgc, 30}, {kDrift, 15} });
         program("Clean Widener", {
             {kDrive, 0}, {kWear, 0}, {kComp, 0}, {kHiCut, 18000}, {kSatOn, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000}, {kNoise, 0},
@@ -2755,21 +2942,21 @@ private:
             {kWow, 40}, {kWowRate, 0.5f}, {kFlutter2, 30}, {kFlut2Rate, 12}, {kLoCut, 150}, {kHiCut2, 6000},
             {kHum, 30}, {kBuzz, 15}, {kHeadBuzz, 35}, {kHiss, 50}, {kCrackle, 20}, {kNoise, 40}, {kNoisePos, 1},
             {kMono, 1}, {kDropouts, 25},
-            {kAgc, 75}, {kDrift, 40} });
+            {kAgcModel, 0}, {kAgc, 75}, {kDrift, 40} });
         // The machine ate the tape.
         program("Chewed Tape", {
             {kDrive, 35}, {kWear, 50}, {kComp, 45}, {kHiCut, 5500},
             {kWarp, 90}, {kRpm, 45}, {kShape, 100}, {kFlutter, 70}, {kFlutRate, 5},
             {kWow, 60}, {kWowRate, 1.5f}, {kFlutter2, 45}, {kFlut2Rate, 9}, {kHiCut2, 7000},
             {kHiss, 40}, {kCrackle, 50}, {kHeadBuzz, 20}, {kDropouts, 80},
-            {kAgc, 20}, {kDrift, 85} });
+            {kAgcModel, 0}, {kAgc, 20}, {kDrift, 85} });
         // A message left on a micro-cassette answering machine.
         program("Answer Machine", {
             {kDrive, 50}, {kWear, 30}, {kComp, 60}, {kHiCut, 3500}, {kHiSat, 50},
             {kWarp, 25}, {kRpm, 60}, {kFlutter, 40}, {kFlutRate, 11}, {kWow, 20}, {kLoCut, 300}, {kHiCut2, 4000},
             {kHum, 20}, {kHeadBuzz, 0}, {kHiss, 45}, {kCrackle, 10}, {kNoise, 40},
             {kMicOn, 1}, {kMicModel, 0}, {kMicType, 2}, {kMicGain, 3}, {kMono, 1},
-            {kAgc, 60} });
+            {kAgcModel, 0}, {kAgc, 60} });
         // Wide, slow and hazy, with hardly any noise.
         program("Dream Sequence", {
             {kDrive, 15}, {kTone, 10}, {kWear, 10}, {kComp, 30}, {kHiCut, 11000}, {kHiSat, 25},
@@ -2795,13 +2982,13 @@ private:
             {kDrive, 30}, {kWear, 30}, {kComp, 40}, {kHiCut, 6000},
             {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
             {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
-            {kAgc, 35}, {kDrift, 25} });
+            {kAgcModel, 0}, {kAgc, 35}, {kDrift, 25} });
         // A camcorder at the back of the hall: the level control rides everything.
         program("Wedding Video", {
             {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
             {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
             {kMicOn, 1}, {kMicModel, 0}, {kMicType, 0}, {kMicGain, 1},
-            {kAgc, 90}, {kDrift, 20} });
+            {kAgcModel, 0}, {kAgc, 90}, {kDrift, 20} });
         // The best VHS could do, the Hi-Fi track on a good day: wide, steady, quiet, breathing a little.
         program("Hi-Fi Master", {
             {kDrive, 15}, {kWear, 0}, {kComp, 25}, {kHiCut, 17000}, {kLoSat, 15}, {kHighs, 0}, {kHiSat, 15},
@@ -2812,18 +2999,18 @@ private:
         program("Edge Damage", {
             {kDrive, 25}, {kHiCut, 8000}, {kWarp, 30}, {kShape, 60}, {kFlutter, 30},
             {kHiss, 40}, {kCrackle, 25}, {kDropouts, 30},
-            {kAgc, 15}, {kDrift, 95} });
+            {kAgcModel, 0}, {kAgc, 15}, {kDrift, 95} });
         // Taped from the crowd on a boombox and copied a few times.
         program("Bootleg Concert", {
             {kDrive, 60}, {kWear, 25}, {kComp, 50}, {kHiCut, 7000}, {kLoSat, 45}, {kHiSat, 50},
             {kWarp, 30}, {kFlutter, 35}, {kHum, 15}, {kHiss, 50}, {kNoise, 35}, {kNoisePos, 1},
             {kMicOn, 1}, {kMicModel, 0}, {kMicType, 3}, {kMicGain, 2}, {kMono, 1},
-            {kAgc, 65}, {kDrift, 30} });
+            {kAgcModel, 0}, {kAgc, 65}, {kDrift, 30} });
         // Local cable studio: hum, buzz and a level control doing its best.
         program("Public Access", {
             {kDrive, 35}, {kComp, 40}, {kHiCut, 7000}, {kWarp, 20}, {kFlutter, 20}, {kLoCut, 120},
             {kHum, 50}, {kBuzz, 35}, {kHeadBuzz, 25}, {kHiss, 40}, {kMono, 1},
-            {kAgc, 50}, {kDrift, 10} });
+            {kAgcModel, 0}, {kAgc, 50}, {kDrift, 10} });
 
         // Everything neutral: the sound passes through unchanged. A blank tape to start from.
         program("Init", {
@@ -2841,14 +3028,14 @@ private:
             {kWarp, 45}, {kRpm, 40}, {kShape, 70}, {kFlutter, 50}, {kFlutRate, 13}, {kScrape, 65},
             {kWow, 25}, {kFlutter2, 25}, {kHiCut2, 8000},
             {kHum, 10}, {kHiss, 45}, {kCrackle, 20}, {kDropouts, 45},
-            {kAgc, 20}, {kDrift, 35} });
+            {kAgcModel, 0}, {kAgc, 20}, {kDrift, 35} });
         // The living-room set: a small speaker, mains hum and the whistle of the picture tube.
         program("Tube TV", {
             {kDrive, 30}, {kWear, 15}, {kComp, 45}, {kHiCut, 7500},
             {kWarp, 15}, {kFlutter, 20}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 140}, {kHiCut2, 9000},
             {kHum, 30}, {kBuzz, 25}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 5}, {kWhistle, 60},
             {kMicOn, 1}, {kMicModel, 0}, {kMicType, 3}, {kMono, 1},
-            {kAgc, 25}, {kDrift, 10} });
+            {kAgcModel, 0}, {kAgc, 25}, {kDrift, 10} });
         // A good Hi-Fi deck with tired heads: buzz that rides on the music and sinks in the
         // pauses, the right channel crackling, now and then a moment on the backup track.
         program("Worn Heads", {
@@ -2861,7 +3048,7 @@ private:
             {kDrive, 30}, {kWear, 35}, {kComp, 40}, {kHiCut, 5000}, {kHighs, -6}, {kHiSat, 45},
             {kWarp, 30}, {kFlutter, 30}, {kScrape, 30}, {kWow, 20}, {kFlutter2, 15}, {kLoCut, 80}, {kHiCut2, 7000},
             {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
-            {kAgc, 25}, {kDrift, 45} });
+            {kAgcModel, 0}, {kAgc, 25}, {kDrift, 45} });
 
         // Added in 1.5, after the others: no older program uses NR or Sat Type = VHS.
         // An early stereo rental: the narrow linear tracks with noise reduction on both
@@ -2901,7 +3088,7 @@ private:
             {kSatType, 1}, {kLoSat, 80}, {kHiSat, 30}, {kSplit, 4000}, {kHighs, -4},
             {kWarp, 50}, {kFlutter, 45}, {kWow, 45}, {kFlutter2, 40}, {kLoCut, 100}, {kHiCut2, 7000},
             {kHum, 25}, {kHeadBuzz, 25}, {kHiss, 55}, {kCrackle, 30},
-            {kAgc, 40}, {kDrift, 35} });
+            {kAgcModel, 0}, {kAgc, 40}, {kDrift, 35} });
         // SP, recorded hot, dull from too much bias.
         program("VHS - Training Video", {
             {kDrive, 40}, {kTone, -15}, {kWear, 40}, {kComp, 35}, {kHiCut, 4500},
@@ -2910,14 +3097,14 @@ private:
             {kWow, 40}, {kWowRate, 0.5f}, {kFlutter2, 30}, {kFlut2Rate, 12}, {kLoCut, 150}, {kHiCut2, 6000},
             {kHum, 30}, {kBuzz, 15}, {kHeadBuzz, 35}, {kHiss, 50}, {kCrackle, 20}, {kNoise, 40}, {kNoisePos, 1},
             {kMono, 1}, {kDropouts, 25},
-            {kAgc, 75}, {kDrift, 40} });
+            {kAgcModel, 0}, {kAgc, 75}, {kDrift, 40} });
         // EP, bias right, a little over reference level.
         program("VHS - Six Hour Tape", {
             {kDrive, 30}, {kWear, 30}, {kComp, 40}, {kHiCut, 6000},
             {kSatType, 1}, {kLoSat, 60}, {kHiSat, 100}, {kHighs, 0},
             {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
             {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
-            {kAgc, 35}, {kDrift, 25} });
+            {kAgcModel, 0}, {kAgc, 35}, {kDrift, 25} });
         // Too little bias: brighter and grittier.
         program("VHS - Sticky Tape", {
             {kDrive, 30}, {kWear, 45}, {kComp, 40}, {kHiCut, 6500},
@@ -2925,14 +3112,14 @@ private:
             {kWarp, 45}, {kRpm, 40}, {kShape, 70}, {kFlutter, 50}, {kFlutRate, 13}, {kScrape, 65},
             {kWow, 25}, {kFlutter2, 25}, {kHiCut2, 8000},
             {kHum, 10}, {kHiss, 45}, {kCrackle, 20}, {kDropouts, 45},
-            {kAgc, 20}, {kDrift, 35} });
+            {kAgcModel, 0}, {kAgc, 20}, {kDrift, 35} });
         // Too much bias: the highs give way sooner still.
         program("VHS - Dirty Heads", {
             {kDrive, 30}, {kWear, 35}, {kComp, 40}, {kHiCut, 5000},
             {kSatType, 1}, {kLoSat, 60}, {kHiSat, 40}, {kSplit, 6000}, {kHighs, -4},
             {kWarp, 30}, {kFlutter, 30}, {kScrape, 30}, {kWow, 20}, {kFlutter2, 15}, {kLoCut, 80}, {kHiCut2, 7000},
             {kHum, 15}, {kHiss, 50}, {kCrackle, 15}, {kDropouts, 75},
-            {kAgc, 25}, {kDrift, 45} });
+            {kAgcModel, 0}, {kAgc, 25}, {kDrift, 45} });
 
         // Added in 1.6, after the others: the five programs with the Mic on, with the modelled
         // microphones (Mic Model = Modeled). Everything else is as in the program they are named
@@ -2943,31 +3130,31 @@ private:
             {kDrive, 35}, {kComp, 30}, {kHiCut, 8000}, {kWarp, 20}, {kFlutter, 35},
             {kHiss, 45}, {kHeadBuzz, 30}, {kNoisePos, 1}, {kNoise, 35},
             {kMicOn, 1}, {kMicModel, 1}, {kMicType, 0}, {kMicGain, 2},
-            {kAgc, 80}, {kDrift, 10} });
+            {kAgcModel, 0}, {kAgc, 80}, {kDrift, 10} });
         // Into a carbon handset, down the line.
         program("Mic - Answer Machine", {
             {kDrive, 50}, {kWear, 30}, {kComp, 60}, {kHiCut, 3500}, {kHiSat, 50},
             {kWarp, 25}, {kRpm, 60}, {kFlutter, 40}, {kFlutRate, 11}, {kWow, 20}, {kLoCut, 300}, {kHiCut2, 4000},
             {kHum, 20}, {kHeadBuzz, 0}, {kHiss, 45}, {kCrackle, 10}, {kNoise, 40},
             {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 3}, {kMono, 1},
-            {kAgc, 60} });
+            {kAgcModel, 0}, {kAgc, 60} });
         program("Mic - Wedding Video", {
             {kDrive, 30}, {kComp, 20}, {kHiCut, 8500}, {kWarp, 20}, {kFlutter, 25},
             {kHum, 25}, {kHeadBuzz, 15}, {kHiss, 40}, {kNoise, 40}, {kNoisePos, 1},
             {kMicOn, 1}, {kMicModel, 1}, {kMicType, 0}, {kMicGain, 1},
-            {kAgc, 90}, {kDrift, 20} });
+            {kAgcModel, 0}, {kAgc, 90}, {kDrift, 20} });
         // The radio cassette's own level control rides the crowd.
         program("Mic - Bootleg Concert", {
             {kDrive, 60}, {kWear, 25}, {kComp, 50}, {kHiCut, 7000}, {kLoSat, 45}, {kHiSat, 50},
             {kWarp, 30}, {kFlutter, 35}, {kHum, 15}, {kHiss, 50}, {kNoise, 35}, {kNoisePos, 1},
             {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMicGain, 2}, {kMono, 1},
-            {kAgc, 65}, {kDrift, 30} });
+            {kAgcModel, 0}, {kAgc, 65}, {kDrift, 30} });
         program("Mic - Tube TV", {
             {kDrive, 30}, {kWear, 15}, {kComp, 45}, {kHiCut, 7500},
             {kWarp, 15}, {kFlutter, 20}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 140}, {kHiCut2, 9000},
             {kHum, 30}, {kBuzz, 25}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 5}, {kWhistle, 60},
             {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMono, 1},
-            {kAgc, 25}, {kDrift, 10} });
+            {kAgcModel, 0}, {kAgc, 25}, {kDrift, 10} });
     }
 
     // ----- state ------------------------------------------------------------------
@@ -3083,7 +3270,7 @@ private:
     float hissDyn_ = 1.0f;
     float breathEnv_ = 0, breathAtk_ = 0.07f, breathRel_ = 0.005f;   // input level as the noise reduction sees it
     Stereo inMax_ = {0.0f, 0.0f};                                    // loudest input sample since the last tick
-    bool  agcActive_ = false;
+    bool  agcActive_ = false, agcBlend_ = false, agcMRun_ = false;   // (the last two: see agcModeled; here, in the padding)
     float agcAmt_ = 0, agcEnv_ = kRefLevel, agcGain_ = 1.0f, agcTarget_ = 1.0f, agcRelease_ = 0.0001f;
     int   agcHold_ = 0, agcHoldTicks_ = 4000;
     bool  edgeActive_ = false;
@@ -3110,6 +3297,14 @@ private:
     // filters go with it.
     SimpleMic simple_;
     MicModel mic_;
+
+    // AGC Model = Modeled (1.6), after the mic for the same reason: the members before keep
+    // their places
+    ModeledAgc agcm_;
+    bool  agcWantM_ = true;
+    float agcB_ = 1.0f, agcBTo_ = 1.0f, agcBInc_ = 0.0f;   // how much of the Modeled one is heard, now and at the next tick
+    float agcXfStep_ = 0.01f;                             // crossfade step per tick
+    int   agcSettle_ = 0, agcSettleTicks_ = 2757, agcSettleSimpleTicks_ = 56;   // ticks the new one settles unheard before the crossfade
 };
 
 // The framework's dispatcher with five additions:
@@ -3117,7 +3312,7 @@ private:
 //    every value a program lists, and the parameters added after Animation have to be in that
 //    list, so the program is first told the present position of the two switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
-//    their resting values before any state is loaded (HQ off, Mic Model Simple: a new instance
+//    their resting values before any state is loaded (HQ off, Mic Model and AGC Model Simple: a new instance
 //    has them otherwise), so such a state sounds as it was saved whatever this instance was
 //    doing before; a newer state then sets them.
 //  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was.
@@ -3143,8 +3338,8 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     for (int i = 0; i < kNumParams; ++i) before[i] = p->getNormalised(i);
     if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
-        for (int i = kScrape; i < kNumParams; ++i)   // a state from before HQ existed: off; from before Mic Model: Simple
-            p->set(i, i == kHq || i == kMicModel ? 0.0f : p->param(i).def);
+        for (int i = kScrape; i < kNumParams; ++i)   // a state from before HQ existed: off; from before Mic Model or AGC Model: Simple
+            p->set(i, i == kHq || i == kMicModel || i == kAgcModel ? 0.0f : p->param(i).def);
     const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
     if (opcode == effSetChunk && result == 0)
         for (int i = 0; i < kNumParams; ++i) if (isSetting(i)) p->setNormalised(i, before[i]);
