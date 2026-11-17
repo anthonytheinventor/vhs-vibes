@@ -840,7 +840,7 @@
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "4 50 64 40"
+                                    "bounds": "5 28 130 32"
                                 }
                             },
                             {
@@ -869,7 +869,7 @@
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "72 50 64 40"
+                                    "bounds": "5 66 130 32"
                                 }
                             },
                             {
@@ -898,7 +898,7 @@
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "38 96 64 40"
+                                    "bounds": "5 104 130 32"
                                 }
                             }
                         ]
@@ -1917,7 +1917,7 @@
             {
                 "key": "Parameter 55",
                 "value": [
-                    "2-Band",
+                    "Simple",
                     "VHS",
                     "Hi-Fi"
                 ]
@@ -1934,6 +1934,13 @@
                 "value": [
                     "Simple",
                     "Modeled"
+                ]
+            },
+            {
+                "key": "Parameter 58",
+                "value": [
+                    "Off",
+                    "On"
                 ]
             }
         ],
@@ -2059,8 +2066,8 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "grid.png",
-                                    "numFrames": 24,
-                                    "handleName": "Parameter 42"
+                                    "numFrames": 96,
+                                    "handleName": "Parameter 62"
                                 }
                             },
                             "handle remapping": {
@@ -2086,8 +2093,8 @@
                                     "version": 2,
                                     "imageType": "FilmStrip",
                                     "colour": "0",
-                                    "image": "sun_tape.png",
-                                    "numFrames": 16,
+                                    "image": "sun.png",
+                                    "numFrames": 48,
                                     "handleName": "Parameter 43"
                                 }
                             },
@@ -2102,6 +2109,144 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "976 38 230 108"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "title",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "title_tape.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "976 38 230 73"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "haze",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "haze.png",
+                                    "numFrames": 6,
+                                    "handleName": "Parameter 63"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "snow",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "snow.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 59"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "head",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "head.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 60"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 187 334 20"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "streak",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "streak.png",
+                                    "numFrames": 15,
+                                    "handleName": "Parameter 61"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
                             }
                         },
                         {
@@ -2897,8 +3042,8 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "grid.png",
-                                    "numFrames": 24,
-                                    "handleName": "Parameter 42"
+                                    "numFrames": 96,
+                                    "handleName": "Parameter 62"
                                 }
                             },
                             "handle remapping": {
@@ -2924,8 +3069,8 @@
                                     "version": 2,
                                     "imageType": "FilmStrip",
                                     "colour": "0",
-                                    "image": "sun_wobble.png",
-                                    "numFrames": 16,
+                                    "image": "sun.png",
+                                    "numFrames": 48,
                                     "handleName": "Parameter 43"
                                 }
                             },
@@ -2940,6 +3085,144 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "976 38 230 108"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "title",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "title_wobble.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "976 38 230 73"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "haze",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "haze.png",
+                                    "numFrames": 6,
+                                    "handleName": "Parameter 63"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "snow",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "snow.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 59"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "head",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "head.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 60"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 187 334 20"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "streak",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "streak.png",
+                                    "numFrames": 15,
+                                    "handleName": "Parameter 61"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
                             }
                         },
                         {
@@ -3445,8 +3728,8 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "grid.png",
-                                    "numFrames": 24,
-                                    "handleName": "Parameter 42"
+                                    "numFrames": 96,
+                                    "handleName": "Parameter 62"
                                 }
                             },
                             "handle remapping": {
@@ -3472,8 +3755,8 @@
                                     "version": 2,
                                     "imageType": "FilmStrip",
                                     "colour": "0",
-                                    "image": "sun_noise.png",
-                                    "numFrames": 16,
+                                    "image": "sun.png",
+                                    "numFrames": 48,
                                     "handleName": "Parameter 43"
                                 }
                             },
@@ -3488,6 +3771,144 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "976 38 230 108"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "title",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "title_noise.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "976 38 230 73"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "haze",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "haze.png",
+                                    "numFrames": 6,
+                                    "handleName": "Parameter 63"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "snow",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "snow.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 59"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "head",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "head.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 60"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 187 334 20"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "streak",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "streak.png",
+                                    "numFrames": 15,
+                                    "handleName": "Parameter 61"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
                             }
                         },
                         {
@@ -3964,8 +4385,8 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "grid.png",
-                                    "numFrames": 24,
-                                    "handleName": "Parameter 42"
+                                    "numFrames": 96,
+                                    "handleName": "Parameter 62"
                                 }
                             },
                             "handle remapping": {
@@ -3991,8 +4412,8 @@
                                     "version": 2,
                                     "imageType": "FilmStrip",
                                     "colour": "0",
-                                    "image": "sun_input.png",
-                                    "numFrames": 16,
+                                    "image": "sun.png",
+                                    "numFrames": 48,
                                     "handleName": "Parameter 43"
                                 }
                             },
@@ -4007,6 +4428,144 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "976 38 230 108"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "title",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "title_input.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "976 38 230 73"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "haze",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "haze.png",
+                                    "numFrames": 6,
+                                    "handleName": "Parameter 63"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "snow",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "snow.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 59"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "head",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "head.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 60"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 187 334 20"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "streak",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "streak.png",
+                                    "numFrames": 15,
+                                    "handleName": "Parameter 61"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
                             }
                         },
                         {
@@ -4396,8 +4955,8 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "grid.png",
-                                    "numFrames": 24,
-                                    "handleName": "Parameter 42"
+                                    "numFrames": 96,
+                                    "handleName": "Parameter 62"
                                 }
                             },
                             "handle remapping": {
@@ -4423,8 +4982,8 @@
                                     "version": 2,
                                     "imageType": "FilmStrip",
                                     "colour": "0",
-                                    "image": "sun_deck.png",
-                                    "numFrames": 16,
+                                    "image": "sun.png",
+                                    "numFrames": 48,
                                     "handleName": "Parameter 43"
                                 }
                             },
@@ -4439,6 +4998,144 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "976 38 230 108"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "title",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "title_deck.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "976 38 230 73"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "haze",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "haze.png",
+                                    "numFrames": 6,
+                                    "handleName": "Parameter 63"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "snow",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "snow.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 59"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "head",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "head.png",
+                                    "numFrames": 13,
+                                    "handleName": "Parameter 60"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 187 334 20"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "streak",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "FilmStrip",
+                                    "colour": "0",
+                                    "image": "streak.png",
+                                    "numFrames": 15,
+                                    "handleName": "Parameter 61"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "883 25 334 182"
                             }
                         },
                         {
@@ -4729,6 +5426,35 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "80 444 140 152"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "Visual Vibes",
+                                "type": "vvToggle",
+                                "data": {
+                                    "version": 1,
+                                    "handleName": "Data"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": [
+                                    {
+                                        "key": "Data",
+                                        "value": "Parameter 58"
+                                    }
+                                ]
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "Yes",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "220 444 140 152"
                             }
                         },
                         {

@@ -295,9 +295,9 @@ int main()
         const float fresh = raw->getParameter(raw, kAgcModel);
         raw->dispatcher(raw, effClose, 0, 0, nullptr, 0.0f);
         const mpc::Param& p = fx.plug()->param(kAgcModel);
-        check(fx.e->numParams == 58 && kAgcModel == 57 && p.id == "agc_model" && p.name == "AGC Model" && p.choices.size() == 2
+        check(fx.e->numParams == 64 && kAgcModel == 57 && p.id == "agc_model" && p.name == "AGC Model" && p.choices.size() == 2
               && p.choices[0] == "Simple" && p.choices[1] == "Modeled" && fresh == 1.0f && groupOf(kAgcModel) == groupOf(kAgc),
-              "58 parameters; the last is agc_model, \"AGC Model\", Simple / Modeled, resting on Modeled, in the deck group");
+              "64 parameters; number 57 (the last of 1.6) is agc_model, \"AGC Model\", Simple / Modeled, resting on Modeled, in the deck group");
         int withAgc = 0, simple = 0, others = 0;
         for (int i = 0; i < fx.e->numPrograms; ++i)
         {

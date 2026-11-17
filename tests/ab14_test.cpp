@@ -1,5 +1,5 @@
 // The 1.4 comparison: the 25 programs that existed in 1.4.0 must come out exactly as 1.4.0 made
-// them, with every switch added since at rest (HQ off, B-Type NR off, Sat Type 2-Band, Mic Model
+// them, with every switch added since at rest (HQ off, B-Type NR off, Sat Type Simple, Mic Model
 // Simple). This file is built twice, against two sources (run.sh takes the 1.4.0 one from git):
 //
 //   ab14_test write -              renders and writes the raw output to stdout (the 1.4.0 build)

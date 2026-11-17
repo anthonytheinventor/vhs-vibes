@@ -59,6 +59,15 @@ elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE160 "-DSRC=\"$OUT/
 else
   "$OUT/hifi_test" "$OUT/state160.bin" || status=1
 fi
-# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, ab14_test and hifi_test end with PASS or FAIL;
+# Visual Vibes and the picture effects' meters (1.7, see visual_test.cpp); it loads the same 1.6.0 state.
+echo "===== visual_test ====="
+if ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/visual_test.cpp" -o "$OUT/visual_test" 2> "$OUT/visual_test.log"; then
+  grep -E "error" -A6 "$OUT/visual_test.log" | head -30
+  echo "FAIL"
+  status=1
+else
+  "$OUT/visual_test" "$OUT/state160.bin" || status=1
+fi
+# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, ab14_test, hifi_test and visual_test end with PASS or FAIL;
 # deck_test and levels_test print measurements to read.
 exit $status

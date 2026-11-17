@@ -5,7 +5,7 @@
 #include <mutex>
 
 static std::mutex g_m;
-static int g_settings = 0, g_meter = 0, g_io = 0;
+static int g_settings = 0, g_meter = 0, g_fx = 0, g_io = 0;   // g_fx: the picture effects' meters (1.7)
 static float g_last[kNumParams];
 static bool g_seen[kNumParams];
 
@@ -16,12 +16,12 @@ static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32 index, VstIntPtr, vo
     if (opcode == audioMasterIOChanged) { ++g_io; return 1; }
     if (opcode == audioMasterAutomate && index >= 0 && index < kNumParams)
     {
-        if (index == kVisReel || index == kVisLevel) ++g_meter; else ++g_settings;
+        if (index == kVisReel || index == kVisLevel) ++g_meter; else if (!isSetting(index)) ++g_fx; else ++g_settings;
         g_last[index] = opt; g_seen[index] = true;
     }
     return 0;
 }
-static void clearCounts() { std::lock_guard<std::mutex> l(g_m); g_settings = g_meter = g_io = 0; for (bool& b : g_seen) b = false; }
+static void clearCounts() { std::lock_guard<std::mutex> l(g_m); g_settings = g_meter = g_fx = g_io = 0; for (bool& b : g_seen) b = false; }
 static void ms(int n) { std::this_thread::sleep_for(std::chrono::milliseconds(n)); }
 
 // n blocks of a 220 Hz tone (amp 0 = silence), paced in real time so the helper thread runs alongside
@@ -48,8 +48,8 @@ int main()
     AEffect* e = VSTPluginMain(hostCb);
     plug = static_cast<mpc::Plugin*>(e->object);
     ms(300);
-    { std::lock_guard<std::mutex> l(g_m); std::printf("   host calls in the first 300 ms after creation: %d\n", g_settings + g_meter + g_io); }
-    check(g_settings + g_meter + g_io == 0, "the helper thread stays silent until the plugin is started");
+    { std::lock_guard<std::mutex> l(g_m); std::printf("   host calls in the first 300 ms after creation: %d\n", g_settings + g_meter + g_fx + g_io); }
+    check(g_settings + g_meter + g_fx + g_io == 0, "the helper thread stays silent until the plugin is started");
 
     e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
     e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
@@ -81,13 +81,14 @@ int main()
 
     std::printf("4. Meters and the Animation switch\n");
     clearCounts(); play(e, 700, 0.4f);
-    { std::lock_guard<std::mutex> l(g_m); std::printf("   tone for about 2 s with Animation on: %d meter notifications\n", g_meter); }
+    { std::lock_guard<std::mutex> l(g_m); std::printf("   tone for about 2 s with Animation on: %d meter notifications, %d for the picture effects\n", g_meter, g_fx); }
     check(g_meter >= 20 && g_meter <= 90, "between 20 and 90 meter notifications in 2 s (20 a second at most, two meters)");
+    check(g_fx <= 5 * 45, "the picture effects' five meters: 20 notifications a second each at most");
     plug->set(kAnimate, 0.0f);
-    play(e, 20, 0.4f);
+    play(e, 20, 0.4f); ms(120);
     clearCounts(); play(e, 350, 0.4f);
-    { std::lock_guard<std::mutex> l(g_m); std::printf("   tone for about 1 s with Animation off: %d meter notifications\n", g_meter); }
-    check(g_meter == 0, "no meter notifications with Animation off");
+    { std::lock_guard<std::mutex> l(g_m); std::printf("   tone for about 1 s with Animation off: %d meter notifications\n", g_meter + g_fx); }
+    check(g_meter + g_fx == 0, "no meter notifications with Animation off");
     e->dispatcher(e, effSetProgram, 0, 3, nullptr, 0.0f);
     play(e, 8, 0.0f); ms(150);
     check(e->getParameter(e, kAnimate) < 0.5f, "choosing a program leaves the Animation switch alone");

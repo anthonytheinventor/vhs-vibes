@@ -538,16 +538,16 @@ int main(int argc, char** argv)
     {
         Fx fx;
         const mpc::Param& p = fx.plug()->param(kSatType);
-        static const char* ids[58] = { "out", "drive", "tone", "wear", "comp", "hicut", "sat_on", "lows", "losat", "split", "highs", "hisat",
+        static const char* ids[64] = { "out", "drive", "tone", "wear", "comp", "hicut", "sat_on", "lows", "losat", "split", "highs", "hisat",
             "warp", "rpm", "shape", "flutter", "flut_hz", "hum", "buzz", "headbuzz", "hiss", "crackle", "noise", "noise_pos",
             "wow", "wow_hz", "flutter2", "flut2_hz", "locut", "hicut2", "cho_on", "cho_mix", "cho_hz", "cho_ms", "cho_width",
             "mic_on", "mic_type", "mic_gain", "mono", "dropouts", "wobble_on", "noise_on", "vis_reel", "vis_level",
             "deck_on", "agc", "drift", "tracking", "breathing", "mix", "animate", "scrape", "whistle", "hq", "nr", "sat_type",
-            "mic_model", "agc_model" };
-        bool same = fx.e->numParams == 58 && fx.e->numPrograms == 44;
-        for (int i = 0; i < 58 && same; ++i) same = fx.plug()->param(i).id == ids[i];
-        check(same, "58 parameters with their ids in their places, 44 programs");
-        check(p.choices.size() == 3 && p.choices[0] == "2-Band" && p.choices[1] == "VHS" && p.choices[2] == "Hi-Fi" && p.def == 0.0f, "Sat Type: 2-Band, VHS, Hi-Fi; 2-Band in a new instance");
+            "mic_model", "agc_model", "visual_vibes", "vis_snow", "vis_head", "vis_streak", "vis_grid", "vis_haze" };
+        bool same = fx.e->numParams == 64 && fx.e->numPrograms == 44;
+        for (int i = 0; i < 64 && same; ++i) same = fx.plug()->param(i).id == ids[i];
+        check(same, "64 parameters with their ids in their places, 44 programs");
+        check(p.choices.size() == 3 && p.choices[0] == "Simple" && p.choices[1] == "VHS" && p.choices[2] == "Hi-Fi" && p.def == 0.0f, "Sat Type: Simple, VHS, Hi-Fi; Simple in a new instance");
         bool none = true;
         for (int k = 0; k < 44; ++k) { fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f); none = none && (fx.get(kSatType) == 2.0f) == (k >= 39); }
         check(none, "the 39 older programs do not use Hi-Fi (they keep their sound); the five after them do");
@@ -615,7 +615,7 @@ int main(int argc, char** argv)
         {
             const auto a = render([](Fx& f) { f.set(kSatOn, 0); f.set(kHiss, 60); f.set(kCrackle, 40); f.set(kDeckOn, 1); f.set(kTracking, 50); f.set(kNr, 3); }, 0.2);
             const auto b = render([](Fx& f) { f.set(kSatOn, 0); f.set(kSatType, 0); f.set(kHiss, 60); f.set(kCrackle, 40); f.set(kDeckOn, 1); f.set(kTracking, 50); f.set(kNr, 3); }, 0.2);
-            check(a == b, "with the Saturator off, Hi-Fi sounds exactly as 2-Band does (bit for bit): the seven knobs and B-Type NR their own");
+            check(a == b, "with the Saturator off, Hi-Fi sounds exactly as Simple does (bit for bit): the seven knobs and B-Type NR their own");
         }
         {
             const auto a = render([](Fx& f) { f.set(kNr, 3); f.set(kHiSat, 30); }, 0.2), b = render([](Fx& f) { f.set(kNr, 0); f.set(kHiSat, 30); }, 0.2);
@@ -640,7 +640,7 @@ int main(int argc, char** argv)
                 std::vector<float> o; f.play(0.5f, 0.0, 0.0, nullptr); f.play(2.0f, 0.0, 0.0, &o);
                 double s = 0; for (float v : o) s += (double)v * v; rms[k] = dB(std::sqrt(s / o.size()) / kRefLevel);
             }
-            std::printf("   silence in, Hiss, Crackle, Head Buzz at 100 %%: Hi-Fi %.1f dB re reference, 2-Band %.1f dB\n", rms[0], rms[1]);
+            std::printf("   silence in, Hiss, Crackle, Head Buzz at 100 %%: Hi-Fi %.1f dB re reference, Simple %.1f dB\n", rms[0], rms[1]);
             check(rms[0] < rms[1] - 10.0, "the other types' noise stages rest while Hi-Fi is on");
         }
     }

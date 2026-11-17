@@ -18,16 +18,23 @@ value read-outs under the knobs are live (Nexa). The baked text is rendered from
 installed with Windows / Office (MS Gothic, Times New Roman, Brush Script MT). No font files
 are shipped, only the pictures.
 
-Moving parts: the plugin has two read-only "meter" parameters, Reel and Level. Film strips
-bound to them animate the picture: the two reel hubs and the neon grid follow Reel, the sun
-on the page sticker follows Level. REEL_FRAMES and LEVEL_FRAMES must equal kReelFrames and
-kLevelFrames in src/VHSVibes.cpp.
+Moving parts: the plugin has read-only "meter" parameters whose value is a frame of a film strip.
+Reel turns the two reel hubs; Level is the sun on the page sticker (its level, in the colour of
+Sat Type's step: LEVEL_FRAMES frames per colour). Since 1.7 the sticker also shows what the sound
+is doing, as a worn video picture would (the "picture effects", on with the Visual Vibes switch):
+Grid is the neon grid, scrolling as Reel turns and bent by the wobble; Snow, Head, Streak and Haze
+are transparent strips laid over the picture (snow for the hiss, the head switch strip along the
+bottom, dropout streaks and the tracking band, the Hi Cut haze), frame 0 of each showing nothing.
+The plugin decides every frame (see notifierMain in src/VHSVibes.cpp); the frame counts are read
+from that file's kXxx constants, so the two cannot disagree. The words on the sticker are a picture
+of their own over the sun, so one sun strip serves every page.
 """
 
 import json
 import math
 import os
 import random
+import re
 import sys
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
@@ -59,16 +66,46 @@ STICKER = (880, 22, 1220, 210)     # page sticker (sunset)
 KNOB = 92                          # knob film-strip frame size
 KNOB_FRAMES = 127
 
-# Animated parts (see the note at the top).
-REEL_FRAMES = 24                   # == kReelFrames: one tooth-to-tooth step of the hub (60 degrees)
-LEVEL_FRAMES = 16                  # == kLevelFrames
+# Animated parts (see the note at the top). The frame counts come from the plugin (plugin_frames).
 REEL_PARAM, LEVEL_PARAM = "Reel", "Level"
+GRID_PARAM, SNOW_PARAM, HEAD_PARAM, STREAK_PARAM, HAZE_PARAM = "Grid", "Snow", "Head", "Streak", "Haze"
+METERS = (REEL_PARAM, LEVEL_PARAM, SNOW_PARAM, HEAD_PARAM, STREAK_PARAM, GRID_PARAM, HAZE_PARAM)
+SOURCE = os.path.join(PROJECT, "src", "VHSVibes.cpp")
+
+
+def plugin_frames():
+    """The film strips' frame counts, from the kXxx constants in the plugin's source."""
+    with open(SOURCE, "r", encoding="utf-8") as fh:
+        k = {m.group(1): int(m.group(2)) for m in re.finditer(r"^constexpr int (k\w+)\s*=\s*(\d+);", fh.read(), re.M)}
+    f = {"reel": k["kReelFrames"], "level": k["kLevelFrames"], "colours": k["kSunColours"],
+         "snow_steps": k["kSnowSteps"], "snow_vars": k["kSnowVariants"], "head_steps": k["kHeadSteps"],
+         "head_vars": k["kHeadVariants"], "streaks": k["kStreakVariants"], "bands": k["kBandSteps"],
+         "wobble_steps": k["kWobbleSteps"], "haze_steps": k["kHazeSteps"]}
+    f["sun"] = f["level"] * f["colours"]
+    f["grid"] = (1 + f["wobble_steps"]) * f["reel"]
+    f["snow"] = 1 + f["snow_steps"] * f["snow_vars"]
+    f["head"] = 1 + f["head_steps"] * f["head_vars"]
+    f["streak"] = 1 + f["streaks"] + f["bands"]
+    f["haze"] = 1 + f["haze_steps"]
+    return f
+
+
+FR = plugin_frames()
+REEL_FRAMES = FR["reel"]           # one tooth-to-tooth step of the hub (60 degrees), and one line spacing of the grid
+LEVEL_FRAMES = FR["level"]
 HUB = 70                           # hub film-strip frame size
 REEL_CENTRES = [(WINDOW[0] + 100, (WINDOW[1] + WINDOW[3]) // 2), (WINDOW[0] + 300, (WINDOW[1] + WINDOW[3]) // 2)]
 STICKER_W, STICKER_H = STICKER[2] - STICKER[0], STICKER[3] - STICKER[1]
 HORIZON = int(STICKER_H * 0.66)    # y of the horizon inside the sticker
 SUN_BOX = (96, 16, 326, HORIZON)   # part of the sticker the sun film strip covers
 GRID_BOX = (0, HORIZON, STICKER_W, STICKER_H)   # part the grid film strip covers
+# The picture effects stay inside the sticker's paper border (3 px, rounded): the picture itself
+FX_BOX = (3, 3, STICKER_W - 3, STICKER_H - 3)
+HEAD_H = 20                                                           # the head switch strip's box, along the bottom
+HEAD_BOX = (3, STICKER_H - 3 - HEAD_H, STICKER_W - 3, STICKER_H - 3)
+GRID_BEND = [0.0, 3.25, 5.35, 8.15]   # px the grid's lines swing at the bottom edge, per wobble step (0: straight)
+FX_STRENGTH = [0.25, 0.55, 0.95]      # snow and head strip strength per step (as the approved mock-ups)
+HAZE = (120, 92, 150)                 # the haze's colour; its opacity per step: haze_alpha()
 
 # --------------------------------------------------------------------------------------------
 # Palette
@@ -95,6 +132,13 @@ MINT_PALE = (176, 255, 216)
 EMBER = (255, 98, 36)
 AMBER = (255, 164, 48)
 SUN_PALE = (255, 240, 150)
+# The sun in each of Sat Type's colours (1.7, with Visual Vibes): top and bottom of its gradient, the
+# halo, and the colours the top and bottom go towards when it is loud. Simple's is the sun as it was.
+SUN_COLOURS = [
+    (YELLOW, PINK, (255, 120, 200), (255, 255, 255), (255, 200, 230)),   # Simple (and Visual Vibes off)
+    (MINT_PALE, MINT, MINT, (255, 255, 255), MINT_PALE),                  # VHS
+    (YELLOW, EMBER, AMBER, (255, 255, 255), SUN_PALE),                    # Hi-Fi
+]
 
 ARGB_CYAN = "ff00f0ff"
 ARGB_BG = "ff0d0221"
@@ -146,7 +190,7 @@ PAGES = [
     {"name": "DECK", "jp": "デッキ", "file": "bg_deck.png", "blocks": [
         ("DECK", "デッキ", ["Deck On", "AGC", "Drift", "AGC Model"]),
         ("HI-FI TRACK", "ハイファイ", ["Tracking", "Breathing", None, None]),
-        ("SCREEN", "スクリーン", ["Animation", None, None, None]),
+        ("SCREEN", "スクリーン", ["Animation", "Visual Vibes", None, None]),
         ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
     ]},
 ]
@@ -161,7 +205,7 @@ CAPTIONS = {
     "Hi Cut 2": "HI CUT", "Noise": "MASTER", "Noise Pos": "POSITION",
     "Sat Type": "TYPE",
     "Wobble On": "WOBBLE", "Noise On": "NOISE",
-    "Deck On": "POWER",
+    "Deck On": "POWER", "Visual Vibes": "VISUAL VIBES",
 }
 BIPOLAR = {"Tilt", "Lows", "Mic Gain"}
 # The 16 parameters on the knobs in Program (track) Q-Link mode, Q-Link 1..16.
@@ -238,7 +282,9 @@ def knob_file(bipolar, mode=None):
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
 SEGMENTS = {
     "Noise Pos": ((64, 40), [(4, 50), (72, 50)], ["POST", "PRE"]),
-    "Sat Type": ((64, 40), [(4, 50), (72, 50), (38, 96)], ["2-BAND", "VHS", "HI-FI"]),   # three do not fit in a row: HI-FI under the two (1.7)
+    # three alike in one column (1.7), as wide as Mic Model's and at its x; 32 px high with 6 px between
+    # them so all three fit between the caption and the slot's bottom edge (28 .. 136)
+    "Sat Type": ((130, 32), [(5, 28), (5, 66), (5, 104)], ["SIMPLE", "VHS", "HI-FI"]),
     "Mic Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # stacked, as Mic Type beside it: MODELED does not fit 64 px
     "AGC Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # the same, beside AGC
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
@@ -459,9 +505,12 @@ def draw_window(img):
     d.rounded_rectangle(sc((x0, y0, x1, y1)), sc(15), outline=(120, 80, 190), width=sc(1))
 
 
-def sunset(phase, level):
+def sunset(phase, level, colour=0, bend=0.0):
     """The striped sun over a neon grid, sticker-sized, supersampled.
-    phase 0..1 scrolls the grid by one line spacing; level 0..1 lights the sun."""
+    phase 0..1 scrolls the grid by one line spacing; level 0..1 lights the sun; colour picks the
+    sun's colours (SUN_COLOURS); bend swings the grid's long lines into a wave that travels with the
+    scroll (px at the bottom edge, 0: straight)."""
+    top_c, bot_c, halo_c, top_hot, bot_hot = SUN_COLOURS[colour]
     w, h = STICKER_W, STICKER_H
     horizon = HORIZON
     art = gradient(sc((w, h)), (22, 6, 58), (150, 40, 150))
@@ -476,7 +525,7 @@ def sunset(phase, level):
     if level > 0.0:
         halo = Image.new("RGBA", art.size, (0, 0, 0, 0))
         rr = r + 3 + 13 * level
-        ImageDraw.Draw(halo).ellipse(sc((cx - rr, cy - rr, cx + rr, cy + rr)), fill=(255, 120, 200, int(60 + 170 * level)))
+        ImageDraw.Draw(halo).ellipse(sc((cx - rr, cy - rr, cx + rr, cy + rr)), fill=halo_c + (int(60 + 170 * level),))
         halo = halo.filter(ImageFilter.GaussianBlur(sc(3 + 5 * level)))
         a = art.convert("RGBA")
         a.alpha_composite(halo)
@@ -484,8 +533,8 @@ def sunset(phase, level):
         d = ImageDraw.Draw(art)
     # sun: dim when quiet, hot when loud
     bright = 0.5 + 0.5 * level
-    top = lerp_col(tuple(int(c * bright) for c in YELLOW), (255, 255, 255), 0.35 * level * level)
-    bot = lerp_col(tuple(int(c * bright) for c in PINK), (255, 200, 230), 0.25 * level * level)
+    top = lerp_col(tuple(int(c * bright) for c in top_c), top_hot, 0.35 * level * level)
+    bot = lerp_col(tuple(int(c * bright) for c in bot_c), bot_hot, 0.25 * level * level)
     sun = gradient(sc((2 * r, 2 * r)), top, bot)
     sm = Image.new("L", sun.size, 0)
     md = ImageDraw.Draw(sm)
@@ -504,7 +553,17 @@ def sunset(phase, level):
         if horizon + 1 < yy < h:
             gd.line(sc((0, yy, w, yy)), fill=(0, 240, 255, 230), width=sc(1))
     for k in range(-14, 15):
-        gd.line(sc((cx + k * 9, horizon, cx + k * 62, h)), fill=(255, 46, 151, 230), width=sc(1))
+        if bend == 0.0:
+            gd.line(sc((cx + k * 9, horizon, cx + k * 62, h)), fill=(255, 46, 151, 230), width=sc(1))
+            continue
+        # the wave grows towards the viewer and moves down the line as the grid scrolls, one
+        # wavelength per 1 / 1.6 of the depth: at phase 1 it is where it was at 0, as the grid is
+        pts = []
+        for j in range(33):
+            u = j / 32.0
+            dx = bend * (0.25 + u) * math.sin(2.0 * math.pi * (1.6 * u - phase))
+            pts.append(sc((cx + k * 9 + (k * 62 - k * 9) * u + dx, horizon + (h - horizon) * u)))
+        gd.line(pts, fill=(255, 46, 151, 230), width=sc(1), joint="curve")
     gd.line(sc((0, horizon, w, horizon)), fill=(0, 240, 255, 255), width=sc(1.5))
     crop = Image.new("L", art.size, 0)
     ImageDraw.Draw(crop).rectangle(sc((0, horizon, w, h)), fill=255)
@@ -515,42 +574,237 @@ def sunset(phase, level):
     return a.convert("RGB")
 
 
-def sticker_image(page, number, phase=0.0, level=0.0):
-    """The finished page sticker (sunset, page name, border, rounded corners) at final size, RGBA.
-    The background and the sun / grid film strips are all cut from this, so they line up exactly."""
-    art = sunset(phase, level)
-    d = ImageDraw.Draw(art)
-    d.rounded_rectangle(sc((0, 0, STICKER_W, STICKER_H)), sc(10), outline=PAPER, width=sc(3))
-    gradient_text(art, (12, 6), page["name"], font(F_TIMES, 50), (255, 255, 255), (150, 240, 255),
-                  shadow=PINK, shadow_off=(3, 3))
-    d = ImageDraw.Draw(art)
-    draw_text(d, (20, 70), page["jp"], font(F_GOTHIC, 17), CYAN, 3.0)
-    draw_text(d, (STICKER_W - 14, 12), "%02d／%02d" % (number, len(PAGES)), font(F_GOTHIC, 14), PAPER, 1.0, "r")
+def sticker_art(phase=0.0, level=0.0, colour=0, bend=0.0):
+    """The page sticker without its words (sunset, border, rounded corners) at final size, RGBA."""
+    art = sunset(phase, level, colour, bend)
+    ImageDraw.Draw(art).rounded_rectangle(sc((0, 0, STICKER_W, STICKER_H)), sc(10), outline=PAPER, width=sc(3))
     out = art.convert("RGBA")
     out.putalpha(rounded_mask(art.size, sc(10)))
     return out.resize((STICKER_W, STICKER_H), Image.LANCZOS)
 
 
+def draw_words(art, page, number):
+    """The page's name, its katakana and its number, on the supersampled sticker."""
+    gradient_text(art, (12, 6), page["name"], font(F_TIMES, 50), (255, 255, 255), (150, 240, 255),
+                  shadow=PINK, shadow_off=(3, 3))
+    d = ImageDraw.Draw(art)
+    draw_text(d, (20, 70), page["jp"], font(F_GOTHIC, 17), CYAN, 3.0)
+    draw_text(d, (STICKER_W - 14, 12), "%02d／%02d" % (number, len(PAGES)), font(F_GOTHIC, 14), PAPER, 1.0, "r")
+
+
+_words = {}
+
+
+def words_layer(page, number):
+    """The words alone, at final size, RGBA: drawn once on black and once on white, the difference
+    is their coverage (and on black, their colour times it), so the edges blend over any sun."""
+    if number not in _words:
+        on = [Image.new("RGB", sc((STICKER_W, STICKER_H)), c) for c in ((0, 0, 0), (255, 255, 255))]
+        for im in on:
+            draw_words(im, page, number)
+        cover = ImageChops.invert(ImageChops.subtract(on[1], on[0]).convert("L"))
+        layer = Image.merge("RGBa", on[0].split() + (cover,))
+        _words[number] = layer.resize((STICKER_W, STICKER_H), Image.LANCZOS).convert("RGBA")
+    return _words[number]
+
+
+def sticker_image(page, number, phase=0.0, level=0.0):
+    """The finished page sticker at final size, RGBA: its picture with its words on top. The
+    background and every film strip are cut from the same pictures, so they line up exactly."""
+    out = sticker_art(phase, level)
+    out.alpha_composite(words_layer(page, number))
+    return out
+
+
+def stack(frames):
+    """Pictures of one width (frames, or strips of them), top to bottom: a film strip."""
+    strip = Image.new("RGBA", (frames[0].width, sum(fr.height for fr in frames)), (0, 0, 0, 0))
+    y = 0
+    for fr in frames:
+        strip.paste(fr, (0, y))
+        y += fr.height
+    return strip
+
+
 def make_grid_strip():
-    """REEL_FRAMES frames of the ground with the grid lines rolling towards the viewer."""
-    x0, y0, x1, y1 = GRID_BOX
-    strip = Image.new("RGBA", (x1 - x0, (y1 - y0) * REEL_FRAMES), (0, 0, 0, 0))
-    for k in range(REEL_FRAMES):
-        strip.paste(sticker_image(PAGES[0], 1, k / REEL_FRAMES, 0.0).crop(GRID_BOX), (0, k * (y1 - y0)))
-    return strip
+    """The ground with the grid lines rolling towards the viewer: REEL_FRAMES frames straight, then
+    as many again for each wobble step, its long lines bent (Grid = step x REEL_FRAMES + Reel's frame).
+    The bent ones are cut down to 256 colours (still RGBA; a channel moves by 14 at most), which makes
+    them under half the size; the straight ones stay exactly as the grid has always been."""
+    straight = stack([sticker_art(k / REEL_FRAMES, 0.0).crop(GRID_BOX) for k in range(REEL_FRAMES)])
+    bent = stack([sticker_art(k / REEL_FRAMES, 0.0, 0, bend).crop(GRID_BOX)
+                  for bend in GRID_BEND[1:1 + FR["wobble_steps"]] for k in range(REEL_FRAMES)])
+    bent = bent.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE).convert("RGBA")
+    return stack([straight, bent])
 
 
-def make_sun_strip(page, number):
-    """LEVEL_FRAMES frames of the sun from dim to blazing (this page's title is in the picture)."""
-    x0, y0, x1, y1 = SUN_BOX
-    strip = Image.new("RGBA", (x1 - x0, (y1 - y0) * LEVEL_FRAMES), (0, 0, 0, 0))
-    for k in range(LEVEL_FRAMES):
-        strip.paste(sticker_image(page, number, 0.0, k / (LEVEL_FRAMES - 1)).crop(SUN_BOX), (0, k * (y1 - y0)))
-    return strip
+def make_sun_strip():
+    """The sun from dim to blazing, LEVEL_FRAMES frames in each of its colours (Level = colour x
+    LEVEL_FRAMES + level). Without the words: those are laid over it (title_file)."""
+    return stack([sticker_art(0.0, k / (LEVEL_FRAMES - 1), c).crop(SUN_BOX)
+                  for c in range(FR["colours"]) for k in range(LEVEL_FRAMES)])
 
 
-def sun_file(page):
-    return "sun_%s.png" % page["name"].lower()
+def title_box(page, number):
+    """Where the words cross the sun's strip: the part of words_layer laid over it."""
+    bb = words_layer(page, number).getchannel("A").getbbox()
+    return (max(bb[0], SUN_BOX[0]), max(bb[1], SUN_BOX[1]), min(bb[2], SUN_BOX[2]), min(bb[3], SUN_BOX[3]))
+
+
+def title_file(page):
+    return "title_%s.png" % page["name"].lower()
+
+
+# --------------------------------------------------------------------------------------------
+# The picture effects (1.7): transparent strips over the sticker's picture, frame 0 empty
+# --------------------------------------------------------------------------------------------
+_inside = []
+
+
+def inside_mask():
+    """The picture inside the paper border, sticker-sized (L): the effects are cut to it."""
+    if not _inside:
+        m = Image.new("L", sc((STICKER_W, STICKER_H)), 0)
+        ImageDraw.Draw(m).rounded_rectangle(sc(FX_BOX), sc(7), fill=255)
+        _inside.append(m.resize((STICKER_W, STICKER_H), Image.LANCZOS))
+    return _inside[0]
+
+
+def fx_cut(layer, box):
+    """A sticker-sized effect layer, kept inside the border, cut to its box."""
+    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), inside_mask()))
+    return layer.crop(box)
+
+
+def noise(rng, size, levels=4):
+    """Random greys in `levels` steps (few values: the strips compress far better)."""
+    step = 256 // levels
+    return Image.frombytes("L", size, rng.randbytes(size[0] * size[1])).point(lambda v: min(255, (v // step) * 255 // (levels - 1)))
+
+
+def tint(grey, r=0.92, g=0.85):
+    """A grey picture tinted lavender, as the snow on the mock-ups."""
+    return Image.merge("RGB", (grey.point(lambda v: int(v * r)), grey.point(lambda v: int(v * g)), grey))
+
+
+def snow_layer(s, rng):
+    """Snow at strength s: a fine grain, specks of white, and the stars turned to static (stronger in the sky)."""
+    size = (STICKER_W, STICKER_H)
+    sky = Image.new("L", size, 255)
+    ImageDraw.Draw(sky).rectangle((0, HORIZON, STICKER_W, STICKER_H), fill=110)
+    layer = tint(noise(rng, size)).convert("RGBA")
+    layer.putalpha(sky.point(lambda v: int(v * (0.05 + 0.20 * s))))
+    specks = Image.frombytes("L", size, rng.randbytes(size[0] * size[1])).point(lambda v: 255 if v < (0.006 + 0.075 * s) * 255 else 0)
+    spk = tint(noise(rng, size, 3).point(lambda v: 150 + v * 105 // 255), 0.95, 0.9).convert("RGBA")
+    spk.putalpha(ImageChops.multiply(specks, sky))
+    layer.alpha_composite(spk)
+    d = ImageDraw.Draw(layer)
+    cols = [(255, 255, 255), (255, 255, 255), CYAN, PINK_HI, YELLOW, PURPLE]
+    for _ in range(int(15 + 320 * s)):
+        x, y = rng.randrange(4, STICKER_W - 4), rng.randrange(4, HORIZON - 3)
+        c = rng.choice(cols) + (255,)
+        d.point([(x, y), (x + 1, y)] if rng.random() < 0.25 else [(x, y)], fill=c)
+    return fx_cut(layer, FX_BOX)
+
+
+def head_layer(s, rng):
+    """The head switch strip at strength s: the bottom rows torn sideways, noisy and pale, with a
+    ragged bright edge where the heads hand over. The torn rows are the picture itself (at a random
+    moment of the grid's scroll), as on the mock-ups."""
+    pic = sticker_art(rng.randrange(REEL_FRAMES) / REEL_FRAMES, 0.0).convert("RGB")
+    n = int(4 + 11 * s) + rng.randint(-1, 2)
+    y0 = STICKER_H - 3 - n
+    base = rng.uniform(0.6, 1.4)
+    for i, y in enumerate(range(y0, STICKER_H - 3)):
+        dx = int(round((2 + (i + 1) / n * (6 + 26 * s)) * base * rng.uniform(0.75, 1.25)))
+        if rng.random() < 0.15:
+            dx = -dx // 2
+        row = pic.crop((0, y, STICKER_W, y + 1))
+        pic.paste((60, 40, 90), (0, y, STICKER_W, y + 1))
+        pic.paste(row, (dx, y))
+    strip = pic.crop((0, y0, STICKER_W, STICKER_H - 3))
+    nz = noise(rng, (STICKER_W // 2, STICKER_H - 3 - y0)).resize(strip.size, Image.NEAREST)
+    strip = Image.blend(strip, tint(nz, 0.9, 0.85), 0.25 + 0.35 * s)
+    strip = Image.blend(strip.convert("L").convert("RGB"), strip, 0.5)   # half the colour
+    layer = Image.new("RGBA", (STICKER_W, STICKER_H), (0, 0, 0, 0))
+    layer.paste(strip, (0, y0))
+    d = ImageDraw.Draw(layer)
+    x = rng.randrange(0, 40)
+    while x < STICKER_W:
+        ln = rng.randrange(6, 50)
+        if rng.random() < 0.6:
+            d.line((x, y0, x + ln, y0), fill=(235, 225, 255, 255))
+        x += ln + rng.randrange(2, 30)
+    return fx_cut(layer, HEAD_BOX)
+
+
+def streaks(d, rng, n, s=0.7):
+    """n white streaks fading to the right, here and there a second, shorter one under it."""
+    for _ in range(n):
+        y = rng.randrange(6, STICKER_H - 6)
+        ln = rng.randrange(12, int(30 + 140 * s))
+        x0 = rng.randrange(-20, STICKER_W - 10)
+        for j in range(0, ln, 3):
+            d.line((x0 + j, y, x0 + j + 3, y), fill=(255, 255, 255, int(250 * (1 - j / ln) ** 1.3)))
+        if rng.random() < 0.35:
+            d.line((x0, y + 1, x0 + ln // 3, y + 1), fill=(255, 255, 255, 140))
+
+
+def streak_layer(rng):
+    """A dropout: two to five white streaks across the picture."""
+    layer = Image.new("RGBA", (STICKER_W, STICKER_H), (0, 0, 0, 0))
+    streaks(ImageDraw.Draw(layer), rng, rng.randint(2, 5), 0.9)
+    return fx_cut(layer, FX_BOX)
+
+
+def band_layer(pos, rng):
+    """The tracking band at height `pos` (0 at the bottom): a band of noise across the picture with
+    torn coloured smears in it, densest in its middle, and a streak or two beside it."""
+    s = 0.95
+    bh = int(8 + 10 * s)
+    yc = (STICKER_H - 3) - (pos + 0.5) * (STICKER_H - 6) / FR["bands"]
+    y0 = int(yc - bh / 2)
+    layer = Image.new("RGBA", (STICKER_W, STICKER_H), (0, 0, 0, 0))
+    band = tint(noise(rng, (STICKER_W // 5, bh)).resize((STICKER_W, bh), Image.NEAREST), 0.95, 0.9).convert("RGBA")
+    a = Image.new("L", (1, bh))
+    a.putdata([int(255 * (0.45 + 0.5 * math.sin(math.pi * (y + 0.5) / bh))) for y in range(bh)])
+    band.putalpha(a.resize((STICKER_W, bh)))
+    d = ImageDraw.Draw(band)
+    for _ in range(rng.randint(3, 6)):   # what is left of the picture, torn sideways
+        y = rng.randrange(1, bh - 1)
+        x = rng.randrange(-30, STICKER_W - 20)
+        d.line((x, y, x + rng.randrange(20, 120), y), fill=rng.choice((PINK, CYAN, PURPLE, YELLOW)) + (200,))
+    layer.alpha_composite(band, (0, y0))   # (y0 is 5 at the top height, the band ends 6 px above the bottom at the lowest)
+    streaks(ImageDraw.Draw(layer), rng, rng.randint(1, 2))
+    return fx_cut(layer, FX_BOX)
+
+
+def haze_alpha(step):
+    return int(255 * (0.10 + 0.07 * step))   # 17 % to 45 %
+
+
+def haze_layer(step):
+    layer = Image.new("RGBA", (STICKER_W, STICKER_H), HAZE + (haze_alpha(step),))
+    return fx_cut(layer, FX_BOX)
+
+
+def empty(box):
+    return Image.new("RGBA", (box[2] - box[0], box[3] - box[1]), (0, 0, 0, 0))
+
+
+def make_fx_strips():
+    """The four effect strips (file -> image). Seeded, so a run draws the same pictures."""
+    rng = random.Random(1987)
+    snow = [empty(FX_BOX)] + [snow_layer(FX_STRENGTH[st], rng) for st in range(FR["snow_steps"]) for _ in range(FR["snow_vars"])]
+    head = [empty(HEAD_BOX)] + [head_layer(FX_STRENGTH[st], rng) for st in range(FR["head_steps"]) for _ in range(FR["head_vars"])]
+    streak = [empty(FX_BOX)] + [streak_layer(rng) for _ in range(FR["streaks"])] + [band_layer(p, rng) for p in range(FR["bands"])]
+    haze = [empty(FX_BOX)] + [haze_layer(k) for k in range(1, FR["haze_steps"] + 1)]
+    return {"snow.png": stack(snow), "head.png": stack(head), "streak.png": stack(streak), "haze.png": stack(haze)}
+
+
+# film strip -> (meter, frames, box inside the sticker), in the order they are laid over the picture
+FX_STRIPS = [("haze.png", HAZE_PARAM, "haze", FX_BOX), ("snow.png", SNOW_PARAM, "snow", FX_BOX),
+             ("head.png", HEAD_PARAM, "head", HEAD_BOX), ("streak.png", STREAK_PARAM, "streak", FX_BOX)]
 
 
 def decor(img, box, jp):
@@ -887,15 +1141,22 @@ def film_entry(name, image, frames, handle, bounds):
     return G.entry(name, "Image", data, "%d %d %d %d" % bounds, "No", "Show", "Always")
 
 
-def animation_entries(page, params):
-    reel, level = params[REEL_PARAM].handle, params[LEVEL_PARAM].handle
+def sticker_bounds(box):
+    """A box inside the sticker as page bounds (x, y, w, h)."""
+    return (STICKER[0] + box[0], STICKER[1] + box[1], box[2] - box[0], box[3] - box[1])
+
+
+def animation_entries(page, number, params):
+    """The moving parts, in drawing order: reel hubs, grid, sun, the page's words over the sun, the effects."""
     out = []
     for i, (cx, cy) in enumerate(REEL_CENTRES):
-        out.append(film_entry("reel %d" % i, "reel_hub.png", REEL_FRAMES, reel, (cx - HUB // 2, cy - HUB // 2, HUB, HUB)))
-    gx0, gy0, gx1, gy1 = GRID_BOX
-    out.append(film_entry("grid", "grid.png", REEL_FRAMES, reel, (STICKER[0] + gx0, STICKER[1] + gy0, gx1 - gx0, gy1 - gy0)))
-    sx0, sy0, sx1, sy1 = SUN_BOX
-    out.append(film_entry("sun", sun_file(page), LEVEL_FRAMES, level, (STICKER[0] + sx0, STICKER[1] + sy0, sx1 - sx0, sy1 - sy0)))
+        out.append(film_entry("reel %d" % i, "reel_hub.png", REEL_FRAMES, params[REEL_PARAM].handle, (cx - HUB // 2, cy - HUB // 2, HUB, HUB)))
+    out.append(film_entry("grid", "grid.png", FR["grid"], params[GRID_PARAM].handle, sticker_bounds(GRID_BOX)))
+    out.append(film_entry("sun", "sun.png", FR["sun"], params[LEVEL_PARAM].handle, sticker_bounds(SUN_BOX)))
+    words = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", title_file(page)))
+    out.append(G.entry("title", "Image", words, "%d %d %d %d" % sticker_bounds(title_box(page, number)), "No", "Show", "Always"))
+    for fname, meter, key, box in FX_STRIPS:
+        out.append(film_entry(key, fname, FR[key], params[meter].handle, sticker_bounds(box)))
     return out
 
 
@@ -929,7 +1190,7 @@ def build_tui(params):
     for ti, page in enumerate(PAGES):
         bg = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", page["file"]))
         children = [G.entry("background", "Image", bg, "0 0 %d %d" % (W, H), "No", "Show", "Always")]
-        children += animation_entries(page, params)
+        children += animation_entries(page, ti + 1, params)
         for m in MODES:
             for b, i, span, name in iter_controls(page):
                 if name in m["knobs"]:
@@ -995,25 +1256,34 @@ def build_qlinks(params):
 # --------------------------------------------------------------------------------------------
 # Preview: what a page will roughly look like on the MPC (values at their defaults)
 # --------------------------------------------------------------------------------------------
-def make_preview(page, bg, params, images, step=0, displays=None):
-    """`step` sets MODE_PARAM (and so the knob colours and captions); every other value is its default.
-    The read-outs are params.json's (taken with every parameter at its default) unless `displays`
-    (name -> text, as the plugin shows it in that mode) says otherwise."""
+PREVIEW_FX = {"grid": 9, "sun": 12}   # the moving parts frozen at a lively moment; the effects at frame 0
+
+
+def frame_of(strip, k, frames):
+    h = strip.height // frames
+    return strip.crop((0, k * h, strip.width, (k + 1) * h))
+
+
+def make_preview(page, number, bg, params, images, step=0, displays=None, fx=None, values=None):
+    """`step` sets MODE_PARAM (and so the knob colours and captions); every other value is its default
+    unless `values` (name -> position 0..1) says otherwise. The read-outs are params.json's (taken with
+    every parameter at its default) unless `displays` (name -> text) says otherwise. `fx` (name -> frame:
+    grid, sun, snow, head, streak, haze) sets the moving parts, as the plugin's meters would."""
     img = bg.convert("RGBA")
     steps = mode_steps(params)
     mode = mode_at(step)
+    fx = dict(PREVIEW_FX, **(fx or {}))
     if mode:
         for b, i, span, name in iter_controls(page):
             if name in mode["knobs"]:
                 img.alpha_composite(images[swap_file(name, mode)].convert("RGBA"), (cell_x(b, i), block_row(b) + SLOT_DY))
-    # the animated parts, frozen at a lively moment
     for cx, cy in REEL_CENTRES:
-        img.alpha_composite(images["reel_hub.png"].crop((0, 7 * HUB, HUB, 8 * HUB)), (cx - HUB // 2, cy - HUB // 2))
-    gh = GRID_BOX[3] - GRID_BOX[1]
-    img.alpha_composite(images["grid.png"].crop((0, 9 * gh, STICKER_W, 10 * gh)), (STICKER[0], STICKER[1] + GRID_BOX[1]))
-    sh = SUN_BOX[3] - SUN_BOX[1]
-    img.alpha_composite(images[sun_file(page)].crop((0, 12 * sh, SUN_BOX[2] - SUN_BOX[0], 13 * sh)),
-                        (STICKER[0] + SUN_BOX[0], STICKER[1] + SUN_BOX[1]))
+        img.alpha_composite(frame_of(images["reel_hub.png"], 7, REEL_FRAMES), (cx - HUB // 2, cy - HUB // 2))
+    img.alpha_composite(frame_of(images["grid.png"], fx["grid"], FR["grid"]), sticker_bounds(GRID_BOX)[:2])
+    img.alpha_composite(frame_of(images["sun.png"], fx["sun"], FR["sun"]), sticker_bounds(SUN_BOX)[:2])
+    img.alpha_composite(images[title_file(page)], sticker_bounds(title_box(page, number))[:2])
+    for fname, _, key, box in FX_STRIPS:
+        img.alpha_composite(frame_of(images[fname], fx.get(key, 0), FR[key]), sticker_bounds(box)[:2])
     d = ImageDraw.Draw(img)
     try:
         vf = ImageFont.truetype(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Windows\Fonts\Roboto-Bold.ttf"), 17)
@@ -1025,6 +1295,8 @@ def make_preview(page, bg, params, images, step=0, displays=None):
         t = p.default if p.default is not None else 0.0
         if name == MODE_PARAM:
             t = step / (steps - 1)
+        elif values and name in values:
+            t = values[name]
         if p.kind == "bool":
             img.alpha_composite(images["toggle_on.png" if t >= 0.5 else "toggle_off.png"], (x + TOGGLE_POS[0], y + TOGGLE_POS[1]))
         elif p.kind == "choice":
@@ -1043,6 +1315,44 @@ def make_preview(page, bg, params, images, step=0, displays=None):
     return img.convert("RGB")
 
 
+def fx_previews(page, number, bg, params, images):
+    """The picture effects on a page (build/preview/fx_*.png), and fx_sheet.png: the stickers alone, 3x."""
+    V = FR["snow_vars"]
+    heavy, mid = 1 + 2 * V, 1 + V                       # the first variant of the top and the middle step
+    hicut = math.log(1400.0 / 1000.0) / math.log(18.0)  # Hi Cut at 1.4 kHz (its knob runs 1 to 18 kHz, log)
+    shots = [
+        ("clean", "clean (or Visual Vibes off)", {}, 0, None, None),
+        ("hiss", "heavy hiss", {"snow": heavy}, 0, None, None),
+        ("head", "Head Buzz high", {"head": 1 + 2 * FR["head_vars"]}, 0, None, None),
+        ("dropout", "a dropout", {"streak": 1}, 0, None, None),
+        ("tracking", "tracking lost: the band", {"streak": 1 + FR["streaks"] + 3}, 0, None, None),
+        ("wobble", "wobble high", {"grid": FR["wobble_steps"] * REEL_FRAMES + 9}, 0, None, None),
+        ("hicut", "Hi Cut 1.4 kHz", {"haze": FR["haze_steps"]}, 0, {"Hi Cut": hicut}, {"Hi Cut": "1.4 kHz"}),
+        ("sun_vhs", "VHS: mint sun", {"sun": LEVEL_FRAMES + 12}, 1, None, None),
+        ("sun_hifi", "Hi-Fi: orange sun", {"sun": 2 * LEVEL_FRAMES + 12}, 2, None, None),
+        ("worn", "worn tape, VHS", {"snow": mid + 1, "head": 1 + FR["head_vars"] + 2, "streak": 2,
+                                    "grid": 2 * REEL_FRAMES + 9, "haze": 2, "sun": LEVEL_FRAMES + 12}, 1, None, None),
+    ]
+    stickers = []
+    for key, label, fx, step, values, displays in shots:
+        dfile = os.path.join(PROJECT, "build", "displays_%s.json" % (mode_at(step) or {}).get("key", ""))
+        if displays is None and os.path.isfile(dfile):   # the mode's read-outs, as for the pages below
+            with open(dfile, "r", encoding="utf-8") as fh:
+                displays = json.load(fh)
+        pic = make_preview(page, number, bg, params, images, step, displays, fx, values)
+        pic.save(os.path.join(PREVIEW, "fx_%s.png" % key))
+        stickers.append((label, pic.crop(STICKER).resize((STICKER_W * 3, STICKER_H * 3), Image.NEAREST)))
+    cols, gap, lh = 2, 24, 30
+    sheet = Image.new("RGB", (cols * (STICKER_W * 3 + gap) + gap, (len(stickers) + cols - 1) // cols * (STICKER_H * 3 + lh + gap) + gap), (18, 10, 30))
+    d = ImageDraw.Draw(sheet)
+    for i, (label, im) in enumerate(stickers):
+        x = gap + (i % cols) * (STICKER_W * 3 + gap)
+        y = gap + (i // cols) * (STICKER_H * 3 + lh + gap)
+        d.text((x, y), label, font=ImageFont.truetype(FONTS + "arialbd.ttf", 20), fill=(235, 230, 250))
+        sheet.paste(im, (x, y + lh))
+    sheet.save(os.path.join(PREVIEW, "fx_sheet.png"))
+
+
 # --------------------------------------------------------------------------------------------
 def main():
     if not os.path.isfile(PARAMS):
@@ -1054,10 +1364,10 @@ def main():
             if name not in params:
                 sys.exit('make_skin: page %s uses unknown parameter "%s"' % (page["name"], name))
     shown = {name for page in PAGES for _, _, _, name in iter_controls(page)}
-    for name in (REEL_PARAM, LEVEL_PARAM):
+    for name in METERS:
         if name not in params:
             sys.exit('make_skin: the plugin has no "%s" parameter (needed for the animation)' % name)
-    missing = [p.name for p in plist if p.name not in shown and p.name not in (REEL_PARAM, LEVEL_PARAM)]
+    missing = [p.name for p in plist if p.name not in shown and p.name not in METERS]
     if missing:
         print("make_skin: NOTE: parameters not on any page: " + ", ".join(missing))
 
@@ -1089,8 +1399,10 @@ def main():
             images[seg_file(name, i, False)] = make_segment(size, cap, False)
     images["reel_hub.png"] = make_hub_strip()
     images["grid.png"] = make_grid_strip()
+    images["sun.png"] = make_sun_strip()
     for n, page in enumerate(PAGES, 1):
-        images[sun_file(page)] = make_sun_strip(page, n)
+        images[title_file(page)] = words_layer(page, n).crop(title_box(page, n))
+    images.update(make_fx_strips())
     for fname, im in images.items():
         im.save(os.path.join(SKINS, fname), optimize=True)
 
@@ -1111,7 +1423,9 @@ def main():
                 images[swap_file(name, m)] = alt.crop((x, y, x + CELL_W * span, y + CAPTION_H))
                 images[swap_file(name, m)].save(os.path.join(SKINS, swap_file(name, m)), optimize=True)
         stem = "page_%d_%s" % (n, page["name"].lower())
-        make_preview(page, bg, params, images).save(os.path.join(PREVIEW, stem + ".png"))
+        make_preview(page, n, bg, params, images).save(os.path.join(PREVIEW, stem + ".png"))
+        if n == 1:
+            fx_previews(page, n, bg, params, images)
         # and the page as it looks in each mode that changes something on it. The plugin words some read-outs
         # differently in a mode; build/displays_<key>.json (name -> text), if there, supplies them
         # (write it by asking the native build for its read-outs with the switch on that step).
@@ -1123,7 +1437,9 @@ def main():
                 if os.path.isfile(dfile):
                     with open(dfile, "r", encoding="utf-8") as fh:
                         displays = json.load(fh)
-                make_preview(page, bg, params, images, m["step"], displays).save(os.path.join(PREVIEW, "%s_%s.png" % (stem, m["key"])))
+                # (the sun in the mode's colour, as Visual Vibes shows it)
+                make_preview(page, n, bg, params, images, m["step"], displays, {"sun": m["step"] * LEVEL_FRAMES + 12}) \
+                    .save(os.path.join(PREVIEW, "%s_%s.png" % (stem, m["key"])))
 
     with open(os.path.join(SKINS, "TUI.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write(G.dump_json(build_tui(params)) + "\n")

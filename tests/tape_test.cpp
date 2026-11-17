@@ -141,7 +141,7 @@ int main()
         fx.e->dispatcher(fx.e, effGetProgramNameIndexed, 27, 0, name, 0.0f);
         fx.e->dispatcher(fx.e, effSetProgram, 0, 27, nullptr, 0.0f);
         check(std::strcmp(name, "SP Tape") == 0 && fx.get(kSatType) == 1.0f && fx.e->numPrograms == 44, "44 programs; SP Tape is number 27 and uses the tape");
-        check(fx.e->numParams == 58 && kSatType == 55 && kMicModel == 56 && kAgcModel == 57, "58 parameters; Sat Type is number 55, Mic Model and AGC Model (1.6) the last two");
+        check(fx.e->numParams == 64 && kSatType == 55 && kMicModel == 56 && kAgcModel == 57, "64 parameters; Sat Type is number 55, Mic Model and AGC Model (1.6) 56 and 57");
         bool sib = true;
         for (int p = 29; p < 34; ++p)
         {
@@ -182,7 +182,7 @@ int main()
             float L[128], R[128]; float* io[2] = { L, R }; long pos = 0; int quiet = 0, quietAway = 0;
             for (int b = 0; b < 600; ++b)
             {
-                // crosses the switch point at block 300 (Type: from 2-Band to VHS, the first half of its
+                // crosses the switch point at block 300 (Type: from Simple to VHS, the first half of its
                 // travel since Hi-Fi (1.7) is its third position; hifi_test turns it all the way)
                 if (b >= 100 && b < 500) q.e->setParameter(q.e, which, (float)(b - 100) / 400.0f * (which == kSatType ? 0.5f : 1.0f));
                 for (int i = 0; i < 128; ++i, ++pos) L[i] = R[i] = 0.5f * (float)std::sin(6.283185307179586 * 300.0 * pos / 44100.0);
@@ -196,11 +196,11 @@ int main()
         }
 
         // a loud hit after a quiet passage, with the compressor's make-up turned up: the clip that
-        // catches it must not depend on where Rec Level and Tape Speed stand (in 2-Band those two
+        // catches it must not depend on where Rec Level and Tape Speed stand (in Simple those two
         // knobs are the clippers that make it unnecessary; in VHS they are something else)
         {
             double firstMs[2] = {0, 0}; int k = 0;
-            for (float loSat : {16.0f, 18.0f})      // either side of the point where a 2-Band clipper is fully in
+            for (float loSat : {16.0f, 18.0f})      // either side of the point where a 2-band clipper is fully in
             {
                 Fx f; f.set(kSatOn, 1); f.set(kSatType, 1); f.set(kComp, 100); f.set(kHiSat, 30); f.set(kLoSat, loSat);
                 float L[128], R[128]; float* io[2] = { L, R }; long pos = 0;
@@ -273,17 +273,22 @@ int main()
             const std::string c = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
             rd.set(kHiSat, 35); rd.set(kSplit, 8000); rd.set(kLoSat, 0);
             const std::string d2 = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
-            std::printf("   Lo Sat | Hi Sat | Split read: 2-Band \"%s\"; VHS \"%s\", \"%s\", \"%s\"\n", a.c_str(), b.c_str(), c.c_str(), d2.c_str());
-            check(a == "56 % | 0 % | 2.5 kHz", "2-Band: per cent and Hz, as before");
+            std::printf("   Lo Sat | Hi Sat | Split read: Simple \"%s\"; VHS \"%s\", \"%s\", \"%s\"\n", a.c_str(), b.c_str(), c.c_str(), d2.c_str());
+            check(a == "56 % | 0 % | 2.5 kHz", "Simple: per cent and Hz, as before");
             check(b == "0.0 dB | SP | right", "VHS at the deck's reference settings: 0.0 dB, SP, right");
             check(c == "+8.0 dB | EP | -100 %" && d2 == "-10.0 dB | 23 mm/s | +100 %", "VHS at the ends: record level in dB, speed in mm/s between the named ones, bias signed");
             rd.set(kHiSat, 63); const std::string lp = shown(kHiSat);
             rd.set(kHiSat, 80); const std::string slow = shown(kHiSat);
             std::printf("   Tape Speed at 63 %% and 80 %% reads \"%s\" and \"%s\"\n", lp.c_str(), slow.c_str());
             check(lp == "LP" && slow == "14 mm/s", "LP, half of SP's speed, is named where the knob reaches it");
+            // the other formats' speeds inside the range are named too (1.7)
+            std::string marks;
+            for (float at : { 32.0f, 47.0f, 53.0f, 83.0f, 95.0f }) { rd.set(kHiSat, at); marks += shown(kHiSat) + " | "; }
+            std::printf("   and at 32, 47, 53, 83, 95 %%: %s\n", marks.c_str());
+            check(marks == "PAL SP | Beta II | PAL Beta | Beta III | PAL LP | ", "PAL and Beta speeds are named where the knob reaches them");
         }
 
-        // a state saved by 1.4 has no Sat Type: 2-Band
+        // a state saved by 1.4 has no Sat Type: Simple
         Fx saver; void* data = nullptr;
         const VstIntPtr size = saver.e->dispatcher(saver.e, effGetChunk, 0, 0, &data, 0.0f);
         const uint8_t* d = static_cast<const uint8_t*>(data);

@@ -23,7 +23,8 @@
 //                     quiet highs
 //      -> SLEW        slew limiter: the signal cannot change faster than a set rate
 //      -> COMP        one-knob compressor with make-up gain
-//      -> 2-BAND SAT  crossover at Split; lows and highs get their own level and soft clip.
+//      -> 2-BAND SAT  (Sat Type = Simple) crossover at Split; lows and highs get their own
+//                     level and soft clip.
 //                     Or, with Sat Type = VHS, a model of the linear track's tape (see TapeSat).
 //                     Or, with Sat Type = Hi-Fi (1.7), the FM track: compander, limiter, the FM
 //                     channel's noise, clicks, head switch and losses, the fall-back to the linear
@@ -77,7 +78,8 @@
 // 6 to 20 dB only. It costs about a quarter more CPU.
 //
 // Compatibility: parameters are only ever appended, and a new one rests where the plugin
-// sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type 2-Band). Programs keep
+// sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type Simple, the 2-band
+// saturator; the choice was called 2-Band up to 1.6, with the same stored value). Programs keep
 // their numbers: 0 to 20 leave Scrape and Whistle at 0, 0 to 24 (the 1.4 set) leave NR and
 // Sat Type at rest, 25 to 33 are the 1.5 programs, 34 to 38 the 1.6 ones. So a project saved
 // with an older version loads with every setting in place. 1.6 added the modelled microphones
@@ -88,7 +90,9 @@
 // the programs with the AGC at 0 have it). 1.7 gave Sat Type a third value, Hi-Fi, after the two:
 // a saved state keeps VHS as VHS (it stores the plain value, which wins), and no program uses
 // Hi-Fi; only something that stores the bare knob position (recorded automation, a Q-Link's
-// position) reads the old VHS position as Hi-Fi now, which was accepted.
+// position) reads the old VHS position as Hi-Fi now, which was accepted. 1.7 also added Visual
+// Vibes, a switch for the picture only (on in a new instance and in an older state), and five more
+// meters for it after it; the sound is the same whatever it says.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -202,7 +206,9 @@ enum ParamIndex
     // added in 1.5
     kNr,           // choice B-type noise reduction on the linear track: Off, Rec (recorded with it,
                    //        played without), Play (the opposite), On (both)
-    kSatType,      // choice the saturator stage: 2-Band (as before) or VHS (the linear track's tape;
+    kSatType,      // choice the saturator stage: Simple (the 2-band saturator, as before: crossover
+                   //        at Split, lows and highs each with their own level and soft clip; shown
+                   //        as 2-Band up to 1.6) or VHS (the linear track's tape;
                    //        Lo Sat = record level, Hi Sat = tape speed SP..EP, Split = bias), or
                    //        (1.7) Hi-Fi (the FM track, see HiFiPath; Lo Sat = record level, Hi Sat =
                    //        carrier level, Split = Cal)
@@ -214,14 +220,45 @@ enum ParamIndex
                    //        VHS deck's record level circuit, see ModeledAgc). Rests on Modeled;
                    //        Simple in a state saved before it existed and in every program
                    //        with the AGC up.
+    // added in 1.7
+    kVisualVibes,  // bool   the picture effects on the page sticker (see notifierMain): snow, the head
+                   //        switch strip, dropout streaks and the tracking band, the grid bending with
+                   //        the wobble, the Hi Cut haze, the sun in the Sat Type's colour. On in a new
+                   //        instance and in an older state. Like Animation, not part of the programs;
+                   //        the sound never looks at it.
+    // Read-only meters for those effects, like Reel and Level. Each one is the frame of a film strip
+    // in the skin; frame 0 shows nothing (Grid: the straight grid).
+    kVisSnow,      // the snow: hiss level step x random variant
+    kVisHead,      // the head switch strip along the bottom: Head Buzz step x random variant
+    kVisStreak,    // a dropout streak (random variant) or the tracking band at its height
+    kVisGrid,      // the grid: wobble depth step x the scroll frame Reel has
+    kVisHaze,      // the Hi Cut haze step
     kNumParams
 };
 
-// The two meters are not settings.
-inline bool isSetting(int i) { return i != kVisReel && i != kVisLevel; }
-constexpr int kReelFrames  = 24;           // frames in the skin's reel / grid film strips
-constexpr int kLevelFrames = 16;           // frames in the skin's sun film strips
+// The meters are not settings.
+inline bool isSetting(int i) { return i != kVisReel && i != kVisLevel && i < kVisSnow; }
+// Frames in the skin's film strips (tools/make_skin.py reads these lines: one plain number each).
+constexpr int kReelFrames  = 24;           // the reel hubs, and the grid's scroll in each wobble step
+constexpr int kLevelFrames = 16;           // the sun's level, in each of its colours
+constexpr int kSunColours = 3;             // the sun's colours: Simple (and Visual Vibes off), VHS, Hi-Fi
+constexpr int kSnowSteps = 3;              // snow: strength steps ...
+constexpr int kSnowVariants = 4;           // ... times random variants, after frame 0
+constexpr int kHeadSteps = 3;              // the head switch strip: the same
+constexpr int kHeadVariants = 4;
+constexpr int kStreakVariants = 6;         // Streak: the dropout streaks, then ...
+constexpr int kBandSteps = 8;              // ... the tracking band at this many heights, bottom to top
+constexpr int kWobbleSteps = 3;            // Grid: bent grids after the straight one
+constexpr int kHazeSteps = 5;              // Haze: steps after frame 0
+constexpr int kSnowFrames   = 1 + kSnowSteps * kSnowVariants;
+constexpr int kHeadFrames   = 1 + kHeadSteps * kHeadVariants;
+constexpr int kStreakFrames = 1 + kStreakVariants + kBandSteps;
+constexpr int kGridFrames   = (1 + kWobbleSteps) * kReelFrames;
+constexpr int kHazeFrames   = 1 + kHazeSteps;
 constexpr float kReelStepsPerSec = 3.6f;   // 0.6 turns per second, six teeth per turn
+// Peak pitch error of each wobble at 100 % (squared with the knob, see readParams): also how deep
+// the grid bends.
+constexpr float kWarpDev = 0.05f, kFlutterDev = 0.012f, kWowDev = 0.03f, kFlutter2Dev = 0.010f;
 
 constexpr int   kCtrl      = 16;          // control-rate interval in samples (must be a power of two)
 constexpr float kCtrlInv   = 1.0f / (float)kCtrl;
@@ -285,7 +322,7 @@ inline uint32_t groupOf(int param)
         case kHq:                                                           return gQuality;
         case kNr:                                                           return gNr;
         case kSatType:                                                      return gQuality;   // fade out, restart
-        default:                                                            return 0;   // the two meters
+        default:                                                            return 0;   // the meters, and Visual Vibes (the picture only)
     }
 }
 
@@ -1693,6 +1730,7 @@ struct HiFiPath
     bool  linear = false, tapeRun = false;
     float linMix = 0.0f;
     uint32_t clickCount = 0, switchCount = 0;   // for the tests
+    uint32_t drops = 0;                         // dropouts so far, for the picture
 
     void prepare(float rate)
     {
@@ -1851,6 +1889,7 @@ struct HiFiPath
             const float video = kHfDropVideoDb - kHfDropTailDb * std::log(1.0f - rngE.nextFloat());
             dropDb = kHfDropShare * video;
             dropLeft = 1 + (int)(kHfDropMinSec * std::exp2(kHfDropOctaves * rngE.nextFloat()) * sr);
+            ++drops;
         }
         if (dropLeft > 0) carrierAt(st[1], c - dropDb);
     }
@@ -2072,9 +2111,20 @@ public:
         addParam(floatParam ("whistle",    "Whistle",      0.0f, 100.0f, 0.0f, "%", 0));
         addParam(boolParam  ("hq",         "HQ",         true));    // on in a new instance since 1.5
         addParam(choiceParam("nr",         "B-Type NR",  {"Off", "Rec", "Play", "On"}, 0));
-        addParam(choiceParam("sat_type",   "Sat Type",   {"2-Band", "VHS", "Hi-Fi"}, 0));   // Hi-Fi added in 1.7
+        addParam(choiceParam("sat_type",   "Sat Type",   {"Simple", "VHS", "Hi-Fi"}, 0));   // Hi-Fi added in 1.7; Simple was 2-Band up to 1.6
         addParam(choiceParam("mic_model",  "Mic Model",  {"Simple", "Modeled"}, 1));   // Simple in a state from before 1.6
         addParam(choiceParam("agc_model",  "AGC Model",  {"Simple", "Modeled"}, 1));   // the same
+
+        // 1.7: the picture effects switch, then their meters (not automatable, as Reel and Level)
+        addParam(boolParam  ("visual_vibes", "Visual Vibes", true));
+        const char* const meters[][2] = { {"vis_snow", "Snow"}, {"vis_head", "Head"}, {"vis_streak", "Streak"},
+                                          {"vis_grid", "Grid"}, {"vis_haze", "Haze"} };
+        for (const auto& m : meters)
+        {
+            Param meter = floatParam(m[0], m[1], 0.0f, 1.0f, 0.0f, "", 2);
+            meter.automatable = false;
+            addParam(meter);
+        }
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -2135,12 +2185,15 @@ public:
         loadState_.fetch_add(kLoadEvent - 1u, std::memory_order_release);
     }
 
-    // A program is about to be chosen: it takes over the Animation and HQ switches as they
-    // stand, so they do not move. (The host's thread, the same one that then loads the program.)
+    // A program is about to be chosen: it takes over the Animation, HQ and Visual Vibes switches
+    // as they stand, so they do not move. The picture effects' meters (1.7) likewise: a program
+    // never moves what the picture shows. (The host's thread, the same one that then loads the program.)
     void holdSwitches(int program)
     {
         if (program < 0 || program >= (int)programs_.size()) return;
-        for (int i : {(int)kAnimate, (int)kHq}) programs_[(size_t)program].plainValues[(size_t)i] = get(i);
+        std::vector<float>& v = programs_[(size_t)program].plainValues;
+        for (int i : {(int)kAnimate, (int)kHq, (int)kVisualVibes}) v[(size_t)i] = get(i);
+        for (int i = kVisSnow; i < kNumParams; ++i) v[(size_t)i] = get(i);
     }
 
     // The host announces the sample rate here, on its own thread and possibly while audio is
@@ -2755,6 +2808,21 @@ public:
         // Hand the meter values to the notifier thread.
         visReel_.store(reelPhase_, std::memory_order_relaxed);
         visLevel_.store(outEnv_, std::memory_order_relaxed);
+        // And what the picture effects follow (1.7; the notifier turns it into frames): the hiss as
+        // it is made (its RMS: the hiss stage's with Breathing, or the FM channel's at the carrier
+        // it has now), how far the head switch shows (0..1, 1 at Head Buzz 100 % and Noise 50 %;
+        // nothing on the linear track), how many dropouts so far, and how many times the Hi-Fi
+        // track was lost so far (x 2, + 1 while it is lost). The counters are kept where the events
+        // start; nothing here changes the sound. (0.533 and 0.816: the RMS of the noise each hiss
+        // level scales, the hiss stage's high-passed white noise and the channel's differenced one.)
+        visHiss_.store(hifiOn_ ? 0.816f * hifiPath_.st[0].noise : 0.533f * cur_[cHiss] * hissDyn_, std::memory_order_relaxed);
+        visHead_.store(hifiOn_ ? (hifiPath_.linear ? 0.0f : hifiPath_.s.headBuzz * (1.0f / kHfBuzzGain))
+                               : (hsOn_ ? hsLen_[0] * (1.0f / 6.0f) : 0.0f), std::memory_order_relaxed);
+        const bool linear = hifiOn_ && hifiPath_.linear;   // (lasts at least 33 ms: longer than a block)
+        if (linear && !visLinear_) ++lostEvents_;
+        visLinear_ = linear;
+        visDrops_.store(dropEvents_ + hifiPath_.drops, std::memory_order_relaxed);
+        visLost_.store(lostEvents_ << 1 | (linear || (fbState_ >= 1 && fbState_ <= 3) ? 1u : 0u), std::memory_order_relaxed);
     }
 
     // The Split knob as bias: 0 at its default (2.5 kHz, normalised 0.68468), -1 at the bottom
@@ -2810,9 +2878,16 @@ public:
                 // The knob runs the tape speed from SP (33.35 mm/s) down to EP, a third of it, in equal
                 // ratios (TapeSat::set: 3^-speed). LP, half of SP, therefore lies at log 2 / log 3 of
                 // the way: 63.1 %. The three speeds are named; between them the speed is given.
-                if (v < 0.5f) std::snprintf(buf, sizeof(buf), "SP");
-                else if (v > 99.5f) std::snprintf(buf, sizeof(buf), "EP");
-                else if (std::fabs(v - 63.09f) < 0.75f) std::snprintf(buf, sizeof(buf), "LP");
+                // Named as well (1.7; the read-out only, the sound at each position is as it was): the
+                // other formats' speeds that lie inside the range, each at 100 log(33.35 / speed) / log 3 %:
+                // PAL VHS SP 23.39 and LP 11.70 mm/s, Beta II 20.00 and III 13.33 mm/s, PAL Beta 18.73 mm/s.
+                // (Beta I, 40 mm/s, and PAL VHS EP, 7.80 mm/s, lie outside it.)
+                static const struct { float at; const char* name; } kSpeedMarks[] = {
+                    { 32.29f, "PAL SP" }, { 46.54f, "Beta II" }, { 52.51f, "PAL Beta" }, { 63.09f, "LP" },
+                    { 83.47f, "Beta III" }, { 95.35f, "PAL LP" } };
+                const char* mark = v < 0.5f ? "SP" : v > 99.5f ? "EP" : nullptr;
+                for (const auto& m : kSpeedMarks) if (mark == nullptr && std::fabs(v - m.at) < 0.75f) mark = m.name;
+                if (mark != nullptr) std::snprintf(buf, sizeof(buf), "%s", mark);
                 else std::snprintf(buf, sizeof(buf), "%.0f mm/s", 33.35 * std::pow(3.0, -0.01 * (double)v));
             }
             else
@@ -2958,14 +3033,14 @@ private:
         if (groups & gWobble)
         {
             // depths are peak pitch error (squared for fine control at the low end)
-            dev1Slow_ = 0.05f  * sq(pct(kWarp));
+            dev1Slow_ = kWarpDev     * sq(pct(kWarp));
             rate1Slow_ = get(kRpm) * (1.0f / 60.0f);
             shape1_   = pct(kShape);
-            dev1Fast_ = 0.012f * sq(pct(kFlutter));
+            dev1Fast_ = kFlutterDev  * sq(pct(kFlutter));
             rate1Fast_ = get(kFlutRate);
-            dev2Slow_ = 0.03f  * sq(pct(kWow));
+            dev2Slow_ = kWowDev      * sq(pct(kWow));
             rate2Slow_ = get(kWowRate);
-            dev2Fast_ = 0.010f * sq(pct(kFlutter2));
+            dev2Fast_ = kFlutter2Dev * sq(pct(kFlutter2));
             rate2Fast_ = get(kFlut2Rate);
             tgt_[cWobbleOn] = getBool(kWobbleOn) ? 1.0f : 0.0f;
             // scrape: how far the read position is shaken. The noise it scales stays inside
@@ -3300,6 +3375,7 @@ private:
                 const float ms = 4.0f + 70.0f * dropRng_.nextFloat() * dropRng_.nextFloat();
                 dropTicks_  = 1 + (int)(ms * 0.001f * sr_ * kCtrlInv);
                 dropTarget_ = 1.0f - dropAmount_ * (0.4f + 0.6f * dropRng_.nextFloat());
+                ++dropEvents_;   // (for the picture: see the end of process())
             }
         }
         else dropTarget_ = 1.0f;
@@ -3358,6 +3434,7 @@ private:
             {
                 const bool whole = u < perTick;   // the whole track; otherwise the right channel alone
                 fbState_ = whole ? 1 : 4;
+                if (whole) ++lostEvents_; else ++dropEvents_;   // (the picture: the band, or a streak)
                 staticL_ = whole ? 1.0f : 0.0f;
                 fbTicks_ = 1 + (int)((0.003f + 0.02f * fbRng_.nextFloat()) * sr_ * kCtrlInv);
                 fbStatic_ = 0.08f + 0.35f * trackErr_ * fbRng_.nextFloat();
@@ -3414,15 +3491,52 @@ private:
     // sun, and how late the output is. The host has to be told, and those calls must not come
     // from the audio thread, so this small thread makes them, 20 times a second at most and
     // only when something changed. It says nothing until the host has started the plugin.
+    //
+    // The picture effects (1.7) are decided here too, from what the audio thread published at the
+    // end of its last block (see process()) and from the knobs, and shown through the meters:
+    //   Snow    the hiss as it is made, in steps of its level; a new random pattern at every look,
+    //           so it flickers as video noise does
+    //   Head    the head switch strip, in steps of Head Buzz as the sound has it; it jitters the same way
+    //   Streak  a white streak for kStreakHold looks (100 ms) whenever a dropout started since the
+    //           last look; while the Hi-Fi track is lost, and kBandHold looks after, a band of noise
+    //           that climbs the picture one height per look (it wins over a streak)
+    //   Grid    the grid bent by the wobble's depth (its knobs), at the scroll frame Reel has
+    //   Haze    steps of Hi Cut below 7 kHz
+    //   Level   besides the sun's level, its colour: Sat Type's
+    // All of them show nothing (frame 0, the straight grid, the first colour) unless Animation and
+    // Visual Vibes are both on; with Animation off nothing moves.
+    static constexpr float kSnowDb[kSnowSteps]    = { -38.0f, -28.0f, -18.0f };   // hiss RMS re a reference sine's
+    static constexpr float kHeadAt[kHeadSteps]    = { 0.04f, 0.3f, 0.6f };        // head switch, 0..1
+    static constexpr float kWobbleAt[kWobbleSteps] = { 0.003f, 0.012f, 0.03f };   // summed peak pitch error
+    static constexpr float kHazeTopHz = 7000.0f;                                  // no haze from here up
+    static constexpr int   kStreakHold = 2, kBandHold = 3;                        // looks (50 ms each)
+
     void notifierMain()
     {
         int lastReel = -1, lastLevel = -1;
         int latCandidate = 0, latStable = 0, latReported = 0;
+        // the picture effects: the frames last shown (Snow, Head, Streak, Grid, Haze), the reel's and
+        // the sun's frames as last seen with Animation on, and what the effects remember between looks
+        int lastFx[kNumParams - kVisSnow];
+        for (int& l : lastFx) l = -1;
+        int reel = 0, level = 0;
+        int snowVar = 0, headVar = 0, streakVar = 0, streakHold = 0, bandHold = 0, bandPos = 0;
+        uint32_t seenDrops = 0, seenLost = 0;
+        Xorshift32 rng{0x5ee7ab1eu};
+        const auto another = [&](int v, int n) { return (v + 1 + (int)(rng.next() % (uint32_t)(n - 1))) % n; };   // never the same twice
+        const auto stepOf = [](float v, const float* at, int n) { int s = 0; while (s < n && v >= at[s]) ++s; return s; };
         // Every call into the host checks first that the plugin is still running: the host may
         // have suspended or started closing it since the last look. (suspended_ as well as
         // started_: doReset can set started_ for a moment while a suspend comes in.)
         auto speaking = [this] { return started_.load() && !suspended_.load(); };
         auto tell = [&](int i) { if (speaking()) notifyHostParameterChanged(i); };
+        auto show = [&](int i, int frame, int frames, int& last)
+        {
+            if (frame == last) return;
+            last = frame;
+            setNormalised(i, (float)frame / (float)(frames - 1));
+            tell(i);
+        };
         for (;;)
         {
             {
@@ -3436,28 +3550,52 @@ private:
             {
                 for (int i = 0; i < numParams(); ++i) tell(i);
                 lastReel = lastLevel = -1;
+                for (int& l : lastFx) l = -1;
             }
 
-            if (animate_.load(std::memory_order_relaxed))
+            const bool anim = animate_.load(std::memory_order_relaxed);
+            if (anim)
             {
-                const int reel = clamp((int)(visReel_.load(std::memory_order_relaxed) * (float)kReelFrames), 0, kReelFrames - 1);
-                if (reel != lastReel)
-                {
-                    lastReel = reel;
-                    setNormalised(kVisReel, (float)reel / (float)(kReelFrames - 1));
-                    tell(kVisReel);
-                }
+                reel = clamp((int)(visReel_.load(std::memory_order_relaxed) * (float)kReelFrames), 0, kReelFrames - 1);
+                show(kVisReel, reel, kReelFrames, lastReel);
                 // -42 dBFS .. 0 dBFS across the frames
                 const float env = visLevel_.load(std::memory_order_relaxed);
                 const float db = 20.0f * std::log10(env > 1.0e-6f ? env : 1.0e-6f);
-                const int level = clamp((int)((db + 42.0f) * (1.0f / 42.0f) * (float)(kLevelFrames - 1) + 0.5f), 0, kLevelFrames - 1);
-                if (level != lastLevel)
-                {
-                    lastLevel = level;
-                    setNormalised(kVisLevel, (float)level / (float)(kLevelFrames - 1));
-                    tell(kVisLevel);
-                }
+                level = clamp((int)((db + 42.0f) * (1.0f / 42.0f) * (float)(kLevelFrames - 1) + 0.5f), 0, kLevelFrames - 1);
             }
+
+            const uint32_t drops = visDrops_.load(std::memory_order_relaxed), lost = visLost_.load(std::memory_order_relaxed);
+            int snow = 0, head = 0, streak = 0, wobble = 0, haze = 0, colour = 0;
+            if (anim && getBool(kVisualVibes))
+            {
+                const float hiss = visHiss_.load(std::memory_order_relaxed);
+                const int s = stepOf(20.0f * std::log10(maxf(hiss, 1.0e-9f) * (1.4142136f / kRefLevel)), kSnowDb, kSnowSteps);
+                if (s > 0) { snowVar = another(snowVar, kSnowVariants); snow = 1 + (s - 1) * kSnowVariants + snowVar; }
+                const int h = stepOf(visHead_.load(std::memory_order_relaxed), kHeadAt, kHeadSteps);
+                if (h > 0) { headVar = another(headVar, kHeadVariants); head = 1 + (h - 1) * kHeadVariants + headVar; }
+
+                if ((lost >> 1) != (seenLost >> 1) || (lost & 1u)) { if (bandHold == 0) bandPos = 0; bandHold = kBandHold; }
+                if (drops != seenDrops) { streakVar = another(streakVar, kStreakVariants); streakHold = kStreakHold; }
+                if (bandHold > 0) { --bandHold; streak = 1 + kStreakVariants + bandPos; bandPos = (bandPos + 1) % kBandSteps; }
+                else if (streakHold > 0) { --streakHold; streak = 1 + streakVar; }
+
+                const auto pct = [this](int i) { return get(i) * 0.01f; };
+                const float dev = getBool(kWobbleOn) ? kWarpDev * sq(pct(kWarp)) + kFlutterDev * sq(pct(kFlutter))
+                                                     + kWowDev * sq(pct(kWow)) + kFlutter2Dev * sq(pct(kFlutter2)) : 0.0f;
+                wobble = stepOf(dev, kWobbleAt, kWobbleSteps);
+                // 0 at 7 kHz, 1 at the knob's bottom (1 kHz), in octaves
+                const float cut = std::log(kHazeTopHz / get(kHiCut)) / std::log(kHazeTopHz / param(kHiCut).min);
+                haze = cut > 0.0f ? clamp(1 + (int)(cut * (float)kHazeSteps), 1, kHazeSteps) : 0;
+                colour = clamp(getInt(kSatType), 0, kSunColours - 1);
+            }
+            else streakHold = bandHold = 0;
+            seenDrops = drops; seenLost = lost;
+            show(kVisLevel, colour * kLevelFrames + level, kSunColours * kLevelFrames, lastLevel);
+            show(kVisGrid, wobble * kReelFrames + reel, kGridFrames, lastFx[kVisGrid - kVisSnow]);
+            show(kVisSnow, snow, kSnowFrames, lastFx[kVisSnow - kVisSnow]);
+            show(kVisHead, head, kHeadFrames, lastFx[kVisHead - kVisSnow]);
+            show(kVisStreak, streak, kStreakFrames, lastFx[kVisStreak - kVisSnow]);
+            show(kVisHaze, haze, kHazeFrames, lastFx[kVisHaze - kVisSnow]);
 
             // Latency: the output is late by the resting length of the two wobble delays. Tell
             // the host once that length has been steady for half a second and is more than
@@ -3946,16 +4084,23 @@ private:
     bool  hifiType_ = false;   // the type in force (changes as tape_ does)
     bool  hifiOn_ = false;     // ... with the Saturator on: the path has taken the seven knobs over
     bool  hifiRun_ = false;    // the path runs (heard, or fading in or out)
+
+    // The picture effects (1.7), last for the same reason: what the audio thread hands the notifier
+    // (see the end of process()), and the two counters it keeps for that
+    std::atomic<float> visHiss_{0.0f}, visHead_{0.0f};
+    std::atomic<uint32_t> visDrops_{0}, visLost_{0};
+    uint32_t dropEvents_ = 0, lostEvents_ = 0;   // dropouts started; times the Hi-Fi track was lost
+    bool  visLinear_ = false;                    // the Hi-Fi path was on the linear track at the end of the last block
 };
 
 // The framework's dispatcher with five additions:
-//  - Choosing a program leaves the Animation and HQ switches as they were. The framework sets
-//    every value a program lists, and the parameters added after Animation have to be in that
-//    list, so the program is first told the present position of the two switches.
+//  - Choosing a program leaves the Animation, HQ and Visual Vibes switches as they were. The
+//    framework sets every value a program lists, and the parameters added after Animation have to
+//    be in that list, so the program is first told the present position of the three switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
 //    their resting values before any state is loaded (HQ off, Mic Model and AGC Model Simple: a new instance
-//    has them otherwise), so such a state sounds as it was saved whatever this instance was
-//    doing before; a newer state then sets them.
+//    has them otherwise; Visual Vibes on, as in a new instance), so such a state sounds as it was
+//    saved whatever this instance was doing before; a newer state then sets them.
 //  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was.
 //  - While a program or a state is being written, the audio thread takes in none of the new
 //    values: they arrive with the reset, after the old sound has faded out.
