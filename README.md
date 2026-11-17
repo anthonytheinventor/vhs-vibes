@@ -85,7 +85,8 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 **Sat Type = VHS**
 
 This is the linear track; the Hi-Fi track does not saturate this way. Three knobs change their meaning,
-their caption on the screen and the number under them. The MPC still lists them as Split, Lo Sat and Hi Sat.
+their caption on the screen and the number under them, and turn mint green with the VHS button, so you can
+see which controls the mode has taken over. The MPC still lists them as Split, Lo Sat and Hi Sat.
 
 | Knob | Becomes | Reads | What it does |
 |---|---|---|---|
@@ -94,6 +95,10 @@ their caption on the screen and the number under them. The MPC still lists them 
 | Split | **Bias** | "right", or a signed percentage (minus is too little) | How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. |
 
 Lows and Highs still trim the result, below and above 1 kHz.
+
+<p align="center">
+  <img src="docs/page_1_tape_vhs.png" alt="The TAPE page with Sat Type on VHS: three mint green knobs" width="640">
+</p>
 
 ### ＷＯＢＢＬＥ　ゆらぎ
 
@@ -174,7 +179,7 @@ Lows and Highs still trim the result, below and above 1 kHz.
 | At -8 dBFS | unchanged | unchanged |
 | Louder | pulled toward -8 dBFS | 10 dB more in, about 1 dB more out |
 
-The knob scales either one: 50 % is half of every change in dB. Switching crossfades to the
+The knob sets how much of either one you hear; on Modeled, 50 % is half of every change in dB. Switching crossfades to the
 other one once it has settled (Modeled: a second).
 
 **B-Type NR positions**
@@ -269,8 +274,9 @@ The Animation switch on the DECK page turns them off.
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR, Sat Type,
-  Mic Model and AGC Model rest at 0, off, 2-Band or Simple, no older program uses them, and the newer programs
+- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR and Sat Type
+  rest at 0, off or 2-Band, an older project opens with Mic Model and AGC Model on Simple, no older program
+  uses the newer controls, and the newer programs
   come after Init so every older one keeps its number.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
@@ -380,12 +386,12 @@ read-outs under the knobs are live text (Nexa).
 bash "plugins/VHS Vibes/tests/run.sh"
 ```
 
-Builds nine small programs and runs them on the computer: `host_test` (what the plugin tells
+Builds ten small programs and runs them on the computer: `host_test` (what the plugin tells
 the host and when), `mix_test`, `v14_test` (everything that changed in 1.4), `nr_test` (the noise reduction
 against the chip makers' figures), `tape_test` (Sat Type = VHS against the figures it is built to), `v152_test`
 (everything that changed in 1.5.2: resets at any block size, Q-Links across every switch, cut-short
-states), `mic_test` (the four Mic Types against the figures they are built from, and the Simple ones against their old curves), `deck_test` and
-`levels_test` (measurements of each stage to read through). The first seven end in
+states), `mic_test` (the four Mic Types against the figures they are built from, and the Simple ones against their old curves), `agc_test` (the Modeled AGC against the figures it is built to, and the Simple one unchanged), `deck_test` and
+`levels_test` (measurements of each stage to read through). The first eight end in
 PASS or FAIL. Then `ab14_test`, built once against the 1.4.0 source from git and once against this one,
 checks that the 25 programs that existed in 1.4 still come out the same, with the chorus and the Mic
 (on Simple) switched on for every third one, sample for sample from 100 ms on (the git tags are fetched if they are missing). `tools/mic_fit.py` holds the

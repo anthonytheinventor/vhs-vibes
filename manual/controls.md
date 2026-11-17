@@ -237,7 +237,7 @@ what: Switches AGC, Drift, Tracking and Breathing off or on together.
 note: NR, HQ and Animation are not affected; each has its own switch. The Init and Clean Widener programs switch the deck off.
 
 ## AGC
-what: The recorder's automatic level control, in one of two kinds (**AGC Model**). The knob sets how much of it you hear: 100 % is the whole effect, 50 % half of every change in dB, 0 % off.
+what: The recorder's automatic level control, in one of two kinds (**AGC Model**). The knob sets how much of it you hear: 100 % is the whole effect, 0 % off; on Modeled, 50 % is half of every change in dB.
 - **Simple.** A loud sound pulls the gain down at once; it stays down for a second and a half, then creeps back up over a few seconds and brings the background up with it, by up to 14 dB.
 - **Modeled.** An early VHS deck's record level circuit. Sound peaking at -8 dBFS passes at its own level. Quieter sound is lifted by 9.1 dB, up to the point where the circuit starts to work, 10 dB below that (peaks around -18 dBFS). Louder sound is cut: every 10 dB more going in comes out only about 1 dB louder. A sudden loud sound is cut by 10 dB in about 11 ms, and most of the rest within half a second. When it stops, the gain comes back at about 1 dB per second: after a big hit, 18 dB takes about 19 seconds.
 listen: After a loud hit, the quiet that follows slowly swells, noise included. On Modeled it swells for far longer, and the first moments of a loud entry come through louder before the cut lands.

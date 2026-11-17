@@ -224,6 +224,7 @@ The **Type** switch changes what the saturator stage is, and with it what three 
 
 - **The captions change.** SPLIT, LO SAT and HI SAT in 2-Band become BIAS, REC LEVEL and TAPE SPEED in VHS.
 - **The read-outs change.** REC LEVEL reads in dB. TAPE SPEED reads SP, LP or EP at those three speeds, and the speed in mm/s between them. BIAS reads "right", or a percentage: minus is too little bias, plus too much.
+- **The colour changes.** In VHS the three knobs, their captions and the VHS button turn mint green, so you can see which controls the mode has taken over.
 - **The knobs stay.** They are the same three knobs on the same Q-Links, and the MPC still lists them as Split, Lo Sat and Hi Sat.
 - **Lows and Highs** keep their names but change their job as well.
 
@@ -808,7 +809,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 
 **Projects made with an older version load with every setting in place.**
 
-- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band, Mic Model and AGC Model at Simple.
+- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Sat Type at 2-Band. Mic Model and AGC Model rest at Modeled in a new instance; a project saved before they existed opens with both at Simple.
 - No older program uses the newer controls: the five with the Mic on keep the Simple microphones, and every program with the AGC up keeps the Simple AGC.
 - The newer programs come after Init, so every older program keeps its number.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
