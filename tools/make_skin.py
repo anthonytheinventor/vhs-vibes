@@ -85,6 +85,12 @@ PANEL_TOP = (25, 9, 60)
 PANEL_BOT = (47, 16, 98)
 PAPER = (253, 247, 255)
 INK = (64, 16, 120)
+# VHS mode: the vaporwave palette's mint (#05FFA1, the sister of PURPLE #B967FF), with a deeper seafoam
+# below it and a pale mint above. It leans green, about 27 degrees of hue away from CYAN, so it does not
+# read as one more cyan read-out.
+SEAFOAM = (0, 196, 140)
+MINT = (5, 255, 161)
+MINT_PALE = (176, 255, 216)
 
 ARGB_CYAN = "ff00f0ff"
 ARGB_BG = "ff0d0221"
@@ -158,17 +164,64 @@ BIPOLAR = {"Tilt", "Lows", "Mic Gain"}
 PROGRAM_QLINKS = ["Warp", "Flutter", "Wow", "Flutter 2", "Drive", "Slew", "Comp", "Hi Cut",
                   "Hiss", "Crackle", "Hum", "Noise", "Hi Sat", "Dropouts", "Mix", "Output"]
 
-# Captions that change with a switch: while SWAP_PARAM sits on step SWAP_STEP (of SWAP_STEPS), a small
-# picture with the other caption is shown over the one painted on the background. The control under
-# it stays the same parameter (and the same Q-Link).
-CAPTION_SWAPS = {"Split": "BIAS", "Lo Sat": "REC LEVEL", "Hi Sat": "TAPE SPEED"}
-SWAP_PARAM, SWAP_STEP, SWAP_STEPS = "Sat Type", 1, 2
+# Modes: a step of MODE_PARAM that gives some knobs another job. While the switch sits on a mode's step,
+# those knobs are drawn in the mode's colours (arc and pointer), their caption is shown in the mode's
+# colour (with the mode's name for the job, if it has one) and the switch's own button for that step
+# lights in the mode's colours. The control under a knob stays the same parameter (and the same Q-Link).
+# Step 0 (and any step without an entry here) is the plain look. The number of steps comes from the
+# parameter's choices, so a new mode is one more entry here (plus its button in SEGMENTS).
+#   sweep   arc colours from the knob's start, through its middle, to its end (as CYAN -> PURPLE -> PINK)
+#   pointer the pointer colour; caption: caption colour; button: (left, right) fill of the lit button
+#   knobs   parameter -> caption shown in this mode (None keeps the usual caption, recoloured)
+MODE_PARAM = "Sat Type"
+MODES = [
+    {"key": "vhs", "step": 1,
+     "sweep": (SEAFOAM, MINT, MINT_PALE), "pointer": MINT, "caption": MINT,
+     "button": (SEAFOAM, MINT), "button_text": NIGHT, "button_edge": MINT_PALE,
+     "knobs": {"Split": "BIAS", "Lo Sat": "REC LEVEL", "Hi Sat": "TAPE SPEED"}},
+]
 CAPTION_H = 25                     # height of the caption strip at the top of a slot
-CAPTION_OVERRIDE = {}              # used while the other captions are being painted
+CAPTION_COLOUR = (210, 250, 255)
+CAPTION_OVERRIDE = {}              # name -> (caption, colour), used while a mode's captions are being painted
 
 
-def swap_file(name):
-    return "cap_%s_vhs.png" % name.lower().replace(" ", "")
+def mode_steps(params):
+    return len(params[MODE_PARAM].choices)
+
+
+def mode_at(step):
+    for m in MODES:
+        if m["step"] == step:
+            return m
+    return None
+
+
+def knob_runs(name, steps):
+    """[(first step, last step, mode or None)]: the switch steps split into runs that draw this knob alike."""
+    runs = []
+    for s in range(steps):
+        m = mode_at(s)
+        m = m if m is not None and name in m["knobs"] else None
+        if runs and runs[-1][2] is m:
+            runs[-1] = (runs[-1][0], s, m)
+        else:
+            runs.append((s, s, m))
+    return runs
+
+
+def step_handle(first, last, steps, handle):
+    """The handle that is valid only while the switch is on steps first .. last."""
+    if first == last:
+        return "IndexedEnabling/%d/%d/%s" % (first, steps, handle)
+    return "RangedEnabling/%d/%d/%d/%s" % (first, last, steps, handle)
+
+
+def swap_file(name, mode):
+    return "cap_%s_%s.png" % (name.lower().replace(" ", ""), mode["key"])
+
+
+def knob_file(bipolar, mode=None):
+    return ("knob_bi" if bipolar else "knob_uni") + ("_" + mode["key"] if mode else "") + ".png"
 
 
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
@@ -591,8 +644,8 @@ def draw_panel(img, page, params):
             span = 2 if i + 1 < len(cells) and cells[i + 1] == "<" else 1
             cx = bx + i * CELL_W
             sy = by + SLOT_DY
-            cap = CAPTION_OVERRIDE.get(name, CAPTIONS.get(name, name.upper()))
-            draw_text(d, (cx + span * CELL_W / 2, sy + 4), cap, f_cap, (210, 250, 255), 1.5, "m")
+            cap, cap_col = CAPTION_OVERRIDE.get(name, (CAPTIONS.get(name, name.upper()), CAPTION_COLOUR))
+            draw_text(d, (cx + span * CELL_W / 2, sy + 4), cap, f_cap, cap_col, 1.5, "m")
             p = params[name]
             if p.is_discrete:
                 continue
@@ -627,12 +680,17 @@ def make_background(page, number, params):
 # --------------------------------------------------------------------------------------------
 # Film strips and buttons
 # --------------------------------------------------------------------------------------------
-def arc_colour(t):
-    """Cyan -> purple -> pink along the knob's sweep."""
-    return lerp_col(CYAN, PURPLE, t * 2) if t < 0.5 else lerp_col(PURPLE, PINK, (t - 0.5) * 2)
+KNOB_SWEEP = (CYAN, PURPLE, PINK)
+KNOB_POINTER = (235, 255, 255)
 
 
-def knob_frame(t, bipolar):
+def arc_colour(t, sweep=KNOB_SWEEP):
+    """Cyan -> purple -> pink (or a mode's three colours) along the knob's sweep."""
+    a, b, c = sweep
+    return lerp_col(a, b, t * 2) if t < 0.5 else lerp_col(b, c, (t - 0.5) * 2)
+
+
+def knob_frame(t, bipolar, sweep=KNOB_SWEEP, pointer=KNOB_POINTER):
     s = 4
     n = KNOB * s
     c = n / 2
@@ -648,12 +706,12 @@ def knob_frame(t, bipolar):
         a = a0
         while a < a1:
             b = min(a + 3.0, a1)
-            ld.arc(box, a, b + 0.6, fill=arc_colour((a - 135.0) / 270.0) + (255,), width=thick)
+            ld.arc(box, a, b + 0.6, fill=arc_colour((a - 135.0) / 270.0, sweep) + (255,), width=thick)
             a = b
         for ang in (a0, a1):       # round ends
             rr = r_arc - thick / 2
             ex, ey = c + rr * math.cos(math.radians(ang)), c + rr * math.sin(math.radians(ang))
-            col = arc_colour((ang - 135.0) / 270.0) + (255,)
+            col = arc_colour((ang - 135.0) / 270.0, sweep) + (255,)
             ld.ellipse((ex - thick / 2, ey - thick / 2, ex + thick / 2, ey + thick / 2), fill=col)
     glow = lit.filter(ImageFilter.GaussianBlur(3 * s))
     img.alpha_composite(glow)
@@ -671,16 +729,17 @@ def knob_frame(t, bipolar):
     ang = math.radians(135.0 + 270.0 * t)
     x0, y0 = c + 10 * s * math.cos(ang), c + 10 * s * math.sin(ang)
     x1, y1 = c + 25 * s * math.cos(ang), c + 25 * s * math.sin(ang)
-    d.line((x0, y0, x1, y1), fill=(235, 255, 255, 255), width=4 * s)
+    d.line((x0, y0, x1, y1), fill=pointer + (255,), width=4 * s)
     for px, py in ((x0, y0), (x1, y1)):
-        d.ellipse((px - 2 * s, py - 2 * s, px + 2 * s, py + 2 * s), fill=(235, 255, 255, 255))
+        d.ellipse((px - 2 * s, py - 2 * s, px + 2 * s, py + 2 * s), fill=pointer + (255,))
     return img.resize((KNOB, KNOB), Image.LANCZOS)
 
 
-def make_knob_strip(bipolar):
+def make_knob_strip(bipolar, mode=None):
+    look = (mode["sweep"], mode["pointer"]) if mode else (KNOB_SWEEP, KNOB_POINTER)
     strip = Image.new("RGBA", (KNOB, KNOB * KNOB_FRAMES), (0, 0, 0, 0))
     for i in range(KNOB_FRAMES):
-        strip.paste(knob_frame(i / (KNOB_FRAMES - 1), bipolar), (0, i * KNOB))
+        strip.paste(knob_frame(i / (KNOB_FRAMES - 1), bipolar, *look), (0, i * KNOB))
     return strip
 
 
@@ -723,25 +782,27 @@ def draw_text_s(d, xy, text, fnt, fill, s, tracking=1.0, centre_w=None):
         x += fnt.getlength(ch) + tracking * s
 
 
-def make_segment(size, caption, on):
+def make_segment(size, caption, on, mode=None):
+    """One button of a segment switch; a mode's button lights in the mode's colours."""
     s = 4
     w, h = size
     img = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
     body = (2 * s, 3 * s, (w - 2) * s, (h - 3) * s)
     r = 8 * s
+    c0, c1 = mode["button"] if mode else (PINK, PURPLE)
     if on:
-        fill = gradient((body[2] - body[0], body[3] - body[1]), PINK, PURPLE, horizontal=True).convert("RGBA")
+        fill = gradient((body[2] - body[0], body[3] - body[1]), c0, c1, horizontal=True).convert("RGBA")
         m = Image.new("L", fill.size, 0)
         ImageDraw.Draw(m).rounded_rectangle((0, 0, fill.size[0] - 1, fill.size[1] - 1), r, fill=255)
         glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        ImageDraw.Draw(glow).rounded_rectangle(body, r, fill=(255, 46, 151, 140))
+        ImageDraw.Draw(glow).rounded_rectangle(body, r, fill=c0 + (140,))
         img.alpha_composite(glow.filter(ImageFilter.GaussianBlur(2 * s)))
         img.paste(fill, (body[0], body[1]), m)
     d = ImageDraw.Draw(img)
     f = font(F_GOTHIC, 14, s)
     if on:
-        d.rounded_rectangle(body, r, outline=(255, 210, 240, 255), width=s)
-        col = (255, 255, 255, 255)
+        d.rounded_rectangle(body, r, outline=(mode["button_edge"] if mode else (255, 210, 240)) + (255,), width=s)
+        col = (mode["button_text"] if mode else (255, 255, 255)) + (255,)
     else:
         d.rounded_rectangle(body, r, fill=(24, 9, 58, 255), outline=(96, 62, 160, 255), width=s)
         col = (150, 128, 204, 255)
@@ -770,12 +831,19 @@ def focus_entry(width):
     return G.entry("focus", "Focus", data, "0 0 %d %d" % (width, SLOT_H), "No", "Show", "WhenFocussed")
 
 
-def knob_def(bipolar):
+def knob_def(bipolar, runs=None, steps=0, switch=None):
+    """A knob slot. With mode runs (see knob_runs) it holds one knob picture per run, each shown only
+    while the mode switch (handle `switch`, `steps` steps) is on that run's steps."""
     vx, vy, vw, vh = VALUE_BOX
-    children = [
-        focus_entry(CELL_W),
-        G.entry("knob", "Knob", G.knob_filmstrip_data("knob_bi.png" if bipolar else "knob_uni.png", KNOB_FRAMES),
-                "%d %d %d %d" % (KNOB_POS[0], KNOB_POS[1], KNOB, KNOB), "No", "Show", "Always"),
+    knob_bounds = "%d %d %d %d" % (KNOB_POS[0], KNOB_POS[1], KNOB, KNOB)
+    if runs is None or len(runs) == 1:
+        knobs = [G.entry("knob", "Knob", G.knob_filmstrip_data(knob_file(bipolar), KNOB_FRAMES),
+                         knob_bounds, "No", "Show", "Always")]
+    else:
+        knobs = [G.entry("knob " + (m["key"] if m else "plain"), "Knob", G.knob_filmstrip_data(knob_file(bipolar, m), KNOB_FRAMES),
+                         knob_bounds, "No", "Show", "Always", invalidating=[step_handle(a, b, steps, switch)])
+                 for a, b, m in runs]
+    children = [focus_entry(CELL_W)] + knobs + [
         G.entry("value", "Label", label_data("Value", ARGB_CYAN, 20.0, "horizontallyCentred verticallyCentred"),
                 "%d %d %d %d" % (vx, vy, vw, vh), "No", "Show", "Always"),
     ]
@@ -820,12 +888,16 @@ def animation_entries(page, params):
     return out
 
 
-def definition_name(p):
+def definition_name(p, steps):
     if p.kind == "bool":
         return "vvToggle"
     if p.kind == "choice":
         return "vvSeg " + p.name
-    return "vvKnobBi" if p.name in BIPOLAR else "vvKnobUni"
+    base = "vvKnobBi" if p.name in BIPOLAR else "vvKnobUni"
+    runs = knob_runs(p.name, steps)
+    if len(runs) == 1:
+        return base
+    return base + " " + " ".join((m["key"] if m else "plain") + str(a) for a, b, m in runs)   # e.g. "vvKnobUni plain0 vhs1"
 
 
 def iter_controls(page):
@@ -840,19 +912,21 @@ def iter_controls(page):
 
 def build_tui(params):
     defs = [("vvKnobUni", knob_def(False)), ("vvKnobBi", knob_def(True)), ("vvToggle", toggle_def())]
+    steps, switch = mode_steps(params), params[MODE_PARAM].handle
     referenced = {}
     tabs = []
     for ti, page in enumerate(PAGES):
         bg = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", page["file"]))
         children = [G.entry("background", "Image", bg, "0 0 %d %d" % (W, H), "No", "Show", "Always")]
         children += animation_entries(page, params)
-        for b, i, span, name in iter_controls(page):
-            if name in CAPTION_SWAPS:
-                pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", swap_file(name)))
-                children.append(G.entry("caption " + name, "Image", pic,
-                                        "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, CAPTION_H),
-                                        "No", "Show", "Always",
-                                        invalidating=["IndexedEnabling/%d/%d/%s" % (SWAP_STEP, SWAP_STEPS, params[SWAP_PARAM].handle)]))
+        for m in MODES:
+            for b, i, span, name in iter_controls(page):
+                if name in m["knobs"]:
+                    pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", swap_file(name, m)))
+                    children.append(G.entry("caption %s %s" % (name, m["key"]), "Image", pic,
+                                            "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, CAPTION_H),
+                                            "No", "Show", "Always",
+                                            invalidating=[step_handle(m["step"], m["step"], steps, switch)]))
         groups = []
         for b in range(4):
             if any(c is not None for c in page["blocks"][b][2]):
@@ -862,9 +936,12 @@ def build_tui(params):
         for b, i, span, name in iter_controls(page):
             p = params[name]
             referenced[p.index] = p
-            dname = definition_name(p)
-            if p.kind == "choice" and not any(k == dname for k, _ in defs):
-                defs.append((dname, segment_def(name, span)))
+            dname = definition_name(p, steps)
+            if not any(k == dname for k, _ in defs):
+                if p.kind == "choice":
+                    defs.append((dname, segment_def(name, span)))
+                else:   # a knob some mode recolours
+                    defs.append((dname, knob_def(name in BIPOLAR, knob_runs(name, steps), steps, switch)))
             bounds = "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, SLOT_H)
             children.append(G.entry(p.name, dname, G.obj(("version", 1), ("handleName", "Data")), bounds,
                                     "Yes", "Hide", "Always", remap=[("Data", p.handle)]))
@@ -907,8 +984,17 @@ def build_qlinks(params):
 # --------------------------------------------------------------------------------------------
 # Preview: what a page will roughly look like on the MPC (values at their defaults)
 # --------------------------------------------------------------------------------------------
-def make_preview(page, bg, params, images):
+def make_preview(page, bg, params, images, step=0, displays=None):
+    """`step` sets MODE_PARAM (and so the knob colours and captions); every other value is its default.
+    The read-outs are params.json's (taken with every parameter at its default) unless `displays`
+    (name -> text, as the plugin shows it in that mode) says otherwise."""
     img = bg.convert("RGBA")
+    steps = mode_steps(params)
+    mode = mode_at(step)
+    if mode:
+        for b, i, span, name in iter_controls(page):
+            if name in mode["knobs"]:
+                img.alpha_composite(images[swap_file(name, mode)].convert("RGBA"), (cell_x(b, i), block_row(b) + SLOT_DY))
     # the animated parts, frozen at a lively moment
     for cx, cy in REEL_CENTRES:
         img.alpha_composite(images["reel_hub.png"].crop((0, 7 * HUB, HUB, 8 * HUB)), (cx - HUB // 2, cy - HUB // 2))
@@ -926,6 +1012,8 @@ def make_preview(page, bg, params, images):
         p = params[name]
         x, y = cell_x(b, i), block_row(b) + SLOT_DY
         t = p.default if p.default is not None else 0.0
+        if name == MODE_PARAM:
+            t = step / (steps - 1)
         if p.kind == "bool":
             img.alpha_composite(images["toggle_on.png" if t >= 0.5 else "toggle_off.png"], (x + TOGGLE_POS[0], y + TOGGLE_POS[1]))
         elif p.kind == "choice":
@@ -934,11 +1022,11 @@ def make_preview(page, bg, params, images):
             for k, (dx, dy) in enumerate(offsets):
                 img.alpha_composite(images[seg_file(name, k, k == cur)], (x + dx, y + dy))
         else:
-            strip = images["knob_bi.png" if name in BIPOLAR else "knob_uni.png"]
+            strip = images[knob_file(name in BIPOLAR, mode if mode and name in mode["knobs"] else None)]
             frame = int(round(t * (KNOB_FRAMES - 1)))
             img.alpha_composite(strip.crop((0, frame * KNOB, KNOB, (frame + 1) * KNOB)), (x + KNOB_POS[0], y + KNOB_POS[1]))
             vx, vy, vw, vh = VALUE_BOX
-            text = p.display
+            text = (displays or {}).get(name, p.display)
             tw = d.textlength(text, font=vf)
             d.text((x + vx + (vw - tw) / 2, y + vy + 3), text, font=vf, fill=CYAN + (255,))
     return img.convert("RGB")
@@ -968,14 +1056,25 @@ def main():
         if f.lower().endswith((".png", ".json")):
             os.remove(os.path.join(SKINS, f))
 
+    steps = mode_steps(params)
+    if len(SEGMENTS[MODE_PARAM][1]) != steps:
+        sys.exit('make_skin: "%s" has %d choices but %d buttons in SEGMENTS' % (MODE_PARAM, steps, len(SEGMENTS[MODE_PARAM][1])))
+    for m in MODES:
+        for name in m["knobs"]:
+            if name not in shown or params[name].is_discrete:
+                sys.exit('make_skin: mode %s recolours "%s", which is not a knob on any page' % (m["key"], name))
+
     images = {}
     images["knob_uni.png"] = make_knob_strip(False)
     images["knob_bi.png"] = make_knob_strip(True)
+    for m in MODES:     # one strip per mode and knob kind it recolours
+        for bipolar in sorted({name in BIPOLAR for name in m["knobs"]}):
+            images[knob_file(bipolar, m)] = make_knob_strip(bipolar, m)
     images["toggle_on.png"] = make_toggle(True)
     images["toggle_off.png"] = make_toggle(False)
     for name, (size, offsets, captions) in SEGMENTS.items():
         for i, cap in enumerate(captions):
-            images[seg_file(name, i, True)] = make_segment(size, cap, True)
+            images[seg_file(name, i, True)] = make_segment(size, cap, True, mode_at(i) if name == MODE_PARAM else None)
             images[seg_file(name, i, False)] = make_segment(size, cap, False)
     images["reel_hub.png"] = make_hub_strip()
     images["grid.png"] = make_grid_strip()
@@ -987,16 +1086,33 @@ def main():
     for n, page in enumerate(PAGES, 1):
         bg = make_background(page, n, params)
         bg.save(os.path.join(SKINS, page["file"]), optimize=True)
-        # the other captions: the same background painted with them, cut out strip by strip
-        swaps = [(b, i, span, name) for b, i, span, name in iter_controls(page) if name in CAPTION_SWAPS]
-        if swaps:
-            CAPTION_OVERRIDE.update(CAPTION_SWAPS)
+        # each mode's captions: the same background painted with them, cut out strip by strip
+        for m in MODES:
+            swaps = [(b, i, span, name) for b, i, span, name in iter_controls(page) if name in m["knobs"]]
+            if not swaps:
+                continue
+            for name, cap in m["knobs"].items():
+                CAPTION_OVERRIDE[name] = (cap or CAPTIONS.get(name, name.upper()), m["caption"])
             alt = make_background(page, n, params)
             CAPTION_OVERRIDE.clear()
             for b, i, span, name in swaps:
                 x, y = cell_x(b, i), block_row(b) + SLOT_DY
-                alt.crop((x, y, x + CELL_W * span, y + CAPTION_H)).save(os.path.join(SKINS, swap_file(name)), optimize=True)
-        make_preview(page, bg, params, images).save(os.path.join(PREVIEW, "page_%d_%s.png" % (n, page["name"].lower())))
+                images[swap_file(name, m)] = alt.crop((x, y, x + CELL_W * span, y + CAPTION_H))
+                images[swap_file(name, m)].save(os.path.join(SKINS, swap_file(name, m)), optimize=True)
+        stem = "page_%d_%s" % (n, page["name"].lower())
+        make_preview(page, bg, params, images).save(os.path.join(PREVIEW, stem + ".png"))
+        # and the page as it looks in each mode that changes something on it. The plugin words some read-outs
+        # differently in a mode; build/displays_<key>.json (name -> text), if there, supplies them
+        # (write it by asking the native build for its read-outs with the switch on that step).
+        on_page = {name for _, _, _, name in iter_controls(page)}
+        for m in MODES:
+            if MODE_PARAM in on_page or on_page & set(m["knobs"]):
+                dfile = os.path.join(PROJECT, "build", "displays_%s.json" % m["key"])
+                displays = None
+                if os.path.isfile(dfile):
+                    with open(dfile, "r", encoding="utf-8") as fh:
+                        displays = json.load(fh)
+                make_preview(page, bg, params, images, m["step"], displays).save(os.path.join(PREVIEW, "%s_%s.png" % (stem, m["key"])))
 
     with open(os.path.join(SKINS, "TUI.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write(G.dump_json(build_tui(params)) + "\n")
