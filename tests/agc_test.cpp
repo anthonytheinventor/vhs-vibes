@@ -308,7 +308,7 @@ int main()
         char what[140];
         std::snprintf(what, sizeof(what), "%d programs; the %d with the AGC up are on Simple (%d), the other %d on Modeled (%d)",
                       fx.e->numPrograms, withAgc, simple, fx.e->numPrograms - withAgc, others);
-        check(fx.e->numPrograms == 39 && withAgc == 25 && simple == withAgc && others == fx.e->numPrograms - withAgc, what);
+        check(fx.e->numPrograms == 44 && withAgc == 25 && simple == withAgc && others == fx.e->numPrograms - withAgc, what);
 
         // a state saved before AGC Model existed: this one's values without "agc_model"
         Fx saver; saver.set(kDeckOn, 1); saver.set(kAgc, 40); saver.set(kAgcModel, 1);

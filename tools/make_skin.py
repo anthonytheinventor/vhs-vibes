@@ -91,6 +91,10 @@ INK = (64, 16, 120)
 SEAFOAM = (0, 196, 140)
 MINT = (5, 255, 161)
 MINT_PALE = (176, 255, 216)
+# Hi-Fi mode (1.7): the sticker's sunset, a deep orange rising through amber to the sun's yellow.
+EMBER = (255, 98, 36)
+AMBER = (255, 164, 48)
+SUN_PALE = (255, 240, 150)
 
 ARGB_CYAN = "ff00f0ff"
 ARGB_BG = "ff0d0221"
@@ -179,6 +183,13 @@ MODES = [
      "sweep": (SEAFOAM, MINT, MINT_PALE), "pointer": MINT, "caption": MINT,
      "button": (SEAFOAM, MINT), "button_text": NIGHT, "button_edge": MINT_PALE,
      "knobs": {"Split": "BIAS", "Lo Sat": "REC LEVEL", "Hi Sat": "TAPE SPEED"}},
+    # Hi-Fi: the three it renames, and the seven the FM path takes over (their names stay)
+    {"key": "hifi", "step": 2,
+     "sweep": (EMBER, AMBER, YELLOW), "pointer": AMBER, "caption": AMBER,
+     "button": (EMBER, YELLOW), "button_text": NIGHT, "button_edge": SUN_PALE,
+     "knobs": {"Split": "CAL", "Lo Sat": "REC LEVEL", "Hi Sat": "CARRIER",
+               "Hiss": None, "Crackle": None, "Head Buzz": None,
+               "Breathing": None, "Tracking": None, "Drift": None, "Dropouts": None}},
 ]
 CAPTION_H = 25                     # height of the caption strip at the top of a slot
 CAPTION_COLOUR = (210, 250, 255)

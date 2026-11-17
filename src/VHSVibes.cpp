@@ -3728,6 +3728,48 @@ private:
             {kHum, 30}, {kBuzz, 25}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 5}, {kWhistle, 60},
             {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMono, 1},
             {kAgcModel, 0}, {kAgc, 25}, {kDrift, 10} });
+
+        // Added in 1.7, after the others: the Hi-Fi track (Sat Type = Hi-Fi: Lo Sat is the record
+        // level, 0 dB at 56 %; Hi Sat the carrier, 0.3 dB down per %; Split the playback
+        // calibration). The rotating heads have no wow or flutter to speak of, so the wobble is
+        // at rest in all five. Clicks begin with the carrier about 15 dB down; 17 dB down the
+        // deck goes to the linear track.
+        // A good deck and a new tape: nothing but the FM channel's own faint hiss.
+        program("Hi-Fi - Clean Deck", {
+            {kDrive, 0}, {kWear, 0}, {kComp, 0}, {kHiCut, 18000},
+            {kSatType, 2}, {kLoSat, 56}, {kHiSat, 0}, {kHighs, 0},
+            {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
+            {kHum, 0}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 0} });
+        // Recorded 10 dB over: the deviation limiter's hard ceiling on every loud hit.
+        program("Hi-Fi - Hot Signal", {
+            {kDrive, 20}, {kWear, 0}, {kComp, 15}, {kHiCut, 18000},
+            {kSatType, 2}, {kLoSat, 84}, {kHiSat, 0}, {kHighs, 0},
+            {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
+            {kHum, 0}, {kHeadBuzz, 10}, {kHiss, 35}, {kCrackle, 0} });
+        // A tape that has been through a lot of machines: a weak carrier, one head weaker than the other,
+        // clicks when it wanders, noise that comes and goes with the music.
+        program("Hi-Fi - Worn Rental", {
+            {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
+            {kSatType, 2}, {kLoSat, 60}, {kHiSat, 40}, {kHighs, 0},
+            {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
+            {kHum, 5}, {kHeadBuzz, 25}, {kHiss, 50}, {kCrackle, 30},
+            {kDropouts, 30}, {kDrift, 30}, {kBreathing, 20} });
+        // The tracking knob is off: the buzz of the head switch, bursts of clicks, and every
+        // so often the dull mono linear track takes over.
+        program("Hi-Fi - Tracking Lost", {
+            {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
+            {kSatType, 2}, {kLoSat, 58}, {kHiSat, 45}, {kHighs, 0},
+            {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
+            {kHum, 5}, {kHeadBuzz, 55}, {kHiss, 50}, {kCrackle, 40},
+            {kDropouts, 40}, {kDrift, 40}, {kTracking, 70} });
+        // Recorded on one deck, played on another: the expander disagrees with the compressor,
+        // so the level is off and the sound pumps.
+        program("Hi-Fi - Wrong Deck", {
+            {kDrive, 10}, {kWear, 0}, {kComp, 10}, {kHiCut, 18000},
+            {kSatType, 2}, {kLoSat, 62}, {kHiSat, 20}, {kSplit, 4500}, {kHighs, 0},
+            {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
+            {kHum, 0}, {kHeadBuzz, 15}, {kHiss, 55}, {kCrackle, 10},
+            {kBreathing, 85} });
     }
 
     // ----- state ------------------------------------------------------------------

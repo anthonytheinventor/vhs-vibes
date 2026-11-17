@@ -377,7 +377,179 @@
                     }
                 },
                 {
-                    "key": "vvKnobUni plain0 vhs1 plain2",
+                    "key": "vvKnobUni plain0 hifi2",
+                    "value": {
+                        "version": 2,
+                        "actions": [
+                            {
+                                "version": 1,
+                                "onAction": "Mouse Down",
+                                "handler": "Q-Link",
+                                "handleName": "Data",
+                                "additionalData": ""
+                            },
+                            {
+                                "version": 1,
+                                "onAction": "Double Click",
+                                "handler": "Show Overlay",
+                                "handleName": "Data",
+                                "additionalData": "knob overlay"
+                            },
+                            {
+                                "version": 1,
+                                "onAction": "Enter Pressed",
+                                "handler": "Show Overlay",
+                                "handleName": "Data",
+                                "additionalData": "knob overlay"
+                            }
+                        ],
+                        "backgroundData": {
+                            "version": 1,
+                            "focussed": {
+                                "version": 1,
+                                "colour": "00000000",
+                                "image": ""
+                            },
+                            "unfocussed": {
+                                "version": 1,
+                                "colour": "00000000",
+                                "image": ""
+                            }
+                        },
+                        "ignoreMousePresses": false,
+                        "disableCoarseDataWheel": false,
+                        "componentsData": [
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "focus",
+                                    "type": "Focus",
+                                    "data": {
+                                        "version": 1,
+                                        "backgroundColour": "1400f0ff",
+                                        "outlineColour": "ff00f0ff",
+                                        "backgroundInset": 2.0,
+                                        "outlineThickness": 2.0
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 1,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "WhenFocussed",
+                                    "boundsType": "Absolute",
+                                    "bounds": "0 0 140 152"
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob plain",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "RangedEnabling/0/1/3/Parameter 55"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob hifi",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_hifi.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/2/3/Parameter 55"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff00f0ff",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 1,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26"
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "key": "vvKnobUni plain0 vhs1 hifi2",
                     "value": {
                         "version": 2,
                         "actions": [
@@ -512,12 +684,12 @@
                                 "version": 2,
                                 "componentData": {
                                     "version": 1,
-                                    "name": "knob plain",
+                                    "name": "knob hifi",
                                     "type": "Knob",
                                     "data": {
                                         "version": 2,
                                         "knobType": "FilmStrip",
-                                        "filmStrip": "knob_uni.png",
+                                        "filmStrip": "knob_uni_hifi.png",
                                         "numFrames": 127,
                                         "invert": false,
                                         "handleName": "Data"
@@ -2023,6 +2195,122 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "caption Dropouts hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_dropouts_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "640 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Split hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_split_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "220 444 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Lo Sat hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_losat_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "500 444 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Hi Sat hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_hisat_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "780 444 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Drive",
                                 "type": "vvKnobUni",
                                 "data": {
@@ -2140,7 +2428,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Dropouts",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2285,7 +2573,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Split",
-                                "type": "vvKnobUni plain0 vhs1 plain2",
+                                "type": "vvKnobUni plain0 vhs1 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2343,7 +2631,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Lo Sat",
-                                "type": "vvKnobUni plain0 vhs1 plain2",
+                                "type": "vvKnobUni plain0 vhs1 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2401,7 +2689,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Hi Sat",
-                                "type": "vvKnobUni plain0 vhs1 plain2",
+                                "type": "vvKnobUni plain0 vhs1 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -3206,6 +3494,93 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "caption Head Buzz hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_headbuzz_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "360 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Hiss hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_hiss_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "500 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Crackle hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_crackle_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "640 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Hum",
                                 "type": "vvKnobUni",
                                 "data": {
@@ -3265,7 +3640,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Head Buzz",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -3294,7 +3669,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Hiss",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -3323,7 +3698,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Crackle",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -4070,6 +4445,93 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "caption Drift hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_drift_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "360 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Tracking hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_tracking_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "640 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "caption Breathing hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "cap_breathing_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "780 260 140 25",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Deck On",
                                 "type": "vvToggle",
                                 "data": {
@@ -4129,7 +4591,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Drift",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -4187,7 +4649,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Tracking",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -4216,7 +4678,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Breathing",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni plain0 hifi2",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
