@@ -1551,6 +1551,10 @@ constexpr float kHfClip = 3.0f * kRefLevel;   // limiter: +-150 kHz = 9.5 dB ove
 constexpr float kHfSnrDb   = 55.0f;           // channel noise under reference at full carrier [E in the bench's 54-60 dB, R]
 constexpr float kHfNoiseHz = 20000.0f;        // the band it is measured in, and above which it is cut at high rates
 constexpr float kHfCnr0Db  = 25.0f;           // carrier to noise at full carrier, 300 kHz band [E, report 2: 17-27 dB]
+// Crackle sets that margin: 27 dB at 0 % (the best of the range: no clicks before the deck gives the
+// carrier up), 8 dB at 100 % (a worn-out deck, past the range [E]: clicks at full carrier, about 30 a
+// second on each channel). 25 dB is at about 10 %.
+constexpr float kHfCnrBestDb = 27.0f, kHfCnrSpanDb = 19.0f;
 constexpr float kHfBandHz  = 300.0e3f;        // that band [R MAT83 fig. 7]
 constexpr float kHfRefDevHz = 50.0e3f;        // reference deviation [R]: a click (one cycle) has the area kRefLevel / 50 kHz
 constexpr float kHfFieldHz = 59.94f;          // head switches per second [R TDA: 29.97 Hz HID]
@@ -1568,7 +1572,7 @@ constexpr float kHfNormalSec = 300.0e-6f;     // ... after this long [R TDA "swi
 constexpr float kHfDocReleaseSec = 9.0e-6f;   // the hold lets go this long after the carrier is back [R TDA]
 constexpr int   kHfBackEdges = 2;             // back on the second HID rising edge: 1-2 HID periods, 33-67 ms [R TDA fast mode]
 constexpr float kHfXfadeSec  = 0.003f;        // the crossfade to and from the linear track [E: the switch's shape is not given]
-constexpr float kHfImbalanceDb = 12.0f;       // Crackle at 100 %: one head this much weaker [E; 3-5 dB is within service tolerance, R HXV]
+constexpr float kHfImbalanceDb = 4.0f;        // Tracking at 100 %: one head this much weaker [E; 3-5 dB is within service tolerance, R HXV]
 constexpr float kHfDriftDb  = 15.0f;          // Drift at 100 %: the deepest slow wander [E]
 constexpr float kHfDriftSec = 1.5f;           // ... and its pace [E]
 constexpr float kHfTrackRate = 4.0f;          // Tracking at 100 %: dips per second [E]
@@ -1630,6 +1634,7 @@ struct HiFiPath
         float recDb = 0.0f, carrierDb = 0.0f, calDb = 0.0f;
         float hiss = 0.0f;          // channel noise, x the 55 dB point
         float clicks = 0.0f;        // click size, x the documented area
+        float cnr0Db = kHfCnr0Db;   // carrier to noise at full carrier (Crackle)
         float imbalanceDb = 0.0f;   // one head this much weaker
         float headBuzz = 0.0f;      // 0 = the documented concealment, 1 = none
         float headGate = 0.0f;      // the head switch at all (the Noise switch and level)
@@ -1672,7 +1677,7 @@ struct HiFiPath
     Carrier st[2];                  // [0] the carrier as it is, [1] during a dropout
     Stereo wPrev = {}, yPrev = {}, held = {};
     float hsPh = 0.0f;
-    bool  headB = false;            // the second head is reading (the weaker one, with Crackle)
+    bool  headB = false;            // the second head is reading (the weaker one, with Tracking)
     int   dropLeft = 0, relLeft = 0, lowCount = 0, back = 0, trackPasses = 0;
     float dropDb = 0.0f, trackDb = 0.0f, trackDepth = 0.0f, driftN1 = 0.0f, driftN2 = 0.0f;
     bool  linear = false, tapeRun = false;
@@ -1783,7 +1788,7 @@ struct HiFiPath
         k.noise = s.hiss > 0.0f ? noiseUnit * s.hiss * dbToGain(-c) : 0.0f;
         // clicks: Rice's rate for an unmodulated carrier, (B / 2 sqrt 3) erfc(sqrt(CNR)) per channel
         // [D from Rice 1948]. The extra rate with modulation (report 1) is not verified and left out.
-        const float cnr = kHfCnr0Db + c;
+        const float cnr = s.cnr0Db + c;
         k.clickThr = 0;
         if (s.clicks > 0.0f && cnr < 16.0f)                            // above 16 dB: under one click a century
         {
@@ -1819,7 +1824,7 @@ struct HiFiPath
             rmsInc = (rmsTo - rmsS) * kCtrlInv;
         }
 
-        // The carrier: Carrier knob + slow wander (Drift) + the weaker head (Crackle) + tracking dips.
+        // The carrier: Carrier knob + slow wander (Drift) + the weaker head and the dips (Tracking).
         float c = s.carrierDb + trackDb + (headB ? -s.imbalanceDb : 0.0f);
         if (s.drift > 0.0f)
         {
@@ -3037,7 +3042,7 @@ private:
     // The knobs, as the Hi-Fi path reads them. Lo Sat, Hi Sat and Split: Rec Level, Carrier, Cal.
     // The seven it takes over are switched as their own stages are: Hiss, Crackle and Head Buzz by
     // the Noise switch and level (Hiss and the clicks as levels, x1 at Noise 50 % and +12 dB at
-    // 100 %, as every noise; Crackle's head imbalance and the head switch as amounts, in full from
+    // 100 %, as every noise; the head switch as an amount, in full from
     // Noise 50 %, as the head-switch hold is), Breathing, Tracking and Drift by Deck On, Dropouts by
     // nothing. The Noise switch off silences the channel's noise, clicks and head switch; the
     // holds and the linear track (the deck's behaviour, not noise) stay.
@@ -3053,11 +3058,12 @@ private:
         s.calDb       = kHfCalDb * tapeBias(getNormalised(kSplit));
         s.hiss        = 4.0f * sq(pct(kHiss)) * master;   // Hiss 50 %, Noise 50 %: the 55 dB point
         s.clicks      = master;
-        s.imbalanceDb = kHfImbalanceDb * pct(kCrackle) * gate;
+        s.cnr0Db      = kHfCnrBestDb - kHfCnrSpanDb * pct(kCrackle);   // how near the deck sits to the click threshold
         s.headBuzz    = pct(kHeadBuzz) * gate;
         s.headGate    = gate;
         s.breathing   = deck ? pct(kBreathing) : 0.0f;
         s.tracking    = deck ? pct(kTracking) : 0.0f;
+        s.imbalanceDb = kHfImbalanceDb * s.tracking;                   // off the track, one head reads worse than the other
         s.drift       = deck ? pct(kDrift) : 0.0f;
         s.dropouts    = pct(kDropouts);
         hifiPath_.set(s);
@@ -3731,9 +3737,8 @@ private:
 
         // Added in 1.7, after the others: the Hi-Fi track (Sat Type = Hi-Fi: Lo Sat is the record
         // level, 0 dB at 56 %; Hi Sat the carrier, 0.3 dB down per %; Split the playback
-        // calibration). The rotating heads have no wow or flutter to speak of, so the wobble is
-        // at rest in all five. Clicks begin with the carrier about 15 dB down; 17 dB down the
-        // deck goes to the linear track.
+        // calibration; Crackle how near the deck sits to the click threshold). The rotating heads have no wow or flutter to speak of, so the wobble is
+        // at rest in all five. 17 dB down the deck goes to the linear track.
         // A good deck and a new tape: nothing but the FM channel's own faint hiss.
         program("Hi-Fi - Clean Deck", {
             {kDrive, 0}, {kWear, 0}, {kComp, 0}, {kHiCut, 18000},
@@ -3746,13 +3751,13 @@ private:
             {kSatType, 2}, {kLoSat, 84}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 10}, {kHiss, 35}, {kCrackle, 0} });
-        // A tape that has been through a lot of machines: a weak carrier, one head weaker than the other,
-        // clicks when it wanders, noise that comes and goes with the music.
+        // A tape that has been through a lot of machines: a weak carrier, a steady scatter of
+        // clicks, more when it wanders, noise that comes and goes with the music.
         program("Hi-Fi - Worn Rental", {
             {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
             {kSatType, 2}, {kLoSat, 60}, {kHiSat, 40}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
-            {kHum, 5}, {kHeadBuzz, 25}, {kHiss, 50}, {kCrackle, 30},
+            {kHum, 5}, {kHeadBuzz, 25}, {kHiss, 50}, {kCrackle, 25},
             {kDropouts, 30}, {kDrift, 30}, {kBreathing, 20} });
         // The tracking knob is off: the buzz of the head switch, bursts of clicks, and every
         // so often the dull mono linear track takes over.
@@ -3760,7 +3765,7 @@ private:
             {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
             {kSatType, 2}, {kLoSat, 58}, {kHiSat, 45}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
-            {kHum, 5}, {kHeadBuzz, 55}, {kHiss, 50}, {kCrackle, 40},
+            {kHum, 5}, {kHeadBuzz, 55}, {kHiss, 50}, {kCrackle, 22},
             {kDropouts, 40}, {kDrift, 40}, {kTracking, 70} });
         // Recorded on one deck, played on another: the expander disagrees with the compressor,
         // so the level is off and the sound pumps.
