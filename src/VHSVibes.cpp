@@ -1555,6 +1555,15 @@ constexpr float kHfCnr0Db  = 25.0f;           // carrier to noise at full carrie
 // carrier up), 8 dB at 100 % (a worn-out deck, past the range [E]: clicks at full carrier, about 30 a
 // second on each channel). 25 dB is at about 10 %.
 constexpr float kHfCnrBestDb = 27.0f, kHfCnrSpanDb = 19.0f;
+// The knobs reach well past a deck in good order, which is too clean to hear [E]: Hiss is 30 dB over the
+// documented scale (the 55 dB point, at Noise 50 %, is Hiss 9 %; Hiss 50 % is a channel 25 dB under
+// reference), and the spike Head Buzz leaves at each switch is 20 dB over the half cycle a phase step
+// can make (a deck whose heads are far out of line).
+constexpr float kHfHissGain = 31.6228f, kHfBuzzGain = 3.16228f;   // (the spike goes with the square of the amount)
+// Hiss goes in a straight line with its knob and the Noise level, not with their squares as the other
+// types' hiss: the expander doubles every dB of it, so what is heard still follows the square. And the
+// channel's noise stops rising 10 dB under reference, however weak the carrier [E].
+constexpr float kHfNoiseTopDb = 10.0f;
 constexpr float kHfBandHz  = 300.0e3f;        // that band [R MAT83 fig. 7]
 constexpr float kHfRefDevHz = 50.0e3f;        // reference deviation [R]: a click (one cycle) has the area kRefLevel / 50 kHz
 constexpr float kHfFieldHz = 59.94f;          // head switches per second [R TDA: 29.97 Hz HID]
@@ -1635,8 +1644,9 @@ struct HiFiPath
         float hiss = 0.0f;          // channel noise, x the 55 dB point
         float clicks = 0.0f;        // click size, x the documented area
         float cnr0Db = kHfCnr0Db;   // carrier to noise at full carrier (Crackle)
+        float noiseTop = 1.0e9f;    // the most the channel noise rises to, x the 55 dB point (the plugin sets it)
         float imbalanceDb = 0.0f;   // one head this much weaker
-        float headBuzz = 0.0f;      // 0 = the documented concealment, 1 = none
+        float headBuzz = 0.0f;      // 0 = the documented concealment, 1 = none, more: out of spec
         float headGate = 0.0f;      // the head switch at all (the Noise switch and level)
         float breathing = 0.0f, tracking = 0.0f, drift = 0.0f, dropouts = 0.0f;
     };
@@ -1785,7 +1795,7 @@ struct HiFiPath
         k.doc = c < kHfDocDb;
         k.low = c < kHfNormalDb;
         // noise: 1 dB more for every dB of carrier lost [R, FM theory]
-        k.noise = s.hiss > 0.0f ? noiseUnit * s.hiss * dbToGain(-c) : 0.0f;
+        k.noise = s.hiss > 0.0f ? noiseUnit * minf(s.hiss * dbToGain(-c), s.noiseTop) : 0.0f;
         // clicks: Rice's rate for an unmodulated carrier, (B / 2 sqrt 3) erfc(sqrt(CNR)) per channel
         // [D from Rice 1948]. The extra rate with modulation (report 1) is not verified and left out.
         const float cnr = s.cnr0Db + c;
@@ -3041,8 +3051,8 @@ private:
 
     // The knobs, as the Hi-Fi path reads them. Lo Sat, Hi Sat and Split: Rec Level, Carrier, Cal.
     // The seven it takes over are switched as their own stages are: Hiss, Crackle and Head Buzz by
-    // the Noise switch and level (Hiss and the clicks as levels, x1 at Noise 50 % and +12 dB at
-    // 100 %, as every noise; the head switch as an amount, in full from
+    // the Noise switch and level (Hiss, the clicks and Head Buzz's spike as levels, x1 at Noise 50 %
+    // and +12 dB at 100 %, as every noise; the head switch's concealed residual as an amount, in full from
     // Noise 50 %, as the head-switch hold is), Breathing, Tracking and Drift by Deck On, Dropouts by
     // nothing. The Noise switch off silences the channel's noise, clicks and head switch; the
     // holds and the linear track (the deck's behaviour, not noise) stay.
@@ -3056,10 +3066,11 @@ private:
         s.recDb       = hifiRecDb(pct(kLoSat));
         s.carrierDb   = kHfCarrierMinDb * pct(kHiSat);
         s.calDb       = kHfCalDb * tapeBias(getNormalised(kSplit));
-        s.hiss        = 4.0f * sq(pct(kHiss)) * master;   // Hiss 50 %, Noise 50 %: the 55 dB point
+        s.hiss        = noise ? kHfHissGain * 4.0f * pct(kHiss) * pct(kNoise) : 0.0f;
+        s.noiseTop    = dbToGain(kHfSnrDb - kHfNoiseTopDb);
         s.clicks      = master;
         s.cnr0Db      = kHfCnrBestDb - kHfCnrSpanDb * pct(kCrackle);   // how near the deck sits to the click threshold
-        s.headBuzz    = pct(kHeadBuzz) * gate;
+        s.headBuzz    = noise ? kHfBuzzGain * pct(kHeadBuzz) * 2.0f * pct(kNoise) : 0.0f;   // its spike, squared, goes with the Noise level as every noise
         s.headGate    = gate;
         s.breathing   = deck ? pct(kBreathing) : 0.0f;
         s.tracking    = deck ? pct(kTracking) : 0.0f;
@@ -3739,18 +3750,19 @@ private:
         // level, 0 dB at 56 %; Hi Sat the carrier, 0.3 dB down per %; Split the playback
         // calibration; Crackle how near the deck sits to the click threshold). The rotating heads have no wow or flutter to speak of, so the wobble is
         // at rest in all five. 17 dB down the deck goes to the linear track.
-        // A good deck and a new tape: nothing but the FM channel's own faint hiss.
+        // A good deck and a new tape: nothing but the FM channel's own faint hiss (Hiss 9 % is a
+        // real deck's, 55 dB under reference).
         program("Hi-Fi - Clean Deck", {
             {kDrive, 0}, {kWear, 0}, {kComp, 0}, {kHiCut, 18000},
             {kSatType, 2}, {kLoSat, 56}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
-            {kHum, 0}, {kHeadBuzz, 0}, {kHiss, 35}, {kCrackle, 0} });
+            {kHum, 0}, {kHeadBuzz, 0}, {kHiss, 9}, {kCrackle, 0} });
         // Recorded 10 dB over: the deviation limiter's hard ceiling on every loud hit.
         program("Hi-Fi - Hot Signal", {
             {kDrive, 20}, {kWear, 0}, {kComp, 15}, {kHiCut, 18000},
             {kSatType, 2}, {kLoSat, 84}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
-            {kHum, 0}, {kHeadBuzz, 10}, {kHiss, 35}, {kCrackle, 0} });
+            {kHum, 0}, {kHeadBuzz, 10}, {kHiss, 12}, {kCrackle, 0} });
         // A tape that has been through a lot of machines: a weak carrier, a steady scatter of
         // clicks, more when it wanders, noise that comes and goes with the music.
         program("Hi-Fi - Worn Rental", {
