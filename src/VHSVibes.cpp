@@ -2987,8 +2987,11 @@ private:
             tgt_[cHead]    = hifiOn_ ? 0.0f : sq(pct(kHeadBuzz)) * 0.50f * master;
             tgt_[cHiss]    = hifiOn_ ? 0.0f : sq(pct(kHiss))     * 0.10f * master;
             tgt_[cCrackle] = hifiOn_ ? 0.0f : sq(pct(kCrackle))  * 0.60f * master;
-            // about -45 dBFS at 50 %, where a real deck has it; the factor evens out the oscillator
+            // about -45 dBFS at 50 %, where a real deck has it; the factor evens out the oscillator.
+            // Up to 60 % as it always was; from there (1.7) it climbs faster, to 15 dB more at 100 %
+            // (-18 dBFS at Noise 50 %): a set that screams, and a tone this high needs the level to be heard.
             tgt_[cWhistle] = sq(pct(kWhistle))  * 0.022f * whistleNorm_ * master;
+            if (pct(kWhistle) > 0.6f) tgt_[cWhistle] *= dbToGain(15.0f * (pct(kWhistle) - 0.6f) / 0.4f);
             const float clicksPerSec = 2.0f + 60.0f * pct(kCrackle);
             crackleThresh_ = (uint32_t)(clicksPerSec / sr * 4294967296.0f);
             noisePre_ = getInt(kNoisePos) == 1;
