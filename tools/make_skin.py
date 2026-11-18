@@ -241,6 +241,10 @@ MODE_SHOWCASE = {"vhs": [("Azimuth", 0.25, "3.8'"), ("Azimuth", 0.5, "15'")]}
 CAPTION_H = 25                     # height of the caption strip at the top of a slot
 CAPTION_COLOUR = (210, 250, 255)
 CAPTION_OVERRIDE = {}              # name -> (caption, colour), used while a mode's captions are being painted
+# Controls that are on the page only while MODE_PARAM is on one step (name -> step): the page's background
+# leaves their slot empty, the whole slot (caption, knob seat, value window) is that mode's overlay, and the
+# control itself is valid only on that step, so in the other modes there is nothing to see or touch.
+MODE_ONLY = {"Azimuth": 1}
 
 
 def mode_steps(params):
@@ -926,6 +930,8 @@ def draw_panel(img, page, params):
             span = 2 if i + 1 < len(cells) and cells[i + 1] == "<" else 1
             cx = bx + i * CELL_W
             sy = by + SLOT_DY
+            if name in MODE_ONLY and name not in CAPTION_OVERRIDE:
+                continue
             cap, cap_col = CAPTION_OVERRIDE.get(name, (CAPTIONS.get(name, name.upper()), CAPTION_COLOUR))
             draw_text(d, (cx + span * CELL_W / 2, sy + 4), cap, f_cap, cap_col, 1.5, "m")
             p = params[name]
@@ -1213,7 +1219,8 @@ def build_tui(params):
                 if name in m["knobs"]:
                     pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", swap_file(name, m)))
                     children.append(G.entry("caption %s %s" % (name, m["key"]), "Image", pic,
-                                            "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, CAPTION_H),
+                                            "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span,
+                                                             SLOT_H if name in MODE_ONLY else CAPTION_H),
                                             "No", "Show", "Always",
                                             invalidating=[step_handle(m["step"], m["step"], steps, switch)]))
         groups = []
@@ -1232,8 +1239,9 @@ def build_tui(params):
                 else:   # a knob some mode recolours
                     defs.append((dname, knob_def(name in BIPOLAR, knob_runs(name, steps), steps, switch)))
             bounds = "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, SLOT_H)
+            only = [step_handle(MODE_ONLY[name], MODE_ONLY[name], steps, switch)] if name in MODE_ONLY else None
             children.append(G.entry(p.name, dname, G.obj(("version", 1), ("handleName", "Data")), bounds,
-                                    "Yes", "Hide", "Always", remap=[("Data", p.handle)]))
+                                    "Yes", "Hide", "Always", remap=[("Data", p.handle)], invalidating=only))
         tabs.append(G.obj(("version", 1), ("tabName", page["name"]), ("fnKeyIndex", ti), ("fnKeySubIndex", 0),
                           ("componentDefinition", G.component_definition([], children, ARGB_BG)),
                           ("qlinkBoundsData", groups)))
@@ -1307,6 +1315,8 @@ def make_preview(page, number, bg, params, images, step=0, displays=None, fx=Non
     except OSError:
         vf = ImageFont.truetype(FONTS + "arialbd.ttf", 16)
     for b, i, span, name in iter_controls(page):
+        if name in MODE_ONLY and MODE_ONLY[name] != step:
+            continue
         p = params[name]
         x, y = cell_x(b, i), block_row(b) + SLOT_DY
         t = p.default if p.default is not None else 0.0
@@ -1437,7 +1447,7 @@ def main():
             CAPTION_OVERRIDE.clear()
             for b, i, span, name in swaps:
                 x, y = cell_x(b, i), block_row(b) + SLOT_DY
-                images[swap_file(name, m)] = alt.crop((x, y, x + CELL_W * span, y + CAPTION_H))
+                images[swap_file(name, m)] = alt.crop((x, y, x + CELL_W * span, y + (SLOT_H if name in MODE_ONLY else CAPTION_H)))
                 images[swap_file(name, m)].save(os.path.join(SKINS, swap_file(name, m)), optimize=True)
         stem = "page_%d_%s" % (n, page["name"].lower())
         make_preview(page, n, bg, params, images).save(os.path.join(PREVIEW, stem + ".png"))

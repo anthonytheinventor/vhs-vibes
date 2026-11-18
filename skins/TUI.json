@@ -5364,7 +5364,7 @@
                                 "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "920 260 140 25",
+                                "bounds": "920 260 140 152",
                                 "additionalInvalidatingHandles": [
                                     "IndexedEnabling/1/3/Parameter 55"
                                 ]
@@ -5652,12 +5652,15 @@
                                 ]
                             },
                             "bounds": {
-                                "version": 1,
+                                "version": 2,
                                 "acceptsHWFocus": "Yes",
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "920 260 140 152"
+                                "bounds": "920 260 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/3/Parameter 55"
+                                ]
                             }
                         },
                         {
