@@ -182,7 +182,7 @@ what: 120 Hz buzz.
 
 ## Head Buzz
 what: The video heads switching, 59.94 times a second. It makes two things: a steady rasp, and a buzz that rides on bright sounds and vanishes on bass, because the signal is held for a few samples at each switch.
-note: Both follow Master and the Noise switch. Breathing (DECK page) pushes the rasp down in the pauses. With Type on **Hi-Fi** (the knob turns orange) it is how badly the deck hides the switch from one head to the other.
+note: Both follow Master and NOISE's power. Breathing (DECK page) pushes the rasp down in the pauses. With Type on **Hi-Fi** (the knob turns orange) it is how badly the deck hides the switch from one head to the other.
 - At 0 % it hides it as well as the chips' datasheets say a deck does, about 75 dB under a 10 kHz tone: nothing to hear.
 - Turned up, each switch leaves a spike that rides on the music and sinks with it in the pauses.
 - At 100 % it is a deck whose heads are far out of line, louder than a real fault could be.
@@ -217,7 +217,7 @@ note: The effect makes noise even with no input. Switch this off, or set Master 
 ## Whistle
 what: The line whistle of the TV set, 15.7 kHz, steady, never wobbling. At 50 % it is about where a real deck has it. Up to 60 % it is as it always was; above that it climbs faster, to 15 dB more at 100 % than before 1.7: a set that screams.
 listen: A very high, thin tone. Not everyone can hear it.
-note: It is added late in the path, after every filter and both wobbles. Dropouts dip it with the rest of the sound, unless the NR playback side is on: then it is added after that, at the very end. It follows Master and the Noise switch like the other noises.
+note: It is added late in the path, after every filter and both wobbles. Dropouts dip it with the rest of the sound, unless the NR playback side is on: then it is added after that, at the very end. It follows Master and NOISE's power like the other noises.
 
 <!-- ======================================================================= INPUT -->
 
@@ -239,7 +239,7 @@ what: Spreads the chorus left and right. 0 % moves both sides together; 100 % mo
 
 ## Mic
 what: Plays the sound into one of four period microphones before it reaches the recorder, as if it had been re-recorded through one. Mic Model chooses which set of four. The mic fades in and out when switched.
-note: On Modeled the mic adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. The Noise switch silences it; the Master knob does not change it. The Simple ones add none.
+note: On Modeled the mic adds its own noise (the capsule's hiss, or the phone line's), at the level the model gives it. NOISE's power silences it; the Master knob does not change it. The Simple ones add none.
 
 ## Mic Type
 what: Which of the four microphones the Mic plays the sound into. What each one is depends on **Mic Model**: on Simple a tone curve and nothing more, on Modeled a real kind of microphone with the recorder it sat in.

@@ -98,7 +98,7 @@ VHS Vibes needs **MPC OS 3.10.1 or later**.
 
 1. Load VHS Vibes as an insert effect on a track and play something through it.
 2. The plugin opens on **Home Recording**: a family tape in good shape, with gentle wobble, some hiss and a level control that rides a little. The reels on the screen turn while sound passes.
-3. There is hiss and hum even when nothing plays. That is the tape. The Noise switch on the NOISE page turns it off.
+3. There is hiss and hum even when nothing plays. That is the tape. The **Power** switch on the NOISE page turns it off.
 4. Step through the programs to hear what the machine can do. They are listed in the chapter ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ.
 5. To build a sound from nothing, choose the program **Init**: a blank tape, everything neutral, the sound passing through unchanged. Then turn up one thing at a time.
 6. If the effect is too much, turn **Mix** down on the TAPE page to let the untouched input back in, or start from **Subtle Glue**.
@@ -175,7 +175,7 @@ With **Visual Vibes** on (DECK page, SCREEN block), the picture on the page stic
 | A strip of noise along the bottom, in three strengths | Head Buzz |
 | A white streak for a moment | each dropout |
 | A band of noise rolling up the picture | the tracking lost: Tracking in Simple and VHS, every fall to the linear track in Hi-Fi |
-| The grid bends, in three steps | the four wobble depths together (the Wobble switch off straightens it) |
+| The grid bends, in three steps | the four wobble depths together (WOBBLE's power off straightens it) |
 | A haze, in five steps | Hi Cut below 7 kHz, thickest at 1 kHz |
 
 - Visual Vibes is off in a new instance and in a project from an older version.
@@ -282,7 +282,7 @@ With Type on Hi-Fi and VIBE's power on, seven controls on other pages stop drivi
 
 With VIBE's power off, all of these are their own again, and Hi-Fi sounds exactly as Simple does with VIBE's power off.
 
-The Noise switch and Master work on Hiss, Crackle and Head Buzz in Hi-Fi as they do everywhere. The DECK page's Power switches Breathing, Tracking and Drift.
+NOISE's power and Master work on Hiss, Crackle and Head Buzz in Hi-Fi as they do everywhere. **Deck Power** switches Breathing, Tracking and Drift.
 
 ### The fall to the linear track
 
@@ -310,9 +310,9 @@ epigraph: Everything the tape adds when nobody is talking.
 
 ## Noise and silence
 
-- The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a silent background.
+- The effect makes noise even with no input. Set Master to 0 %, or switch NOISE's power off, for a silent background.
 - With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops. That is how a real recorder's level control behaves; turn Master down if it is too much.
-- While the Mic is on Modeled, the microphone adds its own noise: the capsule's hiss, or the phone line's. The Noise switch silences it; Master does not change it.
+- While the Mic is on Modeled, the microphone adds its own noise: the capsule's hiss, or the phone line's. NOISE's power silences it; Master does not change it.
 
 ::: page INPUT
 toc: Chorus and microphone
@@ -945,7 +945,7 @@ A 1 kHz tone, AGC at 100 %. The same at 44.1, 48 and 96 kHz within 0.01 dB, and 
 - **Left out, for want of figures:** any leakage of the germanium diode and any current drawn by the chip's control input, which could only make the recovery faster (up to about 2.5 dB per second); any load on the audio output that would speed up the second step of the attack.
 
 ::: note Hear it
-Choose **Init**, switch the deck's **Power** on, set **AGC** to 100 % and **AGC Model** to Modeled. Play a drum loop with a quiet break: the hits are held down, and in the break the room and the hiss rise slowly, a dB a second, long after a Simple AGC would have come back. Then set AGC to 50 % for half of that.
+Choose **Init**, switch **Deck Power** on, set **AGC** to 100 % and **AGC Model** to Modeled. Play a drum loop with a quiet break: the hits are held down, and in the break the room and the hiss rise slowly, a dB a second, long after a Simple AGC would have come back. Then set AGC to 50 % for half of that.
 :::
 
 ::: aside
@@ -970,7 +970,7 @@ Every section of the machine has its own switch, so a part can be taken out with
 ## What a switch leaves in
 
 - **VIBE's power** off: Hi Cut stays in. With Type on Hi-Fi, the seven controls the Hi-Fi track had taken go back to their own stages, and B-Type NR works again.
-- **Wobble** off: the two filters of the WOBBLE page stay in.
+- **WOBBLE's power** off: the two filters of the WOBBLE page stay in.
 - **Noise** off: silences every noise, the Whistle, the head-switching buzz and the modeled microphones' own noise included. In Hi-Fi it also silences the FM channel's noise, clicks and head switch, and the linear track's hiss; the holds and the falls to the linear track stay, as they are part of the deck.
 - **Deck Power** off: B-Type NR, HQ, Azimuth, Animation and Visual Vibes are not affected. In Hi-Fi it switches off Breathing, Tracking and Drift there too; Dropouts is not part of the deck.
 - **Animation** off: Visual Vibes shows nothing either.
@@ -1056,7 +1056,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.4 | Scrape, Whistle, HQ | Sticky Tape, Tube TV, Worn Heads, Dirty Heads |
 | 1.5 | B-Type NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
 | 1.6 | Mic Model: the four Mic Types built from published figures (Modeled), beside the ones before (Simple). AGC Model: the record level control of an early VHS deck (Modeled), beside the AGC before (Simple) | the five programs with the Mic on again, on the modeled microphones: Mic - Camcorder 89, Mic - Answer Machine, Mic - Wedding Video, Mic - Bootleg Concert, Mic - Tube TV |
-| 1.7 | Sat Type Hi-Fi: the FM track, taking over Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift and Dropouts; the first choice renamed Simple. Azimuth. Visual Vibes. Tape Speed names five more formats' speeds; Whistle louder above 60 %. The blocks SATURATOR and HI-FI TRACK renamed VIBE and ALIGNMENT | Hi-Fi - Clean Deck, Hi-Fi - Hot Signal, Hi-Fi - Worn Rental, Hi-Fi - Tracking Lost, Hi-Fi - Wrong Deck; two VHS programs with Azimuth: VHS - Borrowed Tape, VHS - Wrong Deck EP |
+| 1.7 | Sat Type Hi-Fi: the FM track, taking over Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift and Dropouts; the first choice renamed Simple. Azimuth. Visual Vibes. Tape Speed names five more formats' speeds; Whistle louder above 60 %. The blocks SATURATOR, HI-FI TRACK, TRACKING (WOBBLE page) and DECK renamed VIBE, ALIGNMENT, WARP and AGC; the power switches of NOISE and WOBBLE first in their rows, Drift in ALIGNMENT | Hi-Fi - Clean Deck, Hi-Fi - Hot Signal, Hi-Fi - Worn Rental, Hi-Fi - Tracking Lost, Hi-Fi - Wrong Deck; two VHS programs with Azimuth: VHS - Borrowed Tape, VHS - Wrong Deck EP |
 
 ::: chapter
 id: trouble
@@ -1070,14 +1070,14 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | What happens | Why, and what to do |
 |---|---|
 | VHS Vibes is not in the plugin browser. | Check that the MPC runs MPC OS 3.10.1 or later; that **Enable Enhancements** and **External Plugin Support** are both on under Preferences > Enhancements (Beta); that the MPC was restarted afterward; and that the folder `{{vendor}} - VST - VHS Vibes` sits inside a folder named `VST2 Plugins` at the top of the drive. Look under **External Plugins**. |
-| It hisses and hums with nothing playing. | That is the tape noise. Switch **Noise** off on the NOISE page, or set **Master** to 0 %. |
+| It hisses and hums with nothing playing. | That is the tape noise. Switch **Power** off on the NOISE page, or set **Master** to 0 %. |
 | The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on Modeled with Type **Camcorder** or **Boombox**: its level control turns the gain up in every pause, as the real one did. |
 | The Mic sounds different in a new instance from an older project. | A new instance starts on **Mic Model** Modeled; a project saved before 1.6 opens on Simple. Set Mic Model to the one you want. |
 | The AGC sounds different from one program to another, or after turning it up on Init. | **AGC Model**: every program with the AGC up, and a project saved before 1.6, use Simple; Init and the programs with the AGC at 0 % are on Modeled. Set AGC Model to the one you want. |
 | With Mix below 100 % it sounds like a chorus. | The dry input is steady and the tape path wobbles. Switch **Wobble** off for a clean blend, or keep Mix at 100 %. |
 | The pitch bends or blurs when I turn a wobble knob. | The knob changes the plugin's own delay. It settles as soon as the knob rests. |
 | The sound dips for a moment when I choose a program, or switch HQ or Sat Type. | Each of these fades the sound out and back in. |
-| AGC, Drift, Tracking and Breathing do nothing. | **Power** on the DECK page is off. The programs Init and Clean Widener switch it off. |
+| AGC, Drift, Tracking and Breathing do nothing. | **Deck Power** on the DECK page is off. The programs Init and Clean Widener switch it off. |
 | Split, Lows, Lo Sat, Highs and Hi Sat do nothing. | VIBE's **power** is off. |
 | Split, Lo Sat and Hi Sat do not do what their names say. | **Type** is on VHS, where they are Bias, Rec Level and Tape Speed, or on Hi-Fi, where they are Cal, Rec Level and Carrier, and are captioned so on the screen. See the table on the TAPE page. |
 | Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift or Dropouts behave differently, and are orange. | **Type** is on Hi-Fi with VIBE's power on: the Hi-Fi track has taken them over. See *What Hi-Fi takes over* on the TAPE page. |

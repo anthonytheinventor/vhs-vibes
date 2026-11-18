@@ -193,7 +193,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 | Control | What it does |
 |---|---|
 | Chorus Power, Mix, Speed, Delay, Width | A chorus in front of everything; Width spreads it left / right. |
-| Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. On Modeled it adds the microphone's own noise (silenced by the Noise switch). |
+| Mic | Plays the sound into a period microphone before the recorder, as if re-recorded through it. On Modeled it adds the microphone's own noise (silenced by NOISE's power). |
 | Mic Type | Camcorder, Dynamic, Phone or Boombox. What each one is depends on Mic Model (below). |
 | Mic Gain | On Simple, the level of the microphone, after its curve. On Modeled, how loud the sound is at the microphone, before it: a sound peaking at -8 dBFS counts as 104 dB SPL. For the Camcorder, -12 to -6 dB keeps ordinary material inside its ALC's range, 0 is at the top of it, +6 to +12 dB is past it and crunches. |
 | Mic Model | Which set of four microphones Mic Type chooses from. **Simple**: the microphones up to 1.5, a tone curve each. **Modeled**: the microphones built from published figures (1.6), with their overload, noise and level controls. Switching fades the mic out and back in. |
@@ -372,7 +372,7 @@ automated and are best left alone. The Animation switch on the DECK page turns t
 
 - With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops.
   That is how a real recorder's level control behaves; turn Master down if it is too much.
-- The effect makes noise even with no input. Set Master to 0 %, or switch Noise off, for a
+- The effect makes noise even with no input. Set Master to 0 %, or switch NOISE's power off, for a
   silent background.
 - Turning a wobble depth or rate changes the plugin's own delay. A small move is followed at
   a limited pace, so the pitch bends by a couple of percent at most. After a big jump, once
