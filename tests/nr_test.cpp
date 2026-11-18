@@ -84,7 +84,8 @@ int main()
     {
         struct { float hz, level, want; } pts[] = { {1400, -20, 4.4f}, {1400, -30, 7.5f}, {2000, -25, 7.0f}, {5000, -20, 3.2f},
                                                     {5000, -30, 8.2f}, {5000, -40, 10.3f}, {10000, -20, 2.6f}, {10000, -30, 6.5f} };
-        for (float sr : {44100.0f, 48000.0f, 88200.0f, 96000.0f, 192000.0f})
+        // (with HQ the encoder runs at twice the session's rate: up to 384 kHz)
+        for (float sr : {44100.0f, 48000.0f, 88200.0f, 96000.0f, 176400.0f, 192000.0f, 352800.0f, 384000.0f})
         {
             double worst = 0.0;
             std::printf("   %5.0f Hz rate:", sr);

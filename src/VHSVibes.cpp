@@ -76,7 +76,11 @@
 // 14 kHz comes back at 2.1 kHz). With it, what the soft part of the distortion adds is
 // filtered off almost entirely; what hard clipping and Slew add when a full-level high tone
 // drives them goes further up than twice the rate can hold, and that part comes down by
-// 6 to 20 dB only. It costs about a quarter more CPU.
+// 6 to 20 dB only. It costs about a quarter more CPU. Since 1.7 it also covers the two stages
+// that distort before the preamp: the modelled Camcorder, Phone and Boombox microphones (they run
+// at twice the rate between their own pair of half-band filters, which holds the sound back by
+// as much again; the Dynamic one and the Simple ones are linear and stay as they were) and the
+// B-type NR encoder, which now runs inside the doubled section for the sake of its overshoot clipper.
 //
 // Compatibility: parameters are only ever appended, and a new one rests where the plugin
 // sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type Simple, the 2-band
@@ -95,7 +99,10 @@
 // Vibes, a switch for the picture only (off in a new instance and in an older state), and five more
 // meters for it after it; the sound is the same whatever it says. Azimuth (1.7) comes after those
 // meters and rests at 0, where the stage is not there at all; an older state and programs 0 to 43
-// leave it there (44 and 45 are the two that use it).
+// leave it there (44 and 45 are the two that use it). And since 1.7 HQ covers the modelled
+// microphones and the NR encoder's clipper (see HQ above): a project that uses a Modeled Camcorder,
+// Phone or Boombox, or NR Rec or On, with HQ on sounds cleaner than it did (no fold-back from those
+// stages), at the same level and tone. With HQ off, or without those, it is the same to the bit.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -411,8 +418,8 @@ inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
 // rise of amplifier D with frequency and the control law of F. Those were fitted (F's
 // conductance rising in a straight line with the control voltage above a threshold, as a
 // junction FET's does) to the record-mode figures of the NE545 and TEA0665 datasheets; the
-// model meets all eight within 0.4 dB at 44.1 kHz and within 0.6 dB at every rate up to
-// 192 kHz (the chips are specified to +/- 2 dB):
+// model meets all eight within 0.4 dB at 44.1 kHz and within 0.65 dB at every rate up to
+// 384 kHz, where the encoder runs with HQ at 192 kHz (the chips are specified to +/- 2 dB):
 //      1.4 kHz at -20 dB: +4.4 dB, at -30: +7.5      2 kHz at -25 dB: +7.0
 //      5 kHz at -20: +3.2, -30: +8.2, -40: +10.3     10 kHz at -20: +2.6, -30: +6.5
 // The diode threshold of the smoothing and the clip level are estimates. Levels are relative
@@ -1419,56 +1426,60 @@ struct MicModel
         return sum;
     }
 
-    void set(int t, float sr)
+    // sr: the session's rate. in: the rate the mic runs at up to its last stage that distorts
+    // (front() below: twice sr with HQ, see the plugin's setMic); what comes after that is linear
+    // and runs at sr (back()), so with HQ the response and the noise are the ones without it.
+    void set(int t, float sr, float in = 0.0f)
     {
+        if (in <= 0.0f) in = sr;
         type = t;
-        const int band = sr >= 130000.0f ? 3 : sr >= 70000.0f ? 2 : sr >= 46000.0f ? 1 : 0;   // the fits are per rate band
+        const int band = in >= 130000.0f ? 3 : in >= 70000.0f ? 2 : in >= 46000.0f ? 1 : 0;   // the fits are per rate band
         n = 0;
-        auto add = [&](const MicSec& s) { f[n++].setCoeffs(design(s, sr)); };
+        auto add = [&](const MicSec& s, float rate) { f[n++].setCoeffs(design(s, rate)); };
         if (t == kCamcorder || t == kBoombox)
         {
             const float* p = kCapPeak[band];
-            add({ 'p', p[0], p[1], p[2] });
-            add({ '1', kGateHpHz, 0.0f, 0.0f });
-            normalise(0, 2, sr);
-            capNoise = noiseAmp(kCapNoiseRms, kAWeightBw, sr);   // A-weighted level of white noise, at the capsule
+            add({ 'p', p[0], p[1], p[2] }, in);
+            add({ '1', kGateHpHz, 0.0f, 0.0f }, in);
+            normalise(0, 2, in);
+            capNoise = noiseAmp(kCapNoiseRms, kAWeightBw, in);   // A-weighted level of white noise, at the capsule
         }
         if (t == kCamcorder)
         {
             const float* l = kCamLp[band];
-            add({ 'H', kCamHpHz, kCamHpQ, 0.0f });
-            add({ 'L', l[0], l[1], 0.0f });
-            normalise(2, 4, sr);
-            alcAtk = 1.0 - std::exp(-1.0 / ((double)kCamAttackSec * sr));
-            alcRel = std::exp(-1.0 / ((double)kCamRecoverySec * sr));
+            add({ 'H', kCamHpHz, kCamHpQ, 0.0f }, in);
+            add({ 'L', l[0], l[1], 0.0f }, in);
+            normalise(2, 4, in);
+            alcAtk = 1.0 - std::exp(-1.0 / ((double)kCamAttackSec * in));
+            alcRel = std::exp(-1.0 / ((double)kCamRecoverySec * in));
             camIn = 0.5f * std::pow(10.0f, -kCamDistanceDb / 20.0f);
         }
         if (t == kBoombox)
         {
-            add({ 'h', 50.0f, 0.7071f, 0.0f });
-            add({ 'l', 10000.0f, 0.7071f, 0.0f });
+            add({ 'h', 50.0f, 0.7071f, 0.0f }, sr);
+            add({ 'l', 10000.0f, 0.7071f, 0.0f }, sr);
             normalise(2, 4, sr);
             PairBiquad a = f[2], b = f[3];
             a.reset(); b.reset();
             hiss = noiseAmp(kTapeHissRms, powerGain([&](float x) { return b.process(a.process(splat(x)))[0]; }, sr));
-            alcAtk = 1.0 - std::exp(-1.0 / ((double)kAlcAttackSec * sr));
-            alcRel = std::exp(-1.0 / ((double)kAlcRecoverySec * sr));
+            alcAtk = 1.0 - std::exp(-1.0 / ((double)kAlcAttackSec * in));
+            alcRel = std::exp(-1.0 / ((double)kAlcRecoverySec * in));
         }
         if (t == kDynamic)
         {
-            for (const MicSec& s : kDynSecs[band]) if (s.kind != 0) add(s);
-            normalise(0, n, sr);
+            for (const MicSec& s : kDynSecs[band]) if (s.kind != 0) add(s, in);   // (never at twice the rate: it does not distort)
+            normalise(0, n, in);
         }
         if (t == kPhone)
         {
-            for (const MicSec& s : kPhoneSecs) add(s);
+            for (const MicSec& s : kPhoneSecs) add(s, sr);
             normalise(0, n, sr);
             lineBp.setCoeffs(BiquadCoeffs::bandpass(sr, kLineBpHz, kLineBpQ));
             Biquad bp = lineBp;
             bp.reset();
             line = noiseAmp(kLineNoiseRms, powerGain([&](float x) { return bp.process(x); }, sr));
-            envAtk = 1.0f - std::exp(-1.0f / (0.001f * sr));    // estimates (see kCarbonH2)
-            envRel = 1.0f - std::exp(-1.0f / (0.050f * sr));
+            envAtk = 1.0f - std::exp(-1.0f / (0.001f * in));    // estimates (see kCarbonH2)
+            envRel = 1.0f - std::exp(-1.0f / (0.050f * in));
         }
         for (int i = 0; i < n; ++i) mf[i].setCoeffs(f[i]);
     }
@@ -1531,17 +1542,29 @@ struct MicModel
     // the model itself reload more. A call a sample is cheaper than either.
     __attribute__((noinline)) Stereo process(Stereo x, float noise)
     {
+        if (type == kDynamic)   // four filters, five from 70 kHz up (written out: no loop to run)
+        {
+            x = f[3].process(f[2].process(f[1].process(f[0].process(x))));
+            return n == 5 ? f[4].process(x) : x;
+        }
+        return splat(back(front(x, noise), noise));
+    }
+    // HQ (Camcorder, Phone, Boombox): two samples at twice the rate (a the earlier one) through
+    // front(), and the result, back at the session's rate, through back().
+    __attribute__((noinline)) Stereo front2(Stereo a, Stereo b, float noise) { const float p = front(a, noise); return stereo(p, front(b, noise)); }
+    __attribute__((noinline)) float back1(float m, float noise) { return back(m, noise); }
+
+    // The mono types up to and including their last stage that distorts...
+    __attribute__((always_inline)) float front(Stereo x, float noise)
+    {
         switch (type)
         {
             case kCamcorder:
             {
                 float m = capsule((x[0] + x[1]) * camIn, noise);    // one built-in mic, across the room
                 m = micAmp(mono(3, mono(2, m)));                    // the mic amp: its band, its overload
-                return splat(alc<18>(m, kCamRecGain, 1.0f / kCamThresh, kCamMaxAtt));
+                return alc<18>(m, kCamRecGain, 1.0f / kCamThresh, kCamMaxAtt);
             }
-            case kDynamic:   // four filters, five from 70 kHz up (written out: no loop to run)
-                x = f[3].process(f[2].process(f[1].process(f[0].process(x))));
-                return n == 5 ? f[4].process(x) : x;
             case kPhone:
             {
                 float m = 0.5f * (x[0] + x[1]);                // one line
@@ -1555,18 +1578,28 @@ struct MicModel
                 float g = 1.0f;
                 if (!(r >= 1.0f)) g = r < kCarbonQuiet ? kCarbonFloor : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);
                 m = clamp(m * g, -kCarbonClip, kCarbonClip);
-                m += kCarbonH2 * m * m;                       // its DC goes in the highpasses that follow
-                for (int i = 0; i < 8; ++i) m = mono(i, m);
-                if (noise > 0.0f) m += lineBp.process(rng[0].nextBipolar()) * (line * noise);
-                return splat(m);
+                return m + kCarbonH2 * m * m;                 // its DC goes in the highpasses that follow
             }
             default:   // kBoombox
             {
-                float m = capsule(0.5f * (x[0] + x[1]), noise);     // one built-in mic
-                m = alc<14>(m, kAlcRecGain, 1.0f / kRefLevel, kAlcMaxAtt);
-                if (noise > 0.0f) m += rng[1].nextBipolar() * (hiss * noise);
-                return splat(mono(3, mono(2, m)));           // the tape
+                const float m = capsule(0.5f * (x[0] + x[1]), noise);     // one built-in mic
+                return alc<14>(m, kAlcRecGain, 1.0f / kRefLevel, kAlcMaxAtt);
             }
+        }
+    }
+    // ... and what follows it: linear, with the noise that comes in there
+    __attribute__((always_inline)) float back(float m, float noise)
+    {
+        switch (type)
+        {
+            case kCamcorder: return m;
+            case kPhone:
+                for (int i = 0; i < 8; ++i) m = mono(i, m);
+                if (noise > 0.0f) m += lineBp.process(rng[0].nextBipolar()) * (line * noise);
+                return m;
+            default:   // kBoombox
+                if (noise > 0.0f) m += rng[1].nextBipolar() * (hiss * noise);
+                return mono(3, mono(2, m));                  // the tape
         }
     }
 };
@@ -2478,8 +2511,7 @@ private:
         edgeCoeff_    = lpCoeff(1200.0f, sr_);
         fbLp_.setCoeffs(BiquadCoeffs::lowpass(sr_, 5000.0f, 0.7071f));   // the backup (linear) track is dull
         fbHpCoeff_    = lpCoeff(100.0f, sr_);                            // and thin
-        nrEnc_.prepare(sr_, false);
-        nrDec_.prepare(sr_, true);
+        nrDec_.prepare(sr_, true);                                       // (the encoder: in setQuality)
         nrFade_ = 1.0f / (0.008f * sr_);                                 // NR comes in and goes out over 8 ms
     }
 
@@ -2492,6 +2524,7 @@ private:
         envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * nlSr_));
         compSmooth_ = hq_ ? 0.01005f : 0.02f;                      // and its gain smoothing, per sample
         if (hifiPath_.sr != nlSr_) hifiPath_.prepare(nlSr_);       // Sat Type = Hi-Fi runs in the saturator's place
+        nrEnc_.prepare(nlSr_, false);                              // the NR encoder runs inside too (see process)
     }
 
     // Clears every memory and jumps all smoothed values to the current settings.
@@ -2508,7 +2541,7 @@ private:
         // the dry copy's crossfade a knob move can start), and the filters after them carry
         // whatever they read on into the fade-in. Left in place, the old sound would be heard.
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
-        simple_.reset(); mic_.reset();
+        simple_.reset(); resetMic();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
         tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = splat(0.0f);
         env_ = 0.0f; compGain_ = 1.0f; compTarget_ = 1.0f;
@@ -2762,9 +2795,6 @@ public:
             Stereo x = stereo(l, r);
             inSum += x;                                        // see the end of process()
             if (breathOn_) inMax_ = vmax(inMax_, vabs(x));     // what the noise reduction hears
-            float dryLen = 0.0f;
-            if (dryActive_) { dryDelay_.write(hq_ ? hbDry_.trip(x) : x); dryLen = dryD_.next(); }   // kept for Mix below 100 %
-
             float outGain = ramp_[rOut].next();
             if (gateOn_) outGain *= gate_.next();   // a moment after a reset only (the chorus swing)
             const float mix     = ramp_[rMix].next();
@@ -2772,6 +2802,17 @@ public:
             const float choMix  = ramp_[rChorus].next();
             const float micMix  = ramp_[rMic].next();
             const float satMix  = ramp_[rSat].next();
+
+            // kept for Mix below 100 %, lined up with the tape path: the same phase shift as HQ's
+            // half-band pair, and as the mic's own pair as far as that mic is heard
+            float dryLen = 0.0f;
+            if (dryActive_)
+            {
+                Stereo d = hq_ ? hbDry_.trip(x) : x;
+                if (micHq_ && micRun_) d += (hbMicDry_.trip(d) - d) * micMix;
+                dryDelay_.write(d);
+                dryLen = dryD_.next();
+            }
 
             // ----- noise generators (each one only while its own level is up) ------
             Stereo noise = splat(0.0f);
@@ -2839,9 +2880,23 @@ public:
             // ----- mic ---------------------------------------------------------
             // (Simple: Mic Gain after the curve, and its filters only while the mic is heard, as
             // up to 1.5. Modeled: Mic Gain is how loud the sound reaches the microphone.)
+            // With HQ a model that distorts runs at twice the rate between its own half-band pair
+            // (see setMic), so what its clippers add above 22 kHz is filtered off instead of folding
+            // back. That makes the mic kHqDelay samples late: the dry copy (above) and the reported
+            // latency allow for it while it is heard. The sound that goes round it is not delayed:
+            // while the mic fades in or out the two are crossfaded, as before.
             if (micRun_ && (!micSimple_ || micMix > 0.0f))
             {
-                const Stereo m = micSimple_ ? simple_.process(x) * cur_[cMicGain] : mic_.process(x * cur_[cMicGain], cur_[cMicNoise]);
+                Stereo m;
+                if (micSimple_) m = simple_.process(x) * cur_[cMicGain];
+                else if (micHq_)
+                {
+                    Stereo a, b;
+                    hbMicUp_.up(x * cur_[cMicGain], a, b);
+                    const Stereo p = mic_.front2(a, b, cur_[cMicNoise]);
+                    m = splat(mic_.back1(hbMicDown_.down(splat(p[0]), splat(p[1]))[0], cur_[cMicNoise]));
+                }
+                else m = mic_.process(x * cur_[cMicGain], cur_[cMicNoise]);
                 x += (m - x) * micMix;
             }
 
@@ -2870,23 +2925,35 @@ public:
                 x = tiltLp_ * cur_[cTiltLo] + (x - tiltLp_) * cur_[cTiltHi];
             }
             else tiltLp_ = x;   // stays with the sound, so Tilt can come in without a click
-            if (nrEncRun_)
+            const bool nrEnc = nrEncRun_;
+            if (nrEnc)
             {
-                if (nrEncSeed_) { nrEnc_.seed(x); nrEncSeed_ = false; }
                 if (nrEncMix_ != nrEncGoal_)
                 {
                     nrEncMix_ = clamp(nrEncMix_ + (nrEncOn_ ? nrFade_ : -nrFade_), 0.0f, 1.0f);
                     nrEncRun_ = nrEncOn_ || nrEncMix_ > 0.0f;      // faded out: done
                 }
-                x = nrEnc_.encode(x, nrEncMix_);
+                if (!hq_)
+                {
+                    if (nrEncSeed_) { nrEnc_.seed(x); nrEncSeed_ = false; }
+                    x = nrEnc_.encode(x, nrEncMix_);
+                }
             }
             // ----- drive, wear, compressor, saturator: the stages that distort ----
             if (hq_)
             {
                 // HQ: they run at twice the sample rate, so what they add above 22 kHz is
-                // filtered off instead of folding back down into the sound.
+                // filtered off instead of folding back down into the sound. The NR encoder comes
+                // first, in its place in the chain: its overshoot clipper distorts too (it is
+                // prepared for this rate in setQuality).
                 Stereo a, b;
                 hbUp_.up(x, a, b);
+                if (nrEnc)
+                {
+                    if (nrEncSeed_) { nrEnc_.seed(a); nrEncSeed_ = false; }
+                    a = nrEnc_.encode(a, nrEncMix_);
+                    b = nrEnc_.encode(b, nrEncMix_);
+                }
                 a = shape(a, satMix);
                 b = shape(b, satMix);
                 x = hbDown_.down(a, b);
@@ -3422,12 +3489,18 @@ private:
     int micHoldFor() const { return mic_.type == MicModel::kCamcorder ? micHoldCamTicks_ : micHoldTicks_; }
 
     // mic: Mic Type + 4 x Mic Model (0 to 3 the Simple ones, 4 to 7 the Modeled ones)
+    // With HQ the models that distort (all but the Dynamic one, which is filters only) run at twice
+    // the rate between their own half-band pair, up to their last stage that distorts, with the
+    // filters and time constants of that part made for that rate (see MicModel::set and process).
     void setMic(int mic)
     {
         micSimple_ = mic < 4;
-        if (micSimple_) simple_.set(mic, sr_); else mic_.set(mic - 4, sr_);
+        micHq_ = hq_ && !micSimple_ && mic != 4 + MicModel::kDynamic;
+        if (micSimple_) simple_.set(mic, sr_); else mic_.set(mic - 4, sr_, micHq_ ? 2.0f * sr_ : sr_);
         micType_ = mic;
     }
+    // The model from rest, with its half-band filters.
+    void resetMic() { mic_.reset(); hbMicUp_.reset(); hbMicDown_.reset(); hbMicDry_.reset(); }
 
     // amount 0..1 -> clipper gain, make-up and clean/driven blend.
     void setDrive(float amount, float maxExtraGain, int gIdx, int mkIdx, int mixIdx)
@@ -3547,7 +3620,9 @@ private:
         wf2_.update(sr_, dev2Slow_ * wob, rate2Slow_, dev2Fast_ * wob, rate2Fast_);
         wf1_.tick(shape1_);
         wf2_.tick(0.0f);
-        wantLatency_.store((int)(wf1_.base + wf2_.base + (hq_ ? kHqDelay : 0.0f) + 0.5f), std::memory_order_relaxed);   // settles when the glide ends
+        // (settles when the glide ends; a model mic under HQ adds its own pair's delay while it is in)
+        const float micLate = micHq_ && rampT_[rMic] > 0.0f ? kHqDelay : 0.0f;
+        wantLatency_.store((int)(wf1_.base + wf2_.base + (hq_ ? kHqDelay : 0.0f) + micLate + 0.5f), std::memory_order_relaxed);
 
         // Mix: the dry copy is only kept while Mix is below 100 %. It waits as long as the tape
         // path does at rest; with both wobbles still that is a whole number of samples. When
@@ -3607,7 +3682,7 @@ private:
         // to catch a loud sound (which takes it about 5 ms from rest, with a burst). A Simple
         // one carries on from where it stopped and fades in at once, as up to 1.5.
         const bool micWant = rampT_[rMic] > 0.0f;
-        if (micWant && !micRun_) { micRun_ = true; if (!micSimple_) { mic_.reset(); micHold_ = micHoldFor(); } }
+        if (micWant && !micRun_) { micRun_ = true; if (!micSimple_) { resetMic(); micHold_ = micHoldFor(); } }
         else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
         if (micHold_ > 0) { --micHold_; rampS_[rMic] = 0.0f; ramp_[rMic].snap(0.0f); }
         if (choActive_)
@@ -4387,6 +4462,11 @@ private:
     // Azimuth (1.7), last for the same reason (its running sums take 8 KB)
     bool  azRun_ = false;                        // the stage runs (see controlTick)
     Azimuth az_;
+
+    // HQ for the model mics (1.7), last for the same reason: whether the mic that is in runs at
+    // twice the rate (see setMic), its half-band pair, and the same phase shift for the dry copy
+    bool  micHq_ = false;
+    HalfBand hbMicUp_, hbMicDown_, hbMicDry_;
 };
 
 // The framework's dispatcher with five additions:
