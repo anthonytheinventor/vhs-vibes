@@ -125,3 +125,24 @@ Bootleg Concert on the modelled microphone: the radio cassette's level control h
 
 ## Mic - Tube TV
 Tube TV on the modelled microphone: the boombox held up to the set, its level control lifting the hiss in every pause.
+
+## Hi-Fi - Clean Deck
+Type = Hi-Fi. A good deck and a new tape: nothing but the FM channel's own faint hiss, where a real deck has it. No wobble: the rotating heads have none to speak of.
+
+## Hi-Fi - Hot Signal
+Recorded 25 dB over, through a hotter, grittier input: every loud hit and held loud note flattens against the Hi-Fi track's hard ceiling.
+
+## Hi-Fi - Worn Rental
+A tape that has been through a great many machines: the signal 12 dB down, a steady crackle of clicks, loud head switching, noise that swells with the music, and a moment on the hissy linear track every few seconds.
+
+## Hi-Fi - Tracking Lost
+The tracking knob is well off: a hard buzz at every head switch, bursts of clicks at the dips, and about once a second the dull, hissy mono linear track takes over.
+
+## Hi-Fi - Wrong Deck
+Recorded 10 dB hot on one deck, played on another whose playback side disagrees: quiet passages come well up, loud ones do not, and it pumps.
+
+## VHS - Borrowed Tape
+SP Tape recorded on another deck: the head is 6.5' out of line, so the highs from about 8 kHz up are dulled and swish gently.
+
+## VHS - Wrong Deck EP
+VHS - Six Hour Tape on the wrong deck: 7.5' out of line at EP puts the first notch at 5.1 kHz. The top is hollowed out, with a faint ghost of highs above it, and it comes and goes.

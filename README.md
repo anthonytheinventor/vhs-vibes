@@ -21,10 +21,11 @@ the pitch starts to swim, the highs soften, the hiss comes up in the quiet parts
 let it, the machine loses the tape for a moment and finds it again.
 
 - insert effect, stereo in, stereo out
-- 56 controls on five pages, 44 built-in programs
-- a hot pink cassette on the MPC's screen, with reels that turn when sound passes
+- 58 controls on five pages, 46 built-in programs
+- three tape types: Simple, VHS (the linear track) and Hi-Fi (the FM track)
+- a hot pink cassette on the MPC's screen, with reels that turn when sound passes, and a picture that can show the sound
 - every noise is synthesised: no samples, nothing to load
-- version 1.6
+- version 1.7
 
 ## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
 
@@ -53,7 +54,7 @@ The sound goes through the machine in this order:
 
 ```
 in -> Chorus -> Mic -> AGC -> Preamp (Tilt, NR record side, Drive) -> Slew -> Comp
-   -> Saturator (2-Band or VHS) -> Hi Cut
+   -> Saturator (Simple, VHS or Hi-Fi) -> Hi Cut
    -> Wobble 1 (Warp, Flutter, Scrape) -> Noise -> Wobble 2 (Wow, Flutter) -> Lo Cut / Hi Cut
    -> Drift -> Tracking -> Head Buzz -> Whistle -> Dropouts -> NR playback side -> Mono -> Mix -> Output
 ```
@@ -80,24 +81,78 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Lows / Lo Sat | Level and clipping of the low band. |
 | Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
 | Hi Cut | 4-pole lowpass after the saturator. |
-| Sat Type | **2-Band**: the saturator described above. **VHS**: a model of the tape of a VHS deck's linear track. Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. Three knobs change their job (below). |
+| Sat Type | Three stacked buttons. **Simple**: the two-band saturator described above (called 2-Band up to 1.6). **VHS**: the tape of a VHS deck's linear track. **Hi-Fi**: the FM sound the video heads write under the picture. VHS and Hi-Fi give some knobs new jobs (below). |
 
 **Sat Type = VHS**
 
-This is the linear track; the Hi-Fi track does not saturate this way. Three knobs change their meaning,
-their caption on the screen and the number under them, and turn mint green with the VHS button, so you can
-see which controls the mode has taken over. The MPC still lists them as Split, Lo Sat and Hi Sat.
+This is the linear track: quiet sound passes unchanged, loud sound loses its highs first and goes soft,
+the way slow tape does. Three knobs change their meaning, their caption on the screen and the number under
+them, and turn mint green with the VHS button, so you can see which controls the mode has taken over. The
+MPC still lists them as Split, Lo Sat and Hi Sat.
 
 | Knob | Becomes | Reads | What it does |
 |---|---|---|---|
 | Lo Sat | **Rec Level** | dB | The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %. There a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. |
-| Hi Sat | **Tape Speed** | SP, LP or EP at those three speeds, the speed in mm/s between them | From SP (0 %) to EP (100 %). The slower, the sooner the highs give way and the lower the top of the band. |
+| Hi Sat | **Tape Speed** | SP, LP, EP and other formats' speeds by name, the speed in mm/s between them | From SP (0 %) to EP (100 %). The slower, the sooner the highs give way and the lower the top of the band. |
 | Split | **Bias** | "right", or a signed percentage (minus is too little) | How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. |
 
-Lows and Highs still trim the result, below and above 1 kHz.
+Lows and Highs still trim the result, below and above 1 kHz. Tape Speed also names the speeds of
+other formats that fall inside its range; the sound at each is the VHS tape at that speed:
+
+| Name | Speed | Knob |
+|---|---|---|
+| PAL SP | 23.39 mm/s | 32 % |
+| Beta II | 20.00 mm/s | 47 % |
+| PAL Beta | 18.73 mm/s | 53 % |
+| LP | 16.67 mm/s | 63 % |
+| Beta III | 13.33 mm/s | 83 % |
+| PAL LP | 11.70 mm/s | 95 % |
 
 <p align="center">
   <img src="docs/page_1_tape_vhs.png" alt="The TAPE page with Sat Type on VHS: three mint green knobs" width="640">
+</p>
+
+**Sat Type = Hi-Fi**
+
+The FM sound the spinning video heads write under the picture. It does not saturate: it stays clean up
+to a hard ceiling. What you hear is everything around it: hiss that rises and falls with the music, clicks
+when the signal off the tape is weak, the heads switching, and drops to the dull mono linear track when the
+signal is lost. It is a real Hi-Fi deck's machinery, driven far out of spec, with the click amount given its
+own knob. The bottom of each knob is a deck in good order.
+
+Three knobs on this page take new jobs:
+
+| Knob | Becomes | Reads |
+|---|---|---|
+| Lo Sat | **Rec Level** | -10 to +28 dB |
+| Hi Sat | **Carrier** | 0 to -20 dB |
+| Split | **Cal** | "right", ±3 dB |
+
+- **Rec Level**: how hard the sound meets the hard ceiling. 0 dB at 56 %. Drum hits after
+  silence touch it even low on the knob; that is the format.
+- **Carrier**: how strong the signal off the tape is. Each dB down is a dB more hiss. From
+  about -14 dB the deck falls to the linear track now and then; from about -19 dB it hardly
+  comes back. Each fall lasts about a quarter of a second, with its own hiss.
+- **Cal**: playback set to a different level from recording. Off "right", the error comes out
+  doubled and grows with the level: the sound pumps.
+
+With the Saturator on, seven more knobs belong to the Hi-Fi track, and B-Type NR is ignored:
+
+| Knob | In Hi-Fi |
+|---|---|
+| Hiss | FM noise; breathes by itself |
+| Crackle | how many clicks |
+| Head Buzz | the head switch, badly hidden |
+| Breathing | another deck's playback: pumps |
+| Tracking | a weak head, signal dips |
+| Drift | the signal wandering slowly |
+| Dropouts | short losses of the signal |
+
+Crackle is the amount of clicks only: Carrier does not move it. All ten knobs and the HI-FI
+button turn sunset orange. With the Saturator off, all seven are their own again.
+
+<p align="center">
+  <img src="docs/page_1_tape_hifi.png" alt="The TAPE page with Sat Type on Hi-Fi: three sunset orange knobs, Dropouts orange too" width="640">
 </p>
 
 ### ＷＯＢＢＬＥ　ゆらぎ
@@ -126,7 +181,7 @@ Lows and Highs still trim the result, below and above 1 kHz.
 | Head Buzz | The video heads switching, 59.94 times a second: a steady rasp, plus a buzz that rides on bright sounds and vanishes on bass (the signal is held for a few samples at each switch). |
 | Hiss | Tape hiss (different in left and right). |
 | Crackle | Random clicks; the knob sets both how many and how loud. |
-| Whistle | The line whistle of the TV set, 15.7 kHz, steady, never wobbling. About where a real deck has it at 50 %. Not everyone can hear it. |
+| Whistle | The line whistle of the TV set, 15.7 kHz, steady, never wobbling. About where a real deck has it at 50 %; above 60 % it climbs fast, to a set that screams. Not everyone can hear it. |
 | Master | Level of all noise together. 50 % is nominal, 0 % is silent. |
 | Noise (switch) | Turns all noise off or on. |
 | Position | Post: noise is added after the first wobble (clean noise). Pre: noise goes in at the input and is compressed, clipped and wobbled with the music. |
@@ -162,9 +217,11 @@ Lows and Highs still trim the result, below and above 1 kHz.
 | AGC | The recorder's automatic level control: loud sound is pulled down, the quiet after it swells back up. Two kinds (AGC Model, below). Comp works in milliseconds; this works in seconds. |
 | Drift | The sound slowly comes and goes: quieter and duller for a moment, then back, like the audio track wandering off the head. (Dropouts are short dips; this is slow.) |
 | AGC Model | Which AGC the AGC knob turns up: Simple or Modeled (below). |
-| Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. |
-| Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. |
+| Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. (Sat Type = Hi-Fi: see above.) |
+| Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. (Sat Type = Hi-Fi: see above.) |
+| Azimuth | The head out of line, 0' to 60'. Only with Sat Type on VHS (below). |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
+| Visual Vibes | The picture shows the sound (below). Off in a new instance. |
 | HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
 | B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. Four positions (below). |
 
@@ -198,17 +255,57 @@ other one once it has settled (Modeled: a second).
 - Switching it fades the sound out and back in at the other rate.
 - Choosing a program does not change it.
 
-In 2-Band, tape speed has no control of its own. For a slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut
+In Simple, tape speed has no control of its own. For a slow-speed (EP) tape set Hi Cut near 6 kHz, Lo Cut
 near 100 Hz and raise Hiss; SP is about 10 kHz and 50 Hz. With Sat Type on VHS (TAPE page),
-the Hi Sat knob (captioned TAPE SPEED there) runs the tape itself from SP to EP. For a clean Hi-Fi sound keep the wobbles and the noise low.
+the Hi Sat knob (captioned TAPE SPEED there) runs the tape itself from SP to EP. For a clean Hi-Fi sound start
+from Hi-Fi - Clean Deck, or keep the wobbles and the noise low.
 
 <p align="center">
   <img src="docs/page_5_deck.png" alt="The DECK page" width="640">
 </p>
 
+**Azimuth**
+
+The linear track's head tilted against the recording, in minutes of arc, as when a tape from one deck
+plays on another. The highs cancel across the tilted head: hollow, notched treble, with a slow swish as
+the tilt wanders. It is on the DECK page (ALIGNMENT block) only while Sat Type is VHS, and rests at 0'.
+
+| Tilt | Knob | What it is |
+|---|---|---|
+| 3' to 8' | 22 to 37 % | a tape from another deck |
+| 15' | 50 % | a head never adjusted |
+| 60' | 100 % | a knocked head |
+
+- EP is three times worse than SP: the tape runs three times slower.
+- B-Type NR on **On** makes the dulling worse: the decoder mistracks on it.
+- VHS - Borrowed Tape and VHS - Wrong Deck EP use it.
+
+<p align="center">
+  <img src="docs/page_5_deck_azimuth.png" alt="The DECK page with Sat Type on VHS: the mint green Azimuth knob at 15'" width="640">
+</p>
+
+**Visual Vibes**
+
+The picture on the page sticker plays like a worn tape of what the sound is doing. Switch on the DECK page
+(SCREEN block), off in a new instance. Animation is its master switch.
+
+| On the picture | Follows |
+|---|---|
+| sun: pink, mint or orange | Sat Type |
+| snow | the hiss |
+| strip along the bottom | Head Buzz |
+| white streak | a dropout |
+| band rolling up | tracking lost |
+| grid bending | the wobble |
+| haze | Hi Cut below 7 kHz |
+
+<p align="center">
+  <img src="docs/visual_vibes.png" alt="The page sticker with each picture effect: snow, head strip, dropout streak, tracking band, bent grid, haze, and the sun in each Type's shade" width="640">
+</p>
+
 ## 🗃 ＴＡＰＥＳ　ＩＮ　ＴＨＥ　ＢＯＸ
 
-Thirty-nine programs. The labels are handwritten.
+Forty-six programs. The labels are handwritten.
 
 | Program | What is on it |
 |---|---|
@@ -251,6 +348,13 @@ Thirty-nine programs. The labels are handwritten.
 | Mic - Wedding Video | Wedding Video on the modelled microphone: the camera's level control rides everything, and the deck's AGC rides it again. |
 | Mic - Bootleg Concert | Bootleg Concert on the modelled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause. |
 | Mic - Tube TV | Tube TV on the modelled microphone: the boombox held up to the set, its level control lifting the hiss in every pause. |
+| Hi-Fi - Clean Deck | A good deck, a new tape: only the FM track's faint hiss. |
+| Hi-Fi - Hot Signal | Recorded 25 dB over: every loud hit flattens against the ceiling. |
+| Hi-Fi - Worn Rental | Signal 12 dB down, steady clicks, loud head switching, a hissy linear-track moment every few seconds. |
+| Hi-Fi - Tracking Lost | Hard head buzz, bursts of clicks, the dull linear track about once a second. |
+| Hi-Fi - Wrong Deck | Played on another deck: quiet passages come up, loud ones do not, and it pumps. |
+| VHS - Borrowed Tape | SP Tape from another deck: 6.5' off, the top dulled and swishing. |
+| VHS - Wrong Deck EP | VHS - Six Hour Tape, 7.5' off at EP: a hollow top that comes and goes. |
 
 ## 👁 ＩＴ　ＭＯＶＥＳ
 
@@ -258,10 +362,11 @@ Thirty-nine programs. The labels are handwritten.
   seconds after, and lurch with the wobble.
 - The neon grid on the page sticker rolls with the reels.
 - The sun glows with the output level.
+- With Visual Vibes on, the picture shows the sound (see the DECK page above).
 
-These are driven by two extra read-only parameters, Reel and Level, which the plugin updates
-up to 20 times a second. They are not settings, cannot be automated and are best left alone.
-The Animation switch on the DECK page turns them off.
+These are driven by seven extra read-only parameters, Reel, Level, Snow, Head, Streak, Grid
+and Haze, which the plugin updates up to 20 times a second. They are not settings, cannot be
+automated and are best left alone. The Animation switch on the DECK page turns them all off.
 
 ## 📝 ＮＯＴＥＳ　ＦＲＯＭ　ＴＨＥ　ＢＡＣＫ　ＯＦ　ＴＨＥ　ＢＯＸ
 
@@ -274,10 +379,13 @@ The Animation switch on the DECK page turns them off.
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with an older version load with every setting in place. Scrape, Whistle, B-Type NR and Sat Type
-  rest at 0, off or 2-Band, an older project opens with Mic Model and AGC Model on Simple, no older program
-  uses the newer controls, and the newer programs
-  come after Init so every older one keeps its number.
+- Projects made with an older version load with every setting in place; those from 1.3 to 1.6 sound as they
+  did. Scrape, Whistle, B-Type NR, Sat Type, Azimuth and Visual Vibes rest at 0, off or Simple, an older
+  project opens with Mic Model and AGC Model on Simple, the 39 programs from before 1.7 are unchanged and
+  use none of the newer controls, and the newer programs come after Init so every older one keeps its number.
+- One exception, accepted: Sat Type has three positions now, so something that stores only its knob
+  position (a Q-Link assignment or recorded automation made in 1.5 or 1.6) reads the old VHS position as
+  Hi-Fi. A project's own Sat Type setting stays as it was.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
 - Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one
@@ -324,6 +432,20 @@ The Animation switch on the DECK page turns them off.
   overloads, the Boombox ALC's attack (5 ms), the Camcorder ALC's attack (20 ms) and recovery
   (8.2 dB a second), and the Camcorder's distance from the source (16 dB). On Simple, and with the
   Mic off, the plugin is exactly as 1.5 was.
+- Sat Type = Hi-Fi follows the datasheets of the chips inside Hi-Fi decks: the 2:1 compander with its 5 ms
+  attack and 70 ms recovery, the noise-reduction and FM emphasis (checked against the chips' 10 kHz figures),
+  the deviation limiter 9.5 dB over reference, the head switch 59.94 times a second hidden by a 6 us hold,
+  the hold below -21 dB, the fall to the linear track after 0.3 ms below -17 dB and the return after 7 to 8
+  drum turns. The channel noise is 55 dB under reference at full signal and rises 1 dB per dB lost; the click
+  rate is Rice's 1948 formula over a 300 kHz band. Estimates: that the limiter clips hard, the scale of the
+  Carrier knob, the click margin past the first few percent of Crackle, how often and how deep Tracking,
+  Drift and Dropouts go, and Breathing's mismatch. The top of most knobs is deliberately past any working
+  deck (Hiss 30 dB, Head Buzz 20 dB past the documented scale); the bottom is a deck in order. The linear
+  track it falls to is the VHS tape model, in mono, with its own hiss. The manual's chapter INSIDE THE
+  MACHINE has the table.
+- Azimuth is the loss a tilted head gap makes, from a 1967 tape recording handbook's formula, on a 1.0 mm
+  mono track at the VHS tape speeds. Estimates: the ranges for a deck in order and for a tape from another
+  deck (worked out from tolerances), 60' at the top, and the wander, borrowed from professional machines.
 - NR is a model of the B-type noise reduction circuit that early stereo VHS decks had on
   their linear tracks (the Signetics NE545 application circuit: the side-chain filter with
   its real part values, the sliding band, the overshoot clipper, the two-speed smoothing).
@@ -392,7 +514,10 @@ against the chip makers' figures), `tape_test` (Sat Type = VHS against the figur
 (everything that changed in 1.5.2: resets at any block size, Q-Links across every switch, cut-short
 states), `mic_test` (the four Mic Types against the figures they are built from, and the Simple ones against their old curves), `agc_test` (the Modeled AGC against the figures it is built to, and the Simple one unchanged), `deck_test` and
 `levels_test` (measurements of each stage to read through). The first eight end in
-PASS or FAIL. Then `ab14_test`, built once against the 1.4.0 source from git and once against this one,
+PASS or FAIL. Then `hifi_test` (Sat Type = Hi-Fi against the chips' figures, and a state saved by 1.6.0, which
+the same test built against the 1.6.0 source from git writes), `visual_test` (Visual Vibes and its meters, and
+that the sound never changes with them) and `azimuth_test` (Azimuth against the loss formula, and older states
+leaving it at 0), which end in PASS or FAIL too. Then `ab14_test`, built once against the 1.4.0 source from git and once against this one,
 checks that the 25 programs that existed in 1.4 still come out the same, with the chorus and the Mic
 (on Simple) switched on for every third one, sample for sample from 100 ms on (the git tags are fetched if they are missing). `tools/mic_fit.py` holds the
 fits and constants behind the microphones and checks the filters against their targets.
