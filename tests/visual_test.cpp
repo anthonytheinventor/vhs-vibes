@@ -95,9 +95,9 @@ int main(int argc, char** argv)
     {
         Fx fx(20, false);
         const mpc::Param& v = fx.plug()->param(kVisualVibes);
-        check(fx.e->numParams == 64 && kVisualVibes == 58 && v.id == "visual_vibes" && v.name == "Visual Vibes"
+        check(fx.e->numParams == 65 && kVisualVibes == 58 && v.id == "visual_vibes" && v.name == "Visual Vibes"
               && v.kind == mpc::Param::Kind::Bool && v.def == 0.0f && v.automatable && isSetting(kVisualVibes) && groupOf(kVisualVibes) == 0,
-              "64 parameters; number 58 is visual_vibes, \"Visual Vibes\", a switch, off in a new instance, automatable, no sound group");
+              "65 parameters; number 58 is visual_vibes, \"Visual Vibes\", a switch, off in a new instance, automatable, no sound group");
         static const char* const ids[] = { "vis_snow", "vis_head", "vis_streak", "vis_grid", "vis_haze" };
         static const char* const names[] = { "Snow", "Head", "Streak", "Grid", "Haze" };
         bool meters = true;
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
             held = held && fx.get(kVisualVibes) == 0.0f;
             for (int k = 0; k < 5; ++k) held = held && fx.plug()->getNormalised(kFxMeters[k]) == 0.5f;
         }
-        check(held, "choosing any of the 44 programs leaves Visual Vibes off and every meter where it was");
+        check(held, "choosing any of the 46 programs leaves Visual Vibes off and every meter where it was");
     }
 
     std::printf("3. Older states\n");

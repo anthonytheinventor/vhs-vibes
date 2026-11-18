@@ -167,7 +167,7 @@ PAGES = [
     {"name": "TAPE", "jp": "テープ", "file": "bg_tape.png", "blocks": [
         ("PREAMP", "プリアンプ", ["Drive", "Tilt", "Slew", "Comp"]),
         ("OUTPUT", "アウトプット", ["Dropouts", "Mono", "Mix", "Output"]),
-        ("SATURATOR", "サチュレーター", ["Saturator", "Split", "Lows", "Lo Sat"]),
+        ("VIBE", "雰囲気", ["Saturator", "Split", "Lows", "Lo Sat"]),
         ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
     ]},
     {"name": "WOBBLE", "jp": "ゆらぎ", "file": "bg_wobble.png", "blocks": [
@@ -190,7 +190,7 @@ PAGES = [
     ]},
     {"name": "DECK", "jp": "デッキ", "file": "bg_deck.png", "blocks": [
         ("DECK", "デッキ", ["Deck On", "AGC", "Drift", "AGC Model"]),
-        ("HI-FI TRACK", "ハイファイ", ["Tracking", "Breathing", None, None]),
+        ("ALIGNMENT", "アライメント", ["Tracking", "Breathing", "Azimuth", None]),
         ("SCREEN", "スクリーン", ["Animation", "Visual Vibes", None, None]),
         ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
     ]},
@@ -227,7 +227,7 @@ MODES = [
     {"key": "vhs", "step": 1,
      "sweep": (SEAFOAM, MINT, MINT_PALE), "pointer": MINT, "caption": MINT,
      "button": (SEAFOAM, MINT), "button_text": NIGHT, "button_edge": MINT_PALE,
-     "knobs": {"Split": "BIAS", "Lo Sat": "REC LEVEL", "Hi Sat": "TAPE SPEED"}},
+     "knobs": {"Split": "BIAS", "Lo Sat": "REC LEVEL", "Hi Sat": "TAPE SPEED", "Azimuth": None}},
     # Hi-Fi: the three it renames, and the seven the FM path takes over (their names stay)
     {"key": "hifi", "step": 2,
      "sweep": (EMBER, AMBER, YELLOW), "pointer": AMBER, "caption": AMBER,
@@ -236,6 +236,8 @@ MODES = [
                "Hiss": None, "Crackle": None, "Head Buzz": None,
                "Breathing": None, "Tracking": None, "Drift": None, "Dropouts": None}},
 ]
+# Previews only: knobs of a mode shown turned up, (name, knob position 0..1, the plugin's read-out there)
+MODE_SHOWCASE = {"vhs": [("Azimuth", 0.25, "3.8'"), ("Azimuth", 0.5, "15'")]}
 CAPTION_H = 25                     # height of the caption strip at the top of a slot
 CAPTION_COLOUR = (210, 250, 255)
 CAPTION_OVERRIDE = {}              # name -> (caption, colour), used while a mode's captions are being painted
@@ -1455,6 +1457,12 @@ def main():
                 # (the sun in the mode's colour, as Visual Vibes shows it)
                 make_preview(page, n, bg, params, images, m["step"], displays, {"sun": m["step"] * LEVEL_FRAMES + 12}) \
                     .save(os.path.join(PREVIEW, "%s_%s.png" % (stem, m["key"])))
+                # and with a knob of the mode's turned up, so its read-out is seen (_up1, _up2, ...)
+                ups = [u for u in MODE_SHOWCASE.get(m["key"], []) if u[0] in on_page]
+                for k, (name, pos, text) in enumerate(ups, 1):
+                    make_preview(page, n, bg, params, images, m["step"], dict(displays or {}, **{name: text}),
+                                 {"sun": m["step"] * LEVEL_FRAMES + 12}, {name: pos}) \
+                        .save(os.path.join(PREVIEW, "%s_%s_up%d.png" % (stem, m["key"], k)))
 
     with open(os.path.join(SKINS, "TUI.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write(G.dump_json(build_tui(params)) + "\n")

@@ -25,7 +25,8 @@
 //      -> COMP        one-knob compressor with make-up gain
 //      -> 2-BAND SAT  (Sat Type = Simple) crossover at Split; lows and highs get their own
 //                     level and soft clip.
-//                     Or, with Sat Type = VHS, a model of the linear track's tape (see TapeSat).
+//                     Or, with Sat Type = VHS, a model of the linear track's tape (see TapeSat),
+//                     read by a playback head whose gap may be tilted (Azimuth, 1.7).
 //                     Or, with Sat Type = Hi-Fi (1.7), the FM track: compander, limiter, the FM
 //                     channel's noise, clicks, head switch and losses, the fall-back to the linear
 //                     track (see HiFiPath). With the Saturator on it also takes over Hiss, Crackle,
@@ -92,7 +93,9 @@
 // Hi-Fi; only something that stores the bare knob position (recorded automation, a Q-Link's
 // position) reads the old VHS position as Hi-Fi now, which was accepted. 1.7 also added Visual
 // Vibes, a switch for the picture only (off in a new instance and in an older state), and five more
-// meters for it after it; the sound is the same whatever it says.
+// meters for it after it; the sound is the same whatever it says. Azimuth (1.7) comes after those
+// meters and rests at 0, where the stage is not there at all; an older state and programs 0 to 43
+// leave it there (44 and 45 are the two that use it).
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -233,11 +236,15 @@ enum ParamIndex
     kVisStreak,    // a dropout streak (random variant) or the tracking band at its height
     kVisGrid,      // the grid: wobble depth step x the scroll frame Reel has
     kVisHaze,      // the Hi Cut haze step
+    // added in 1.7, after the meters
+    kAzimuth,      // arc-min the playback head's gap is tilted against the recording, 0 to 60 along the
+                   //        square of the knob (see Azimuth). Sat Type = VHS with the Saturator on only.
+                   //        Rests at 0, where the stage is not there; 0 in an older state and program.
     kNumParams
 };
 
 // The meters are not settings.
-inline bool isSetting(int i) { return i != kVisReel && i != kVisLevel && i < kVisSnow; }
+inline bool isSetting(int i) { return i != kVisReel && i != kVisLevel && (i < kVisSnow || i > kVisHaze); }
 // Frames in the skin's film strips (tools/make_skin.py reads these lines: one plain number each).
 constexpr int kReelFrames  = 24;           // the reel hubs, and the grid's scroll in each wobble step
 constexpr int kLevelFrames = 16;           // the sun's level, in each of its colours
@@ -295,7 +302,7 @@ enum Group : uint32_t
     gRamps = 1u << 0, gPreamp = 1u << 1, gWear = 1u << 2, gComp = 1u << 3, gSat = 1u << 4, gHiCut = 1u << 5,
     gWobble = 1u << 6, gCuts = 1u << 7, gNoise = 1u << 8, gChorus = 1u << 9, gMic = 1u << 10, gDeck = 1u << 11,
     gQuality = 1u << 12,   // the HQ switch: not a group to recompute, the whole plugin restarts
-    gNr = 1u << 13,
+    gNr = 1u << 13, gAz = 1u << 14,
     gAll = 0xffffffffu
 };
 inline uint32_t groupOf(int param)
@@ -321,6 +328,7 @@ inline uint32_t groupOf(int param)
         case kAgcModel:                                                     return gDeck;
         case kHq:                                                           return gQuality;
         case kNr:                                                           return gNr;
+        case kAzimuth:                                                      return gAz;
         case kSatType:                                                      return gQuality;   // fade out, restart
         default:                                                            return 0;   // the meters, and Visual Vibes (the picture only)
     }
@@ -640,17 +648,152 @@ struct TapeSat
         gBias = dbToGain(bias < 0.0f ? -3.0f * bias : -6.0f * bias);     // too little: bright; too much: dull
     }
     void reset() { uP = wP = vP = yP = edge = biasLp = splat(0.0f); }
-    Stereo process(Stereo x)
+    Stereo process(Stereo x) { return play(record(x)); }
+    // The two halves, for Azimuth to sit between them: what is on the tape (|v| <= s, never NaN:
+    // the curve clamps), and what the playback side makes of it.
+    Stereo record(Stereo x)
     {
         const Stereo u = x * gRec;
         const Stereo w = b0 * u + b1 * uP - a1 * wP;            // pre-emphasis
         uP = u; wP = w;
-        const Stereo v = curve(w * invS) * s;
+        return curve(w * invS) * s;
+    }
+    Stereo play(Stereo v)
+    {
         const Stereo y = (v + a1 * vP - b1 * yP) * invB0;       // de-emphasis: the exact inverse
         vP = v; yP = y;
         edge += aEdge * (y * makeup - edge);
         biasLp += aBias * (edge - biasLp);
         return biasLp + (edge - biasLp) * gBias;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// AZIMUTH (1.7, Sat Type = VHS): the playback head's gap tilted against the recording, as when a
+// tape made on one deck plays on another. Each point across the track reaches the tilted gap at
+// its own moment, so the head hears the average of the signal over a window
+//   tau = W tan(a) / v       (W the track width read, a the tilt, v the tape speed)
+// which is the loss law 20 log |sin x / x|, x = pi f tau (HP Application Note 89, 1967, sec.
+// 2.1.2) [R]: nulls at every multiple of 1 / tau, 3 dB down at 0.443 of the first, and lobes of
+// alternating sign past each null. It is built as exactly that window, a moving average of
+// fractional length, and sits on the tape between the curve and the playback side (TapeSat::record
+// and play): the treble is lost at the head, before the playback equalisation and, far later in
+// the chain, the B-type decoder, which then mistracks on the dulled highs as a real one does. (The
+// window and the de-emphasis are both linear, so their order between themselves does not matter;
+// what matters is that the window comes after the tape curve and before the decoder.)
+//
+// The moving average is the difference of two points of the running sum of the signal: the newest,
+// and the one `d` samples back, read between two stored sums (two taps, one interpolation). The
+// running sum is kept in 32-bit integers that wrap around: only differences are ever read, and
+// integer differences are exact whatever the sums have grown to, so nothing drifts, however long
+// it runs. The signal is quantised to 2^-21 for it (kAzQuant); on the tape it never exceeds the
+// curve's ceiling (TapeSat::s <= 0.537), so the largest window, kAzLen - 2 samples, sums to at
+// most 1.15e9, inside the 2.1e9 a signed difference can hold. The quantisation is 126 dB under
+// full scale, far below the tape's own hiss. Below a whole sample the window reads the newest
+// sample alone: at d -> 0 the stage becomes the signal itself, so it comes in and goes out
+// without a step.
+//
+// The tilt wanders as the tape plays (the "swish"): a(t) = a0 + aw n(t), n a smooth random
+// signal within +-1, 70 % slow (0.03 to 0.3 Hz at SP, slower in proportion to the tape speed:
+// the slitting of the tape and the pack) and 30 % faster (1 to 3 Hz: guides and tension), on its
+// own random stream. The window's length follows per control tick and is ramped across the tick.
+// ---------------------------------------------------------------------------
+constexpr float kAzMaxArcMin = 60.0f;   // [D] tilt at the knob's top (a = 60' k^2, k the knob 0..1): a knocked head; the
+                                        //     3-8' of a deck-to-deck mismatch lie at 22-37 % (azimuth_research sec. 3, 8)
+constexpr float kAzTrackMm   = 1.0f;    // [S/R] the mono linear audio track, 1.0 mm +-0.1 (SMPTE ST 32 snippet; 1.05 mm in KONO83)
+constexpr float kAzSpMmS     = 33.35f;  // [R] SP tape speed (as TapeSat); EP is a third of it (TapeSat: 3^-speed)
+constexpr float kAzArcMin    = kPi / 10800.0f;   // one minute of arc in radians
+constexpr float kAzWanderK   = 1.0f;    // [E] wander amplitude, arc-min, per unit of the knob (k), plus ...
+constexpr float kAzWanderA   = 0.1f;    // [E] ... this share of the tilt: aw = 1' k + 0.1 a0 (+-2' at 50 %), consistent with
+                                        //     about 2' p-p short-term on a good professional transport [S, McKnight 1980]
+constexpr float kAzSlowHz[2] = { 0.03f, 0.3f };   // [S/D] slow band at SP (slitting wander: 0.3-0.9 m of tape, 0.04-0.11 Hz)
+constexpr float kAzFastHz[2] = { 1.0f, 3.0f };    // [S] the faster band (a cassette's ~2 Hz cyclic skew, borrowed)
+constexpr float kAzSlowMix   = 0.7f, kAzFastMix = 0.3f;   // [E] the two bands' shares
+constexpr float kAzSlowRms   = 0.90f, kAzFastRms = 0.75f;  // [D] measured (an hour of each): the bands' RMS once scaled by sqrt(12 / k)
+constexpr float kAzPeak      = 0.4375f; // [D] brings 0.7 slow + 0.3 fast (RMS 0.76) to RMS 1/3, so +-1 is 3 sigma (and the clamp)
+constexpr int   kAzLen       = 1024;    // [D] running sums kept: the longest window (67' at EP, 1.75 ms) is 673 samples at
+                                        //     384 kHz (192 kHz with HQ), and the read reaches one further
+constexpr float kAzQuant     = 2097152.0f;   // [D] 2^21: the quantisation step of the running sum (see above)
+constexpr float kAzMinD      = 1.0e-3f; // [D] the shortest window used while the stage runs (1/1000 sample: the signal itself)
+
+struct Azimuth
+{
+    typedef uint32_t USum __attribute__((vector_size(8)));   // left and right running sums (wrap around)
+    typedef int32_t  ISum __attribute__((vector_size(8)));
+    float a0T = 0.0f, awT = 0.0f, spdT = 1.0f;   // targets: tilt and wander (arc-min), 1 / relative tape speed
+    float a0 = 0.0f, aw = 0.0f, spd = 1.0f;      // the same, smoothed per tick
+    float tilt = 0.0f;                           // the tilt this tick, wander included (arc-min)
+    float scale = 0.0f;                          // window in samples per unit of tan(a) at SP
+    float perTickInv = 1.0f / kCtrl;
+    int   perTick = kCtrl;                       // stage samples per control tick (twice kCtrl with HQ)
+    float kS[2] = {}, kF[2] = {}, normS = 0.0f, normF = 0.0f;   // the wander's filters (see tick)
+    float s1 = 0, s2 = 0, sl = 0, f1 = 0, f2 = 0, fl = 0;
+    Xorshift32 rng{0xa21307d5u};
+    float d = kAzMinD, inc = 0.0f, r = 1.0f / kAzMinD;   // window length (samples), its step per sample, 1 / d
+    int   w = 0, filled = 0;                     // newest sum; samples summed since start() (no read reaches further back)
+    USum  sum[kAzLen] = {};
+
+    // sr: the rate the stage runs at; perTick: its samples per control tick; tilt in arc-min (the
+    // knob's value), knob its position 0..1, speed 0..1 (SP to EP, as TapeSat). Per knob move.
+    void set(float sr, int ticks, float tilt, float knob, float speed)
+    {
+        a0T = tilt;
+        awT = kAzWanderK * knob + kAzWanderA * tilt;
+        spdT = std::pow(3.0f, speed);
+        scale = sr * (kAzTrackMm / kAzSpMmS);
+        perTick = ticks; perTickInv = 1.0f / (float)ticks;
+        const float tickRate = sr / (float)ticks;
+        for (int i = 0; i < 2; ++i)
+        {
+            kS[i] = kTwoPi * kAzSlowHz[i] / (spdT * tickRate);
+            kF[i] = kTwoPi * kAzFastHz[i] / tickRate;
+        }
+        normS = kAzPeak * kAzSlowMix * std::sqrt(12.0f / kS[1]) / kAzSlowRms;
+        normF = kAzPeak * kAzFastMix * std::sqrt(12.0f / kF[1]) / kAzFastRms;
+    }
+    bool live() const { return a0T > 0.0f || a0 > 0.0f || aw > 0.0f; }
+    // From rest, at the settings in force (a reset).
+    void reset(uint32_t seed)
+    {
+        a0 = a0T; aw = awT; spd = spdT;
+        s1 = s2 = sl = f1 = f2 = fl = 0.0f;
+        rng.reseed(seed);
+        start();
+    }
+    // The stage comes in: its window starts at nothing and grows with the sound summed since.
+    void start() { d = kAzMinD; r = 1.0f / kAzMinD; inc = 0.0f; filled = 0; }
+
+    // Once per control tick: the tilt now, and the window's ramp to it over the next tick.
+    void tick()
+    {
+        const auto glide = [](float& v, float t) { v = std::fabs(t - v) < 1.0e-4f ? t : v + kSmooth * (t - v); };
+        glide(a0, a0T); glide(aw, awT); glide(spd, spdT);
+        // two-pole lowpassed white noise at the top of each band, minus its one-pole lowpass at the bottom
+        const float u = rng.nextBipolar();
+        s1 += kS[1] * (u - s1); s2 += kS[1] * (s1 - s2); sl += kS[0] * (s2 - sl);
+        f1 += kF[1] * (u - f1); f2 += kF[1] * (f1 - f2); fl += kF[0] * (f2 - fl);
+        const float n = clamp((s2 - sl) * normS + (f2 - fl) * normF, -1.0f, 1.0f);
+        tilt = a0 + aw * n;
+        const float a = std::fabs(tilt) * kAzArcMin;          // the loss is even in the tilt
+        filled = filled + perTick < kAzLen ? filled + perTick : kAzLen;
+        const float t = scale * spd * (a + a * a * a * (1.0f / 3.0f));   // tan(a) to 1e-6 up to 70'
+        inc = (clamp(t, kAzMinD, minf((float)(filled - 1), (float)(kAzLen - 2))) - d) * perTickInv;
+    }
+
+    Stereo process(Stereo x)
+    {
+        const USum s = sum[w] + (USum)__builtin_convertvector(x * kAzQuant, ISum);
+        w = (w + 1) & (kAzLen - 1);
+        sum[w] = s;
+        d += inc;
+        // 1 / d: a Newton step from the last sample's while d moves by under 2 %, a division otherwise
+        const float e = d * r;
+        r = std::fabs(e - 1.0f) < 0.02f ? r * (2.0f - e) : 1.0f / d;
+        const int di = (int)d;
+        const USum a = sum[(w - di) & (kAzLen - 1)], b = sum[(w - di - 1) & (kAzLen - 1)];
+        const Stereo whole = __builtin_convertvector((ISum)(s - a), Stereo);   // the last di samples
+        const Stereo part  = __builtin_convertvector((ISum)(a - b), Stereo);   // the one before, in part
+        return (whole + (d - (float)di) * part) * (r * (1.0f / kAzQuant));
     }
 };
 
@@ -2210,6 +2353,8 @@ public:
             meter.automatable = false;
             addParam(meter);
         }
+        // 1.7, after the meters: arc-min, 60 x the square of the knob (skew 0.5), resting at 0 (no stage)
+        addParam(floatParam ("azimuth",    "Azimuth",      0.0f, kAzMaxArcMin, 0.0f, "", 1, 0.5f));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -2278,7 +2423,7 @@ public:
         if (program < 0 || program >= (int)programs_.size()) return;
         std::vector<float>& v = programs_[(size_t)program].plainValues;
         for (int i : {(int)kAnimate, (int)kHq, (int)kVisualVibes}) v[(size_t)i] = get(i);
-        for (int i = kVisSnow; i < kNumParams; ++i) v[(size_t)i] = get(i);
+        for (int i = kVisSnow; i <= kVisHaze; ++i) v[(size_t)i] = get(i);
     }
 
     // The host announces the sample rate here, on its own thread and possibly while audio is
@@ -2386,6 +2531,7 @@ private:
 
         for (int i = 0; i < kNumParams; ++i) lastNorm_[i] = getNormalised(i);
         readParams(gAll);
+        az_.reset(0x0a21b07du); azRun_ = false;   // (it starts at the first tick, see controlTick)
         nrEncMix_ = nrEncOn_ ? 1.0f : 0.0f; nrDecMix_ = nrDecOn_ ? 1.0f : 0.0f;
         nrEncRun_ = nrEncOn_; nrDecRun_ = nrDecOn_;
         linAmt_ = linTarget_ = 0.0f;
@@ -2477,7 +2623,8 @@ private:
         // ----- 2-band saturator ------------------------------------------
         if (satMix > 0.0f && tape_)
         {
-            const Stereo y = tapeSat_.process(x);
+            // (Azimuth: between the tape and the playback side, see Azimuth)
+            const Stereo y = azRun_ ? tapeSat_.play(az_.process(tapeSat_.record(x))) : tapeSat_.process(x);
             splitLp_ += splitCoeff_ * (y - splitLp_);
             x += (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - x) * satMix;
         }
@@ -2931,8 +3078,16 @@ public:
     bool formatValue(int index, float v, std::string& out) override
     {
         if (index < 0 || index >= kNumParams || !isSetting(index) || param(index).kind != mpc::Param::Kind::Float) return false;
-        if (units_[index] == 0 && index != kTone) return false;
+        if (units_[index] == 0 && index != kTone && index != kAzimuth) return false;
         char buf[32];
+        // Azimuth: the tilt itself, in minutes of arc (a plain apostrophe: the MPC's fonts may lack the prime)
+        if (index == kAzimuth)
+        {
+            if (v < 0.05f) std::snprintf(buf, sizeof(buf), "0'");
+            else std::snprintf(buf, sizeof(buf), v < 9.95f ? "%.1f'" : "%.0f'", (double)v);
+            out = buf;
+            return true;
+        }
         // Slew reads as what it sets: the shortest time the limit leaves for a swing from silence
         // to full level (the step per sample of readParams, gWear, turned into microseconds; the
         // micro sign is written as its two UTF-8 bytes).
@@ -3117,6 +3272,8 @@ private:
             else if (hifiType_) splitCoeff_ = lpCoeff(1000.0f, nlSr_);   // Hi-Fi: Lows and Highs around 1 kHz, as in VHS mode
             else splitCoeff_ = lpCoeff(get(kSplit), nlSr_);   // the 2-band crossover
         }
+        // Azimuth: the tilt, its wander, and the tape speed it is read at (Hi Sat, as the tape has it)
+        if (groups & (gSat | gAz)) az_.set(nlSr_, hq_ ? 2 * kCtrl : kCtrl, get(kAzimuth), getNormalised(kAzimuth), pct(kHiSat));
         if (groups & gHiCut)
         {
             // 4-pole Butterworth high cut = two biquads with these Qs
@@ -3503,6 +3660,14 @@ private:
         // VHS those clippers are not in the path, and Lo Sat and Hi Sat mean something else.)
         boost_ = (agcActive_ || agcMRun_ || cur_[cMakeup] > 1.0f)
               && !(!tape_ && !hifiType_ && ramp_[rSat].v == 1.0f && cur_[cLoMix] == 1.0f && cur_[cHiMix] == 1.0f);
+        // Azimuth: runs while the tape is heard and the knob is up (or the tilt on its way down). Coming
+        // in it starts with no window and grows it from the sound it has summed since.
+        {
+            const bool run = tape_ && (rampT_[rSat] > 0.0f || ramp_[rSat].v > 0.0f) && az_.live();
+            if (run && !azRun_) az_.start();
+            azRun_ = run;
+            if (azRun_) az_.tick();
+        }
         // Hi-Fi: the path runs while it is heard or fading; coming in from silence it starts from rest
         if (hifiType_)
         {
@@ -3623,7 +3788,7 @@ private:
         int latCandidate = 0, latStable = 0, latReported = 0;
         // the picture effects: the frames last shown (Snow, Head, Streak, Grid, Haze), the reel's and
         // the sun's frames as last seen with Animation on, and what the effects remember between looks
-        int lastFx[kNumParams - kVisSnow];
+        int lastFx[kVisHaze - kVisSnow + 1];
         for (int& l : lastFx) l = -1;
         int reel = 0, level = 0;
         int snowVar = 0, headVar = 0, streakVar = 0, streakHold = 0, bandHold = 0, bandPos = 0;
@@ -4004,38 +4169,55 @@ private:
             {kSatType, 2}, {kLoSat, 56}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 0}, {kHiss, 9}, {kCrackle, 0} });
-        // Recorded 18 dB over: the deviation limiter's hard ceiling on every loud hit, and on held loud notes.
+        // Recorded 25 dB over, through a hotter, more squashed input: the deviation limiter's hard
+        // ceiling on every loud hit and held loud note, and a grittier front end before it.
         program("Hi-Fi - Hot Signal", {
-            {kDrive, 20}, {kWear, 0}, {kComp, 15}, {kHiCut, 18000},
-            {kSatType, 2}, {kLoSat, 84}, {kHiSat, 0}, {kHighs, 0},
+            {kDrive, 35}, {kWear, 0}, {kComp, 25}, {kHiCut, 18000},
+            {kSatType, 2}, {kLoSat, 95}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 10}, {kHiss, 12}, {kCrackle, 0} });
-        // A tape that has been through a lot of machines: a carrier 10 dB down, a scatter of clicks
-        // (a few a second), more when it wanders, noise that comes and goes with the music, now
-        // and then a quarter second on the hissy linear track.
+        // A tape that has been through a great many machines: a carrier 12 dB down, a steady crackle of
+        // clicks (tens a second, more when it wanders), loud head switching, noise that swells with the
+        // music, dips, and a moment on the hissy linear track every few seconds (about a fifth of the time).
         program("Hi-Fi - Worn Rental", {
             {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
-            {kSatType, 2}, {kLoSat, 60}, {kHiSat, 50}, {kHighs, 0},
+            {kSatType, 2}, {kLoSat, 60}, {kHiSat, 60}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
-            {kHum, 5}, {kHeadBuzz, 25}, {kHiss, 20}, {kCrackle, 15},
-            {kDropouts, 30}, {kDrift, 15}, {kBreathing, 20} });
-        // The tracking knob is off: the buzz of the head switch, bursts of clicks at the dips, and
-        // a few times every ten seconds the dull, hissy mono linear track takes over for a quarter second.
+            {kHum, 5}, {kHeadBuzz, 40}, {kHiss, 40}, {kCrackle, 35},
+            {kDropouts, 40}, {kDrift, 25}, {kBreathing, 40} });
+        // The tracking knob is well off: a hard buzz of the head switch, bursts of clicks at the dips,
+        // and about once a second the dull, hissy mono linear track takes over (over a third of the time).
         program("Hi-Fi - Tracking Lost", {
             {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
-            {kSatType, 2}, {kLoSat, 58}, {kHiSat, 25}, {kHighs, 0},
+            {kSatType, 2}, {kLoSat, 58}, {kHiSat, 40}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
-            {kHum, 5}, {kHeadBuzz, 55}, {kHiss, 35}, {kCrackle, 15},
-            {kDropouts, 20}, {kDrift, 10}, {kTracking, 25} });
+            {kHum, 5}, {kHeadBuzz, 70}, {kHiss, 45}, {kCrackle, 30},
+            {kDropouts, 35}, {kDrift, 20}, {kTracking, 45} });
         // Recorded on one deck, played on another: the expander disagrees with the compressor
-        // (Cal low, its slope off) and follows the sound differently (Breathing), so quiet
-        // passages come up, loud ones do not, and the sound pumps.
+        // (Cal at its lowest, its slope off) and follows the sound its own way (Breathing full), and
+        // it was recorded 10 dB hot: quiet passages come well up, loud ones do not, and it pumps.
         program("Hi-Fi - Wrong Deck", {
             {kDrive, 10}, {kWear, 0}, {kComp, 10}, {kHiCut, 18000},
-            {kSatType, 2}, {kLoSat, 62}, {kHiSat, 30}, {kSplit, 300}, {kHighs, 0},
+            {kSatType, 2}, {kLoSat, 72}, {kHiSat, 30}, {kSplit, 200}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 15}, {kHiss, 55}, {kCrackle, 10},
-            {kBreathing, 85} });
+            {kBreathing, 100} });
+
+        // Added in 1.7, after the Hi-Fi ones: the tape played with its head out of line (Azimuth, in
+        // arc-min). Everything else is as in the program they are named after, which stays as it was.
+        // SP Tape, recorded on another deck: 6.5' off, the highs from 8 kHz up dulled and swishing gently.
+        program("VHS - Borrowed Tape", {
+            {kDrive, 10}, {kComp, 15}, {kHiCut, 12000}, {kSatType, 1}, {kLoSat, 45}, {kHiSat, 0}, {kHighs, 0},
+            {kWarp, 10}, {kFlutter, 12}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 60}, {kHiCut2, 12000},
+            {kHum, 5}, {kHiss, 40}, {kCrackle, 5}, {kAzimuth, 6.5f} });
+        // VHS - Six Hour Tape on the wrong deck: 7.5' at EP puts the first null at 5.1 kHz, inside the
+        // band; the top is hollowed out, with a faint inverted lobe above it, and it comes and goes.
+        program("VHS - Wrong Deck EP", {
+            {kDrive, 30}, {kWear, 30}, {kComp, 40}, {kHiCut, 6000},
+            {kSatType, 1}, {kLoSat, 60}, {kHiSat, 100}, {kHighs, 0},
+            {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
+            {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
+            {kAgcModel, 0}, {kAgc, 35}, {kDrift, 25}, {kAzimuth, 7.5f} });
     }
 
     // ----- state ------------------------------------------------------------------
@@ -4199,6 +4381,10 @@ private:
     std::atomic<uint32_t> visDrops_{0}, visLost_{0};
     uint32_t dropEvents_ = 0, lostEvents_ = 0;   // dropouts started; times the Hi-Fi track was lost
     bool  visLinear_ = false;                    // the Hi-Fi path was on the linear track at the end of the last block
+
+    // Azimuth (1.7), last for the same reason (its running sums take 8 KB)
+    bool  azRun_ = false;                        // the stage runs (see controlTick)
+    Azimuth az_;
 };
 
 // The framework's dispatcher with five additions:

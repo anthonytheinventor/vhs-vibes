@@ -295,9 +295,9 @@ int main()
         const float fresh = raw->getParameter(raw, kAgcModel);
         raw->dispatcher(raw, effClose, 0, 0, nullptr, 0.0f);
         const mpc::Param& p = fx.plug()->param(kAgcModel);
-        check(fx.e->numParams == 64 && kAgcModel == 57 && p.id == "agc_model" && p.name == "AGC Model" && p.choices.size() == 2
+        check(fx.e->numParams == 65 && kAgcModel == 57 && p.id == "agc_model" && p.name == "AGC Model" && p.choices.size() == 2
               && p.choices[0] == "Simple" && p.choices[1] == "Modeled" && fresh == 1.0f && groupOf(kAgcModel) == groupOf(kAgc),
-              "64 parameters; number 57 (the last of 1.6) is agc_model, \"AGC Model\", Simple / Modeled, resting on Modeled, in the deck group");
+              "65 parameters; number 57 (the last of 1.6) is agc_model, \"AGC Model\", Simple / Modeled, resting on Modeled, in the deck group");
         int withAgc = 0, simple = 0, others = 0;
         for (int i = 0; i < fx.e->numPrograms; ++i)
         {
@@ -308,7 +308,7 @@ int main()
         char what[140];
         std::snprintf(what, sizeof(what), "%d programs; the %d with the AGC up are on Simple (%d), the other %d on Modeled (%d)",
                       fx.e->numPrograms, withAgc, simple, fx.e->numPrograms - withAgc, others);
-        check(fx.e->numPrograms == 44 && withAgc == 25 && simple == withAgc && others == fx.e->numPrograms - withAgc, what);
+        check(fx.e->numPrograms == 46 && withAgc == 26 && simple == withAgc && others == fx.e->numPrograms - withAgc, what);
 
         // a state saved before AGC Model existed: this one's values without "agc_model"
         Fx saver; saver.set(kDeckOn, 1); saver.set(kAgc, 40); saver.set(kAgcModel, 1);

@@ -68,6 +68,15 @@ if ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/visual_test.cpp" -o 
 else
   "$OUT/visual_test" "$OUT/state160.bin" || status=1
 fi
-# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, ab14_test, hifi_test and visual_test end with PASS or FAIL;
+# Azimuth (1.7, see azimuth_test.cpp): it loads the same 1.6.0 state and one written by 1.4.0 (its source from the 1.4 comparison).
+echo "===== azimuth_test ====="
+if ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE_STATE "-DSRC=\"$OUT/VHSVibes_v140.cpp\"" "$HERE/azimuth_test.cpp" -o "$OUT/azimuth_write140" 2> "$OUT/azimuth_test.log"   || ! "$OUT/azimuth_write140" "$OUT/state140.bin"   || ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/azimuth_test.cpp" -o "$OUT/azimuth_test" 2>> "$OUT/azimuth_test.log"; then
+  grep -E "error" -A6 "$OUT/azimuth_test.log" | head -30
+  echo "FAIL"
+  status=1
+else
+  "$OUT/azimuth_test" "$OUT/state160.bin" "$OUT/state140.bin" || status=1
+fi
+# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, ab14_test, hifi_test, visual_test and azimuth_test end with PASS or FAIL;
 # deck_test and levels_test print measurements to read.
 exit $status
