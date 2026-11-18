@@ -11,12 +11,13 @@
 #include <cstdio>
 #include <thread>
 
-static std::atomic<long> g_automate{0}, g_io{0};
+static std::atomic<long> g_automate{0}, g_redraw{0}, g_io{0};
 
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float)
 {
     if (opcode == audioMasterVersion) return 2400;
     if (opcode == audioMasterAutomate) g_automate.fetch_add(1, std::memory_order_relaxed);
+    if (opcode == audioMasterUpdateDisplay) g_redraw.fetch_add(1, std::memory_order_relaxed);
     if (opcode == audioMasterIOChanged) g_io.fetch_add(1, std::memory_order_relaxed);
     return 0;
 }
@@ -100,8 +101,8 @@ int main(int argc, char** argv)
     audio.join(); knobs.join(); ui.join();
     e->dispatcher(e, effMainsChanged, 0, 0, nullptr, 0.0f);
     e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f);
-    std::printf("stress: %ld blocks, %ld bad samples, %ld automate calls, %ld latency updates\n",
-                blocks.load(), bad.load(), g_automate.load(), g_io.load());
+    std::printf("stress: %ld blocks, %ld bad samples, %ld automate calls, %ld redraw requests, %ld latency updates\n",
+                blocks.load(), bad.load(), g_automate.load(), g_redraw.load(), g_io.load());
 
     // start-up and shutdown ordering: make and destroy the plugin over and over, at every stage
     for (int i = 0; i < 40; ++i)

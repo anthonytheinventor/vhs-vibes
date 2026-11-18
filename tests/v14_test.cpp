@@ -6,17 +6,22 @@
 #include <mutex>
 
 static std::mutex g_m;
-static int g_hostCalls = 0;
+static int g_hostCalls = 0, g_redraws = 0, g_automate = 0;
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float)
 {
     if (opcode == audioMasterVersion) return 2400;
-    // the helper thread only ever makes these two calls (the audio thread asks for the time)
-    if (opcode != audioMasterAutomate && opcode != audioMasterIOChanged) return 0;
+    // the helper thread only ever asks for a redraw and reports the latency (the audio thread
+    // asks for the time); a parameter-changed report is counted so that it shows if one comes
+    if (opcode != audioMasterUpdateDisplay && opcode != audioMasterIOChanged && opcode != audioMasterAutomate) return 0;
     std::lock_guard<std::mutex> l(g_m);
     ++g_hostCalls;
+    if (opcode == audioMasterUpdateDisplay) ++g_redraws;
+    if (opcode == audioMasterAutomate) ++g_automate;
     return 0;
 }
 static int hostCalls() { std::lock_guard<std::mutex> l(g_m); return g_hostCalls; }
+static int redraws() { std::lock_guard<std::mutex> l(g_m); return g_redraws; }
+static int automates() { std::lock_guard<std::mutex> l(g_m); return g_automate; }
 
 const int kInit = 20;   // "Init" has this number in every version
 
@@ -355,7 +360,7 @@ int main()
         // a program chosen while bad input keeps arriving is still reported to the host
         Fx fx; fx.play(0.2f, 0.1f, nullptr);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        const int before = hostCalls();
+        const int before = redraws(), automateBefore = automates();
         fx.e->dispatcher(fx.e, effSetProgram, 0, 2, nullptr, 0.0f);
         float L[128], R[128]; float* io[2] = { L, R };
         for (int b = 0; b < 40; ++b)
@@ -366,8 +371,8 @@ int main()
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        std::printf("   program chosen while a NaN arrives in every block: %d values sent to the host\n", hostCalls() - before);
-        check(hostCalls() - before >= 50, "the host still hears about the program");
+        std::printf("   program chosen while a NaN arrives in every block: %d redraw request(s)\n", redraws() - before);
+        check(redraws() - before >= 1 && automates() == automateBefore, "the host is still asked to show the program");
     }
 
     std::printf("9. The older programs do not use the new knobs; a suspended plugin is quiet\n");
@@ -390,10 +395,12 @@ int main()
         const int before = hostCalls();
         for (int k = 0; k < 6; ++k) { fx.play(0.01f, 0.1f, nullptr); std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
         check(hostCalls() == before, "no calls to the host while suspended, even if audio keeps coming");
+        const int redrawsBefore = redraws();
         fx.e->dispatcher(fx.e, effMainsChanged, 0, 1, nullptr, 0.0f);
         fx.play(0.05f, 0.1f, nullptr);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        check(hostCalls() > before, "and it speaks again after a resume");
+        check(redraws() > redrawsBefore, "and it asks for redraws again after a resume");
+        check(automates() == 0, "no parameter-changed report from the plugin in any of these");
     }
 
     std::printf("10. A state saved before 1.4 sounds as it was saved, whatever the instance was doing\n");

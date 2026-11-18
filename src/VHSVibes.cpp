@@ -2411,9 +2411,10 @@ public:
         dryDelay_.prepare(kTapeDelaySamples);
         choDelay_.prepare(2 * kChorusDelaySamples);   // the delay time plus its swing
 
-        // See notifierMain(): tells the host about program changes, the meters and the latency.
-        // If the system cannot start a thread, the plugin runs without it (the sound is the
-        // same; the host is then not told about those three) rather than throwing into the host.
+        // See notifierMain(): sets the meters, asks the host to redraw the screen and reports the
+        // latency. If the system cannot start a thread, the plugin runs without it (the sound is
+        // the same; the meters then stand still and no latency is reported) rather than throwing
+        // into the host.
         try { notifier_ = std::thread(&VHSVibes::notifierMain, this); }
         catch (...) { mpc::log("VHSVibes: could not start the helper thread; no meters or latency reports"); }
     }
@@ -2619,14 +2620,14 @@ private:
 
         // A reset follows the host starting the plugin and every program change and state
         // load: from now on the notifier thread may talk to the host, and after a reset the
-        // host asked for it should send the new values. (Only flags here.) The host may suspend
+        // host asked for it should have the screen drawn again. (Only flags here.) The host may suspend
         // us on its own thread at this very moment (goQuiet: suspended_, then started_). So
         // started_ is set first and suspended_ looked at after: a goQuiet that comes in between
         // is seen and undone here, one that comes later clears started_ itself. (Looking first
         // and setting after could set started_ again just after goQuiet had cleared it.)
         started_.store(true);
         if (suspended_.load()) started_.store(false);
-        if (tellHost_.exchange(false)) pushPending_.store(true, std::memory_order_relaxed);
+        if (tellHost_.exchange(false)) redrawDue_.store(true, std::memory_order_relaxed);
     }
 
     // The stages that distort: preamp clip, Slew, the compressor with the clip on its boost,
@@ -2767,7 +2768,7 @@ public:
                     tapeSat_.reset();
                     splitLp_ = splat(0.0f);
                     dirty = (dirty & ~gQuality) | gSat;
-                    pushPending_.store(true);   // the three read-outs change: have the host ask again
+                    redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
                 }
                 std::memcpy(lastNorm_, seen, sizeof(lastNorm_));
                 if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ or Sat Type switched: fade out, then start again
@@ -3274,7 +3275,7 @@ private:
         if (groups == gAll)
         {
             const bool hifi = getInt(kSatType) == 2;
-            if (hifi != hifiType_) pushPending_.store(true);   // the three read-outs change: have the host ask again
+            if (hifi != hifiType_) redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
             hifiType_ = hifi;
         }
         {
@@ -3326,7 +3327,7 @@ private:
             if (groups == gAll)
             {
                 const bool tape = getInt(kSatType) == 1;
-                if (tape != tape_) pushPending_.store(true);   // the three read-outs change: have the host ask again
+                if (tape != tape_) redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
                 tape_ = tape;
             }
             if (tape_)
@@ -3832,12 +3833,22 @@ private:
         }
     }
 
-    // ----- telling the host what changed inside the plugin -----------------------
-    // The MPC does not read values back by itself. Three things change from the inside:
-    // choosing a built-in program (all the knobs), the meters that drive the reels and the
-    // sun, and how late the output is. The host has to be told, and those calls must not come
-    // from the audio thread, so this small thread makes them, 20 times a second at most and
-    // only when something changed. It says nothing until the host has started the plugin.
+    // ----- showing on the screen what changed inside the plugin --------------------
+    // Three things change from the inside: choosing a built-in program or loading a state (all
+    // the knobs), the meters that drive the reels, the sun and the picture, and how late the
+    // output is. Calls into the host must not come from the audio thread, so this small thread
+    // makes them. It looks 20 times a second, sets the meters' values itself (they are only
+    // read by the skin) and, when anything on the screen has changed since the last look (a
+    // meter's frame, the knobs after a load, the three read-outs Sat Type renames), asks the
+    // host once to draw the screen again (audioMasterUpdateDisplay): at most 20 requests a
+    // second, however many values changed. It never reports a parameter as changed
+    // (audioMasterAutomate). That report is what a plugin's own controls send when they are
+    // moved, and up to 1.6 this thread sent one for every meter that moved and for every knob
+    // after a load or a change of Sat Type; the MPC's Q-Link screen was seen to lock up during
+    // fast Q-Link sweeps (not reproduced, cause not proven), and those reports arriving in the
+    // middle of a sweep were the one thing the plugin added to it. The latency goes its own way
+    // (setLatency). Nothing is sent before the host has started the plugin or while it is
+    // suspended.
     //
     // The picture effects (1.7) are decided here too, from what the audio thread published at the
     // end of its last block (see process()) and from the knobs, and shown through the meters:
@@ -3877,13 +3888,13 @@ private:
         // have suspended or started closing it since the last look. (suspended_ as well as
         // started_: doReset can set started_ for a moment while a suspend comes in.)
         auto speaking = [this] { return started_.load() && !suspended_.load(); };
-        auto tell = [&](int i) { if (speaking()) notifyHostParameterChanged(i); };
+        bool redraw = false;   // something on the screen changed at this look
         auto show = [&](int i, int frame, int frames, int& last)
         {
             if (frame == last) return;
             last = frame;
-            setNormalised(i, (float)frame / (float)(frames - 1));
-            tell(i);
+            setNormalised(i, (float)frame / (float)(frames - 1));   // silently: the redraw below shows it
+            redraw = true;
         };
         for (;;)
         {
@@ -3894,9 +3905,12 @@ private:
             }
             if (!speaking()) continue;
 
-            if (pushPending_.exchange(false))
+            // After a load (which may have written stored values into the meters) or a change of
+            // Sat Type (three knobs read differently): draw again, and forget the frames last
+            // shown so every meter is set again below.
+            if (redrawDue_.exchange(false))
             {
-                for (int i = 0; i < numParams(); ++i) tell(i);
+                redraw = true;
                 lastReel = lastLevel = -1;
                 for (int& l : lastFx) l = -1;
             }
@@ -3944,6 +3958,8 @@ private:
             show(kVisHead, head, kHeadFrames, lastFx[kVisHead - kVisSnow]);
             show(kVisStreak, streak, kStreakFrames, lastFx[kVisStreak - kVisSnow]);
             show(kVisHaze, haze, kHazeFrames, lastFx[kVisHaze - kVisSnow]);
+            // one request for the whole look, never a report per parameter (see above)
+            if (redraw) { redraw = false; if (speaking()) requestDisplayUpdate(); }
 
             // Latency: the output is late by the resting length of the two wobble delays. Tell
             // the host once that length has been steady for half a second and is more than
@@ -4299,7 +4315,8 @@ private:
 
     // ----- state ------------------------------------------------------------------
     std::thread notifier_;
-    std::atomic<bool> quit_{false}, pushPending_{false};
+    std::atomic<bool> quit_{false};
+    std::atomic<bool> redrawDue_{false};                  // a load or a change of Sat Type: the notifier asks for a redraw
     std::mutex quitMutex_;                                // with quitCv_: wakes the notifier when the plugin closes
     std::condition_variable quitCv_;
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
@@ -4309,7 +4326,7 @@ private:
     std::atomic<uint32_t> loadState_{0};                  // programs or states being written; moves at each start and end
     std::atomic<bool> suspended_{false};                  // the host has suspended us
     std::atomic<float> srWanted_{0.0f};                   // the sample rate the host announced
-    std::atomic<bool> tellHost_{false};                   // the host asked for the pending reset: send it the values after
+    std::atomic<bool> tellHost_{false};                   // the host asked for the pending reset: have the screen redrawn after
     std::atomic<bool> animate_{true};                     // the Animation switch
     std::atomic<float> visReel_{0.0f}, visLevel_{0.0f};   // audio thread -> notifier thread
     std::atomic<int> wantLatency_{12};                    // resting delay of the tape path, in samples
