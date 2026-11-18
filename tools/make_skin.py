@@ -171,7 +171,7 @@ PAGES = [
         ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
     ]},
     {"name": "WOBBLE", "jp": "ゆらぎ", "file": "bg_wobble.png", "blocks": [
-        ("TRACKING", "トラッキング", ["Wobble On", "Warp", "Warp Rate", "Shape"]),
+        ("WARP", "ワープ", ["Wobble On", "Warp", "Warp Rate", "Shape"]),
         ("FLUTTER", "フラッター", ["Flutter", "Flut Rate", "Scrape", None]),
         ("RE-RECORD", "ダビング", ["Wow", "Wow Rate", "Flutter 2", "Flut2 Rate"]),
         ("FILTER", "フィルター", ["Lo Cut", "Hi Cut 2", None, None]),
@@ -189,8 +189,8 @@ PAGES = [
         ("", "", ["Mic Model", None, None, None]),
     ]},
     {"name": "DECK", "jp": "デッキ", "file": "bg_deck.png", "blocks": [
-        ("DECK", "デッキ", ["Deck On", "AGC", "Drift", "AGC Model"]),
-        ("ALIGNMENT", "アライメント", ["Tracking", "Breathing", "Azimuth", None]),
+        ("DECK", "デッキ", ["Deck On", "AGC", "AGC Model", None]),
+        ("ALIGNMENT", "アライメント", ["Tracking", "Breathing", "Drift", "Azimuth"]),
         ("SCREEN", "スクリーン", ["Animation", "Visual Vibes", None, None]),
         ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
     ]},

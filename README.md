@@ -215,10 +215,10 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 |---|---|
 | Power | AGC, Drift, Tracking and Breathing on or off together. (HQ and B-Type NR have their own switches.) |
 | AGC | The recorder's automatic level control: loud sound is pulled down, the quiet after it swells back up. Two kinds (AGC Model, below). Comp works in milliseconds; this works in seconds. |
-| Drift | The sound slowly comes and goes: quieter and duller for a moment, then back, like the audio track wandering off the head. (Dropouts are short dips; this is slow.) |
 | AGC Model | Which AGC the AGC knob turns up: Simple or Modeled (below). |
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. (Sat Type = Hi-Fi: see above.) |
 | Breathing | The Hi-Fi noise reduction at work: the hiss rises and falls with the signal, and Head Buzz is pushed down in the pauses. (Sat Type = Hi-Fi: see above.) |
+| Drift | The sound slowly comes and goes: quieter and duller for a moment, then back, like the audio track wandering off the head. (Dropouts are short dips; this is slow.) |
 | Azimuth | The head out of line, 0' to 60'. Only with Sat Type on VHS (below). |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 | Visual Vibes | The picture shows the sound (below). Off in a new instance. |
