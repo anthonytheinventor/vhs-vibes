@@ -24,7 +24,7 @@ let it, the machine loses the tape for a moment and finds it again.
 - 58 controls on five pages, 46 built-in programs
 - three tape types: Simple, VHS (the linear track) and Hi-Fi (the FM track)
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes, and a picture that can show the sound
-- every noise is synthesised: no samples, nothing to load
+- every noise is synthesized: no samples, nothing to load
 - version 1.7
 
 ## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
@@ -209,7 +209,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 
 ### ＤＥＣＫ　デッキ
 
-*Faults of the machine rather than the tape. Each does something no other control can.*
+*The machine's own faults. Each does something no other control can.*
 
 | Control | What it does |
 |---|---|
@@ -408,7 +408,7 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   the parts and the measurements.
 - Sat Type = VHS follows the figures an AES tutorial on videotape duplication gives for the
   VHS linear track in SP: 33.35 mm/s, a record pre-emphasis of 120 microseconds, reference
-  level 100 nWb/m (taken as -8 dBFS, the same as the NR's Dolby level) and 3 % third-harmonic
+  level 100 nWb/m (taken as -8 dBFS, the same as the NR's reference level) and 3 % third-harmonic
   distortion at that reference level, a band that reaches about 10 kHz, and the direction of
   the bias effects. Deck specification sheets give EP's speed (11.12 mm/s) and band (4 to
   6 kHz). Estimates: that EP behaves like SP at a third of every frequency, how far the
@@ -456,7 +456,7 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   record side meets all eight (1.4, 2, 5 and 10 kHz at -20 to -40 dB) within 0.5 dB, where
   the chips are specified to 2 dB (within 0.6 dB at sample rates up to 192 kHz). The playback
   side undoes the record side to about -100 dB when nothing lies between them. Switching NR
-  fades it in or out over 8 ms. Dolby level is taken as -8 dBFS. While the playback side runs,
+  fades it in or out over 8 ms. The NR's reference level is taken as -8 dBFS. While the playback side runs,
   Whistle is added after it, since the TV set is not on the tape.
 - Mix below 100 %: the dry signal is delayed to line up with the tape path. With the wobbles
   off the blend is clean; with them on, dry and wet drift against each other and it sounds
@@ -477,7 +477,7 @@ SDK and put this folder inside it as `plugins/VHS Vibes`.
 python3 "plugins/VHS Vibes/tools/build_lto.py" "plugins/VHS Vibes"
 ```
 
-This is the SDK's `tools/build.py` with link-time optimisation (`-flto`) added; all its
+This is the SDK's `tools/build.py` with link-time optimization (`-flto`) added; all its
 options work. The plain `tools/build.py` also builds the plugin, without LTO.
 
 Left and right run through the effect chain together as one two-float vector, which the
@@ -527,6 +527,6 @@ fits and constants behind the microphones and checks the filters against their t
 `race_test` is not run by the script: it hammers the plugin from several threads and is meant
 to be built with a thread or memory checker (`-fsanitize=thread`, `-fsanitize=address`).
 
-<p align="center"><sub>MIT licence, see <a href="LICENSE">LICENSE</a>. Stage order after the idea of James Peck's "VHS Audio Degradation Suite" for Reaktor; all code here is original.</sub></p>
+<p align="center"><sub>MIT license, see <a href="LICENSE">LICENSE</a>. Stage order after the idea of James Peck's "VHS Audio Degradation Suite" for Reaktor; all code here is original.</sub></p>
 
 <p align="center"><i>ｂｅ　ｋｉｎｄ　・　ｒｅｗｉｎｄ</i></p>

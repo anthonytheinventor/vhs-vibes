@@ -322,7 +322,7 @@ int main(int argc, char** argv)
 
     std::printf("8. B-type NR decodes after it and mistracks on the dulled highs\n");
     {
-        // 10 kHz, 30 dB under Dolby level, SP 5': the loss with NR Off, Play and On, each against Azimuth 0 in the same mode
+        // 10 kHz, 30 dB under NR reference level, SP 5': the loss with NR Off, Play and On, each against Azimuth 0 in the same mode
         auto gen = [](long i) { return kRefLevel * 0.0316f * (float)std::sin(kTau * 10000.0 * i / 44100.0); };
         double loss[3];
         const int modes[3] = { 0, 2, 3 };

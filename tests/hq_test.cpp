@@ -159,7 +159,7 @@ int main()
     std::printf("2. HQ on against off in the linear range: tone level (dB) at 100 Hz to 15 kHz, at 44.1 and 96 kHz\n");
     {
         struct C { const char* name; Ch ch; double amp, tol10, tol15; };
-        // the mics at -30 dBFS (the Camcorder and Boombox ALCs hold a steady gain), NR at -40 dB re Dolby level
+        // the mics at -30 dBFS (the Camcorder and Boombox ALCs hold a steady gain), NR at -40 dB re NR reference level
         const C cs[] = { { "Camcorder", { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 0}, {kMicGain, 0} }, 0.0316, 0.2, 0.2 },
                          { "Phone", { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 0} }, 0.0316, 0.2, 0.2 },
                          { "Boombox", { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMicGain, 0} }, 0.0316, 0.2, 0.2 },

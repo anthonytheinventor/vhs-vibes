@@ -9,7 +9,7 @@ static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, f
 static double rmsOf(const std::vector<float>& v, size_t from) { double s = 0; for (size_t i = from; i < v.size(); ++i) s += (double)v[i] * v[i]; return std::sqrt(s / (double)(v.size() - from)); }
 static double dB(double x) { return 20.0 * std::log10(x > 1e-30 ? x : 1e-30); }
 
-// a sine at `hz`, `levelDb` relative to Dolby level, through one side of the NR for a second;
+// a sine at `hz`, `levelDb` relative to NR reference level, through one side of the NR for a second;
 // returns the gain over the last 0.3 s in dB
 static double gainOf(float sr, bool decode, float hz, float levelDb)
 {
@@ -26,7 +26,7 @@ static double gainOf(float sr, bool decode, float hz, float levelDb)
     return dB(rmsOf(out, (size_t)(0.7f * sr)) / rmsOf(in, (size_t)(0.7f * sr)));
 }
 
-// something like music: tones and noise whose level keeps changing, peaks around Dolby level
+// something like music: tones and noise whose level keeps changing, peaks around NR reference level
 static std::vector<float> programme(int n, float sr)
 {
     std::vector<float> v((size_t)n);
@@ -104,8 +104,8 @@ int main()
         check(std::fabs(gainOf(44100.0f, false, 5000.0f, -60.0f) - 10.3) < 0.3 && gainOf(44100.0f, false, 200.0f, -60.0f) < 1.0, "10 dB at 5 kHz, next to nothing at 200 Hz");
         double most = 0.0;
         for (float hz : {1400.0f, 5000.0f, 10000.0f}) most = std::fmax(most, std::fabs(gainOf(44100.0f, false, hz, 0.0f)));
-        std::printf("   at Dolby level: at most %.2f dB\n", most);
-        check(most < 0.5, "a signal at Dolby level passes unchanged");
+        std::printf("   at NR reference level: at most %.2f dB\n", most);
+        check(most < 0.5, "a signal at NR reference level passes unchanged");
     }
 
     std::printf("2. Playback side: the mirror image\n");
@@ -149,7 +149,7 @@ int main()
         check(clipped > 0, "also while the overshoot clipper is working");
     }
 
-    std::printf("4. A sudden jump in level (5 kHz, -40 dB to Dolby level and back)\n");
+    std::printf("4. A sudden jump in level (5 kHz, -40 dB to NR reference level and back)\n");
     {
         const float sr = 44100.0f;
         NoiseRed nr; nr.prepare(sr, false);
@@ -164,7 +164,7 @@ int main()
         auto gainAt = [&](int from, int len) { double a = 0, b = 0; for (int i = from; i < from + len; ++i) { a += (double)out[(size_t)i] * out[(size_t)i]; b += (double)in[(size_t)i] * in[(size_t)i]; } return dB(std::sqrt(a / b)); };
         float peak = 0.0f; for (int i = n1; i < n1 + n2; ++i) peak = std::fmax(peak, std::fabs(out[(size_t)i]));
         const double over = dB(peak / kRefLevel), first = gainAt(n1, 44), at5 = gainAt(n1 + 221, 88), settled = gainAt(n1 + n2 - 4410, 4410);
-        std::printf("   up:   largest output sample %+.2f dB over Dolby level; gain in the first ms %+.2f dB, after 5 ms %+.2f dB, settled %+.2f dB\n", over, first, at5, settled);
+        std::printf("   up:   largest output sample %+.2f dB over NR reference level; gain in the first ms %+.2f dB, after 5 ms %+.2f dB, settled %+.2f dB\n", over, first, at5, settled);
         check(over < 1.2, "the overshoot clipper holds the jump: no more than about 1 dB over");
         check(std::fabs(at5 - settled) < 1.0, "within 1 dB of its final gain after 5 ms");
         int back = -1;

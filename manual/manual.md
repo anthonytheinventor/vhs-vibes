@@ -649,7 +649,7 @@ Clean until the signal goes. Then somewhere else entirely.
 
 ## The switch on the back: B-Type NR
 
-The linear track hisses. When stereo came to VHS, that track was split in two, each half narrower and noisier, so those decks were given the noise reduction of the audio cassette: Dolby B-type. **B-Type NR** is that circuit.
+The linear track hisses. When stereo came to VHS, that track was split in two, each half narrower and noisier, so those decks were given the B-type noise reduction of the audio cassette. **B-Type NR** is that circuit.
 
 ### The idea
 
@@ -843,7 +843,7 @@ At 44.1 kHz; the responses hold at every rate from 44.1 to 192 kHz.
 | Camcorder, the end of the range | out at reference (+0.1 dB), 0.3 % distortion |
 | Camcorder, 9 dB past it | 8.3 dB more output, 2.3 % distortion |
 | Camcorder, a sound 20 dB louder than the one before | 11.4 dB over at once, back within 1 dB after 8 ms |
-| Camcorder, after a loud passage | the gain comes back at 8.23 dB a second (the 19 s detector gives 8.23) and is back in full 2.1 s later |
+| Camcorder, after a loud passage | the gain comes back at 8.23 dB a second (the 19 s detector gives 8.23) ; from 18.9 dB down it is within 1 dB of full gain 2.1 s later |
 | Camcorder, silence | the capsule's hiss through the full record gain: -48 dB(A), 37 dB under a reference sine |
 | Camcorder, silence right after a sound in its range | 17 dB lower, rising with the gain |
 | Camcorder, music at -18 dBFS rms, Mic Gain -12 dB | the loud and the quiet part 3 dB apart instead of 15; the hiss in a 2 s gap 28 dB under the loud part |
@@ -900,7 +900,7 @@ The values are read from the schematic and checked against the parts list.
 
 ### How it moves
 
-**Down, in two steps.** When a loud sound arrives, C70 and C80 charge together through the diode. C70 is ten times smaller, so it fills ten times faster and then blocks: within a few cycles C80 has taken about 9 % of the excess, in about 5 ms. Because the gain law is steep, that alone is a cut of 10 dB or more. The rest follows as C70's charge drains through R104, over about half a second.
+**Down, in two steps.** When a loud sound arrives, C70 and C80 charge together through the diode. C70 is ten times smaller, so it fills ten times faster and then blocks: within a few cycles C80 has taken about 9 % of the excess. Because the gain law is steep, that alone is a cut of 10 dB or more, reached in about 11 ms. The rest follows as C70's charge drains through R104, over about half a second.
 
 **Back up, slowly.** When the sound stops, the diode stops conducting, and C80 can only drain through R107 and R108. That takes over a minute to empty it, and the gain comes back at about 1 dB per second. Nothing holds the gain down on purpose; the slow drain does it.
 

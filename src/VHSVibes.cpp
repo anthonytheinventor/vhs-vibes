@@ -394,7 +394,7 @@ inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
 }
 
 // ---------------------------------------------------------------------------
-// NR: B-type noise reduction, the Dolby B that early stereo VHS decks had on their linear
+// NR: B-type noise reduction, the kind early stereo VHS decks had on their linear
 // (edge) tracks. A model of the circuit, not of its effect: the Signetics NE545 application
 // circuit (datasheet figure 25 and parts list), one processor per channel as in a deck.
 //
@@ -423,7 +423,7 @@ inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
 //      1.4 kHz at -20 dB: +4.4 dB, at -30: +7.5      2 kHz at -25 dB: +7.0
 //      5 kHz at -20: +3.2, -30: +8.2, -40: +10.3     10 kHz at -20: +2.6, -30: +6.5
 // The diode threshold of the smoothing and the clip level are estimates. Levels are relative
-// to Dolby level, taken here as kRefLevel.
+// to NR reference level, taken here as kRefLevel.
 //
 // The network has two memories (the charge on C301 + C302, and on C303) and is solved
 // exactly at every sample with the trapezoid rule, F included, so nothing lags and the
@@ -441,7 +441,7 @@ constexpr float kNrGmax   = 1.0f / 70.0f;      // and fully on
 constexpr float kNrGain   = 13.8745f;          // amplifier C (fitted: 10.3 dB at 5 kHz, low level)
 constexpr float kNrDzero  = 2232.0f;           // amplifier D: gain 1, rising above this frequency (fitted)
 constexpr float kNrSlope  = 0.005994f;         // F's conductance per unit of control voltage above...
-constexpr float kNrThresh = 0.07719f;          // ...this threshold (both fitted; Dolby level = 1)
+constexpr float kNrThresh = 0.07719f;          // ...this threshold (both fitted; NR reference level = 1)
 constexpr float kNrDiode  = 0.05f;             // a rise larger than this skips the slow smoothing (estimate)
 constexpr float kNrClip   = 0.12f * kRefLevel; // overshoot suppressor: just above the largest steady side-chain signal
 
@@ -599,7 +599,7 @@ inline float lpCoeff(float hz, float sr)
 //
 // So in SP the lift before the curve is the format's own 120 microsecond pre-emphasis
 // (6 dB per octave from 1.33 kHz), and the curve is set for 3 % at reference level
-// (kRefLevel, the same level the NR takes as Dolby level) when the record level stands at
+// (kRefLevel, the same level the NR takes as NR reference level) when the record level stands at
 // 0 dB. Estimates: that the lift levels off 20 dB up; that EP behaves like SP at a third
 // of every frequency (no figures found for EP's equalisation or headroom); the shape of the
 // curve past the 3 % point (saturation 4 dB higher); the sizes of the bias effects.

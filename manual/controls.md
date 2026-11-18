@@ -68,7 +68,7 @@ what: Output level. The last stage.
 
 ## Saturator
 what: The VIBE block's POWER switch. It turns the VIBE stage on or off, whichever Type is chosen. Off, the controls Split, Lows, Lo Sat, Highs, Hi Sat, Type and Azimuth do nothing.
-note: Hi Cut is drawn in the same block but is a stage of its own: it stays in when VIBE's power is off. With Type on Hi-Fi, VIBE's power off also hands Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift, Dropouts and B-Type NR back to their own stages: the plugin then sounds exactly as it does on Simple with VIBE's power off.
+note: Hi Cut is drawn beside the VIBE controls but is a stage of its own: it stays in when VIBE's power is off. With Type on Hi-Fi, VIBE's power off also hands Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift, Dropouts and B-Type NR back to their own stages: the plugin then sounds exactly as it does on Simple with VIBE's power off.
 
 ## Split
 what: Its job depends on **Type** (see *The three knobs that change their name*).

@@ -1132,10 +1132,10 @@ def checks_on_html(d, page):
     for p in d.settings:
         if not re.search(r"(?<![\w])" + re.escape(p["name"]) + r"(?![\w])", plain):
             errors.append("the parameter name '%s' does not appear in the manual" % p["name"])
-    n = len(re.findall(r"Dolby", plain))
-    if n > 1:
-        errors.append("the word 'Dolby' appears %d times; it is a trademark and may appear once, in the sentence that says "
-                      "what kind of noise reduction early stereo decks had. Write 'NR' or 'B-type noise reduction'" % n)
+    n = len(re.findall("D" + "olby", plain))
+    if n > 0:
+        errors.append("the trade name of the noise reduction's maker appears %d times; it is a trademark and must not "
+                      "appear. Write 'NR' or 'B-type noise reduction'" % n)
     if errors:
         die(errors)
 
