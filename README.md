@@ -54,7 +54,7 @@ The sound goes through the machine in this order:
 
 ```
 in -> Chorus -> Mic -> AGC -> Preamp (Tilt, NR record side, Drive) -> Slew -> Comp
-   -> Saturator (Simple, VHS or Hi-Fi) -> Hi Cut
+   -> Vibe (Simple, VHS or Hi-Fi) -> Hi Cut
    -> Wobble 1 (Warp, Flutter, Scrape) -> Noise -> Wobble 2 (Wow, Flutter) -> Lo Cut / Hi Cut
    -> Drift -> Tracking -> Head Buzz -> Whistle -> Dropouts -> NR playback side -> Mono -> Mix -> Output
 ```
@@ -76,11 +76,11 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Mono | Sums left and right. |
 | Mix | Dry / wet. 100 % (the default) is all effect; lower lets the untouched input back in. |
 | Output | Output level. |
-| Saturator Power | Switches the saturator stage, whichever Type is chosen. |
+| Power (VIBE) | Switches the VIBE stage, whichever Type is chosen. The MPC lists it as Saturator. |
 | Split | Where the signal is divided into lows and highs. |
 | Lows / Lo Sat | Level and clipping of the low band. |
 | Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
-| Hi Cut | 4-pole lowpass after the saturator. |
+| Hi Cut | 4-pole lowpass after the VIBE stage. |
 | Sat Type | Three stacked buttons. **Simple**: the two-band saturator described above (called 2-Band up to 1.6). **VHS**: the tape of a VHS deck's linear track. **Hi-Fi**: the FM sound the video heads write under the picture. VHS and Hi-Fi give some knobs new jobs (below). |
 
 **Sat Type = VHS**
@@ -136,7 +136,7 @@ Three knobs on this page take new jobs:
 - **Cal**: playback set to a different level from recording. Off "right", the error comes out
   doubled and grows with the level: the sound pumps.
 
-With the Saturator on, seven more knobs belong to the Hi-Fi track, and B-Type NR is ignored:
+With VIBE's power on, seven more knobs belong to the Hi-Fi track, and B-Type NR is ignored:
 
 | Knob | In Hi-Fi |
 |---|---|
@@ -149,7 +149,7 @@ With the Saturator on, seven more knobs belong to the Hi-Fi track, and B-Type NR
 | Dropouts | short losses of the signal |
 
 Crackle is the amount of clicks only: Carrier does not move it. All ten knobs and the HI-FI
-button turn sunset orange. With the Saturator off, all seven are their own again.
+button turn sunset orange. With VIBE's power off, all seven are their own again.
 
 <p align="center">
   <img src="docs/page_1_tape_hifi.png" alt="The TAPE page with Sat Type on Hi-Fi: three sunset orange knobs, Dropouts orange too" width="640">
@@ -222,7 +222,7 @@ button turn sunset orange. With the Saturator off, all seven are their own again
 | Azimuth | The head out of line, 0' to 60'. Only with Sat Type on VHS (below). |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 | Visual Vibes | The picture shows the sound (below). Off in a new instance. |
-| HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator, the modelled mics, B-Type NR's record side) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
+| HQ | Runs the stages that distort (Drive, Slew, Comp, the VIBE stage, the modeled mics, B-Type NR's record side) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
 | B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. Four positions (below). |
 
 **The two AGCs**
@@ -343,11 +343,11 @@ Forty-six programs. The labels are handwritten.
 | VHS - Six Hour Tape | Six Hour Tape on the tape model: EP speed, with the wear, hiss and wobble that EP Tape leaves out. |
 | VHS - Sticky Tape | Sticky Tape on the tape model: too little bias, so it is brighter and grittier as it drags. |
 | VHS - Dirty Heads | Dirty Heads on the tape model: too much bias, so the highs give way sooner still. |
-| Mic - Camcorder 89 | Camcorder 89 on the modelled microphone: the camera's level control squashing everything and the deck's AGC after it, a little crunch on the loud parts. |
-| Mic - Answer Machine | Answer Machine on the modelled microphone: a carbon handset and a phone line, the quiet words sinking. |
-| Mic - Wedding Video | Wedding Video on the modelled microphone: the camera's level control rides everything, and the deck's AGC rides it again. |
-| Mic - Bootleg Concert | Bootleg Concert on the modelled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause. |
-| Mic - Tube TV | Tube TV on the modelled microphone: the boombox held up to the set, its level control lifting the hiss in every pause. |
+| Mic - Camcorder 89 | Camcorder 89 on the modeled microphone: the camera's level control squashing everything and the deck's AGC after it, a little crunch on the loud parts. |
+| Mic - Answer Machine | Answer Machine on the modeled microphone: a carbon handset and a phone line, the quiet words sinking. |
+| Mic - Wedding Video | Wedding Video on the modeled microphone: the camera's level control rides everything, and the deck's AGC rides it again. |
+| Mic - Bootleg Concert | Bootleg Concert on the modeled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause. |
+| Mic - Tube TV | Tube TV on the modeled microphone: the boombox held up to the set, its level control lifting the hiss in every pause. |
 | Hi-Fi - Clean Deck | A good deck, a new tape: only the FM track's faint hiss. |
 | Hi-Fi - Hot Signal | Recorded 25 dB over: every loud hit flattens against the ceiling. |
 | Hi-Fi - Worn Rental | Signal 12 dB down, steady clicks, loud head switching, a hissy linear-track moment every few seconds. |
@@ -388,7 +388,7 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   Hi-Fi. A project's own Sat Type setting stays as it was.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
-- Since 1.7 HQ also covers the modelled microphones and the recording side of B-Type NR. A project
+- Since 1.7 HQ also covers the modeled microphones and the recording side of B-Type NR. A project
   that uses them with HQ on keeps its level and tone and loses the fold-back tones it had. Whistle
   is louder than in 1.6 above 60 %.
 - Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one

@@ -112,19 +112,19 @@ Sticky Tape on the tape model: too little bias, so it is brighter and grittier a
 Dirty Heads on the tape model: too much bias, so the highs give way sooner still.
 
 ## Mic - Camcorder 89
-Camcorder 89 on the modelled microphone: the camera's level control squashing everything and the deck's AGC after it, a little crunch on the loud parts.
+Camcorder 89 on the modeled microphone: the camera's level control squashing everything and the deck's AGC after it, a little crunch on the loud parts.
 
 ## Mic - Answer Machine
-Answer Machine on the modelled microphone: a carbon handset and a phone line, the quiet words sinking.
+Answer Machine on the modeled microphone: a carbon handset and a phone line, the quiet words sinking.
 
 ## Mic - Wedding Video
-Wedding Video on the modelled microphone: the camera's level control rides everything, and the deck's AGC rides it again.
+Wedding Video on the modeled microphone: the camera's level control rides everything, and the deck's AGC rides it again.
 
 ## Mic - Bootleg Concert
-Bootleg Concert on the modelled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause.
+Bootleg Concert on the modeled microphone: the radio cassette's level control holds the crowd at one level, and the hiss climbs in every pause.
 
 ## Mic - Tube TV
-Tube TV on the modelled microphone: the boombox held up to the set, its level control lifting the hiss in every pause.
+Tube TV on the modeled microphone: the boombox held up to the set, its level control lifting the hiss in every pause.
 
 ## Hi-Fi - Clean Deck
 Type = Hi-Fi. A good deck and a new tape: nothing but the FM channel's own faint hiss, where a real deck has it. No wobble: the rotating heads have none to speak of.
