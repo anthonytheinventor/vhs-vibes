@@ -917,10 +917,14 @@ def draw_panel(img, page, params):
         if title:
             hx += draw_text(d, (hx, by + 5), title, f_head, (255, 130, 205), 1.0) + 10
             hx += draw_text(d, (hx, by + 11), jp, f_jp, (130, 225, 240), 1.0) + 10
-        end = bx + len([c for c in cells if c is not None or True]) * CELL_W - 10
         last_used = max(i for i, c in enumerate(cells) if c is not None)
         end = bx + (last_used + 1) * CELL_W - 10
-        if end > hx + 10:
+        # an untitled block to the right continues this one: the rule runs on across it (and the
+        # untitled block draws none of its own, nor a divider: see below)
+        if continues(page, b + 1):
+            rc = page["blocks"][b + 1][2]
+            end = cell_x(b + 1, 0) + (max(i for i, c in enumerate(rc) if c is not None) + 1) * CELL_W - 10
+        if end > hx + 10 and not continues(page, b):
             rule = gradient(sc((end - hx, 2)), PINK, CYAN, horizontal=True)
             img.paste(rule, sc((hx, by + 17)))
         # cells
@@ -946,11 +950,18 @@ def draw_panel(img, page, params):
     for row in range(2):
         left_used = any(c is not None for c in page["blocks"][row * 2][2])
         right_used = any(c is not None for c in page["blocks"][row * 2 + 1][2])
-        if left_used and right_used:
+        if left_used and right_used and not continues(page, row * 2 + 1):
             xx = X0 + 4 * CELL_W
             d.line(sc((xx, ROW_Y[row] + 30, xx, ROW_Y[row] + ROW_H - 12)), fill=(96, 56, 170), width=sc(1))
     # divider between the rows
     d.line(sc((x0 + 18, ROW_Y[1] - 2, x1 - 18, ROW_Y[1] - 2)), fill=(72, 40, 140), width=sc(1))
+
+
+def continues(page, b):
+    """True if block b is the untitled right half of a titled section (VIBE, NOISE, CHORUS, MIC)."""
+    bl = page["blocks"]
+    return (b % 2 == 1 and b < len(bl) and not bl[b][0] and bool(bl[b - 1][0])
+            and any(c is not None for c in bl[b][2]))
 
 
 def make_background(page, number, params):
