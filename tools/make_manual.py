@@ -32,6 +32,11 @@ Options
     --html-only        write the HTML, skip the PDF
     --browser PATH     the Chrome / Edge / Chromium executable to print with
                        (default: looked up; or set VHS_MANUAL_BROWSER)
+    --theme light      the print variant on white paper, written beside the manual as
+                       manual/VHS-Vibes-Manual-print.html and -print.pdf. Default: dark, the
+                       "vaporwave night" manual made for a screen. The dark CSS is the block marked
+                       DARK THEME at the end of manual/manual.css (left out of the light build),
+                       its figure colors are THEMES["dark"] below.
 """
 
 import argparse
@@ -53,6 +58,39 @@ PROJECT = os.path.dirname(HERE)
 MANUAL = os.path.join(PROJECT, "manual")
 OUT_HTML = os.path.join(MANUAL, "VHS-Vibes-Manual.html")
 OUT_PDF = os.path.join(MANUAL, "VHS-Vibes-Manual.pdf")
+
+# Colors of the figures the script draws itself, per theme. The light values are the ones the
+# manual has always used; the dark ones are the same roles redrawn for the night page.
+THEMES = {
+    "light": {
+        "suffix": "-print",
+        "sig_tape": None,               # None: the ink color of make_skin
+        "sig_box": "#fff",
+        "sig_name": None,               # None: ink
+        "sig_sub": "#5a3c85",
+        "sig_io": None,                 # None: ink
+        "sig_hq_fill": None,            # None: ink
+        "sig_hq_text": None,            # None: yellow
+        "page_colors": None,            # None: the colors on paper (main())
+        "knob_track": (205, 185, 235),
+        "knob_cap": None,               # None: ink
+    },
+    "dark": {
+        "suffix": "",
+        "sig_tape": "#6f4fb8",
+        "sig_box": "#22104a",
+        "sig_name": "#f3ecff",
+        "sig_sub": "#cdbcec",
+        "sig_io": "#e6dafc",
+        "sig_hq_fill": "#fff95b",
+        "sig_hq_text": "#0d0221",
+        "page_colors": ["#ff6cb8", "#3fe9f7", "#ffa266", "#c99bff", "#aab6ff", "#e8e46e"],
+        "knob_track": (84, 62, 140),
+        "knob_cap": "#7446c2",
+    },
+}
+THEME = THEMES["dark"]
+DARK_BLOCK = re.compile(r"\n/\* =+ BEGIN DARK THEME.*?END DARK THEME =+ \*/\n", re.S)
 
 WARNINGS = []
 
@@ -413,7 +451,7 @@ def icon_svg(d, kind):
         return ('<svg class="ico" viewBox="0 0 44 28"><path d="M14.93 22.07 A10 10 0 1 1 29.07 22.07" fill="none" stroke="%s" stroke-width="3" stroke-linecap="round"/>'
                 '<path d="M14.93 22.07 A10 10 0 0 1 22 5" fill="none" stroke="%s" stroke-width="3" stroke-linecap="round"/>'
                 '<circle cx="22" cy="15" r="5.8" fill="%s"/><line x1="22" y1="15" x2="22" y2="10.4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>'
-                % (rgb((205, 185, 235)), rgb(mk.PINK), rgb(mk.INK)))
+                % (rgb(THEME["knob_track"]), rgb(mk.PINK), THEME["knob_cap"] or rgb(mk.INK)))
     if kind == "switch":
         return ('<svg class="ico" viewBox="0 0 44 28"><rect x="6" y="7" width="32" height="14" rx="7" fill="%s"/>'
                 '<circle cx="31" cy="14" r="4.6" fill="#fff"/></svg>' % rgb(mk.PINK))
@@ -904,6 +942,8 @@ def signal_html(d, lines):
             c = cols - 1 - c
         pos.append((mx + c * (bw + gap), top + r * (bh + vgap), r))
     ink, pink = rgb(mk.INK), rgb(mk.PINK)
+    tape, name_c, io_c = THEME["sig_tape"] or ink, THEME["sig_name"] or ink, THEME["sig_io"] or ink
+    hq_fill, hq_text = THEME["sig_hq_fill"] or ink, THEME["sig_hq_text"] or rgb(mk.YELLOW)
     R = (bh + vgap) / 2.0
     path = ["M 30 %.1f" % (pos[0][1] + bh / 2)]
     arrows = []
@@ -937,30 +977,30 @@ def signal_html(d, lines):
             nx = pos[i + 1][0]
             arrow((x + bw + nx) / 2 if nx > x else (nx + bw + x) / 2, cy, "r" if nx > x else "l")
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g">' % (W, H)]
-    svg.append('<path d="%s" fill="none" stroke="%s" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>' % (" ".join(path), ink))
+    svg.append('<path d="%s" fill="none" stroke="%s" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>' % (" ".join(path), tape))
     svg.append('<path d="%s" fill="none" stroke="#fff" stroke-width="0.8" stroke-dasharray="1 5" opacity="0.5"/>' % " ".join(path))
-    svg.append('<text x="4" y="%.1f" font-family="%s" font-size="10" fill="%s">ＩＮ</text>' % (pos[0][1] + bh / 2 + 3.5, esc(FONT_GOTHIC_SVG), ink))
+    svg.append('<text x="4" y="%.1f" font-family="%s" font-size="10" fill="%s">ＩＮ</text>' % (pos[0][1] + bh / 2 + 3.5, esc(FONT_GOTHIC_SVG), io_c))
     svg.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s" font-size="10" fill="%s">ＯＵＴ</text>'
-               % (end[0], end[1] + 3.5, end[2], esc(FONT_GOTHIC_SVG), ink))
+               % (end[0], end[1] + 3.5, end[2], esc(FONT_GOTHIC_SVG), io_c))
     for st, (x, y, r) in zip(stages, pos):
         col = PAGE_COLOURS[st["page"]]
         dash = ' stroke-dasharray="5 3"' if "optional" in st["flags"] else ""
-        svg.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="7" fill="#fff" stroke="%s" stroke-width="2"%s/>' % (x, y, bw, bh, col, dash))
+        svg.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="7" fill="%s" stroke="%s" stroke-width="2"%s/>' % (x, y, bw, bh, THEME["sig_box"], col, dash))
         svg.append('<text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-size="6.6" letter-spacing="0.8" fill="%s">%s</text>'
                    % (x + bw / 2, y + 11.5, esc(FONT_GOTHIC_SVG), col, esc(st["page"])))
         svg.append('<text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-weight="700" font-size="11.5" fill="%s">%s</text>'
-                   % (x + bw / 2, y + 26, esc(FONT_BODY_SVG), ink, esc(st["name"])))
-        svg.append('<text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-size="7.4" fill="#5a3c85">%s</text>'
-                   % (x + bw / 2, y + 37.5, esc(FONT_BODY_SVG), esc(st["sub"])))
+                   % (x + bw / 2, y + 26, esc(FONT_BODY_SVG), name_c, esc(st["name"])))
+        svg.append('<text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-size="7.4" fill="%s">%s</text>'
+                   % (x + bw / 2, y + 37.5, esc(FONT_BODY_SVG), THEME["sig_sub"], esc(st["sub"])))
         if "hq" in st["flags"]:
             svg.append('<rect x="%.1f" y="%.1f" width="22" height="11" rx="5.5" fill="%s"/>'
                        '<text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-weight="700" font-size="7" fill="%s">HQ</text>'
-                       % (x + bw - 27, y - 5.5, ink, x + bw - 16, y + 2.6, esc(FONT_BODY_SVG), rgb(mk.YELLOW)))
+                       % (x + bw - 27, y - 5.5, hq_fill, x + bw - 16, y + 2.6, esc(FONT_BODY_SVG), hq_text))
     svg += arrows
     svg.append("</svg>")
     key = "".join('<span><i style="background:%s"></i>%s</span>' % (PAGE_COLOURS[p["name"]], esc(wide(p["name"]))) for p in d.pages)
     key += ('<span class="plain"><i style="background:%s"></i>HQ: runs at twice the sample rate when HQ is on</span>'
-            '<span class="plain"><i style="border:.4mm dashed %s"></i>Noise enters at one of these two places (Position)</span>' % (ink, rgb(mk.ORANGE)))
+            '<span class="plain"><i style="border:.4mm dashed %s"></i>Noise enters at one of these two places (Position)</span>' % (hq_fill, rgb(mk.ORANGE)))
     return '<div class="signal">%s</div><div class="sig-key">%s</div>' % ("".join(svg), key)
 
 
@@ -1141,17 +1181,24 @@ def checks_on_html(d, page):
 
 
 def main():
-    global PAGE_COLOURS, FONT_LOGO_SVG, FONT_BODY_SVG, FONT_GOTHIC_SVG
+    global PAGE_COLOURS, FONT_LOGO_SVG, FONT_BODY_SVG, FONT_GOTHIC_SVG, THEME, OUT_HTML, OUT_PDF
     ap = argparse.ArgumentParser(description="Build the VHS Vibes user manual (manual/VHS-Vibes-Manual.pdf).")
     ap.add_argument("--html-only", action="store_true", help="write the HTML and skip the PDF")
     ap.add_argument("--browser", help="Chrome / Edge / Chromium executable to print with")
+    ap.add_argument("--theme", choices=sorted(THEMES), default="dark",
+                    help="dark (default): the manual for a screen, manual/VHS-Vibes-Manual.pdf; light: the print "
+                         "variant on white paper, written to manual/VHS-Vibes-Manual-print.pdf")
     args = ap.parse_args()
+    THEME = THEMES[args.theme]
+    if THEME["suffix"]:
+        OUT_HTML = os.path.join(MANUAL, "VHS-Vibes-Manual%s.html" % THEME["suffix"])
+        OUT_PDF = os.path.join(MANUAL, "VHS-Vibes-Manual%s.pdf" % THEME["suffix"])
 
     d = load()
     mk = d.mk
     stacks, font_report = font_stacks()
     FONT_LOGO_SVG, FONT_BODY_SVG, FONT_GOTHIC_SVG = (stacks[k].replace('"', "'") for k in ("logo", "body", "gothic"))
-    on_paper = [rgb(mk.PINK), "#0a9fb0", rgb(mk.ORANGE), rgb(mk.PURPLE), rgb(mk.INK), "#7a7a00"]
+    on_paper = THEME["page_colors"] or [rgb(mk.PINK), "#0a9fb0", rgb(mk.ORANGE), rgb(mk.PURPLE), rgb(mk.INK), "#7a7a00"]
     PAGE_COLOURS = {p["name"]: on_paper[i % len(on_paper)] for i, p in enumerate(d.pages)}
 
     tokens = {"pink": rgb(mk.PINK), "pink_hi": rgb(mk.PINK_HI), "pink_lo": rgb(mk.PINK_LO), "cyan": rgb(mk.CYAN),
@@ -1160,6 +1207,10 @@ def main():
               "f_gothic": stacks["gothic"], "f_head": stacks["head"], "f_logo": stacks["logo"], "f_body": stacks["body"],
               "f_mono": stacks["mono"], "footer_left": "ＶＨＳ　ＶＩＢＥＳ　／　" + wide("v" + d.version)}
     css = read(os.path.join(MANUAL, "manual.css"))
+    if not DARK_BLOCK.search(css):
+        die("manual.css: the block from 'BEGIN DARK THEME' to 'END DARK THEME' is missing or its markers changed")
+    if args.theme != "dark":
+        css = DARK_BLOCK.sub("", css, count=1)      # the light manual never sees the dark rules
 
     def tok(m):
         if m.group(1) not in tokens:

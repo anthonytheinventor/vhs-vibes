@@ -42,6 +42,8 @@ Needs MPC OS 3.10.1 or later. `INSTALL.txt` in the zip says the same at more len
 
 Every control, every program and what the machine is doing inside:
 [VHS-Vibes-Manual.pdf](https://github.com/anthonytheinventor/vhs-vibes/blob/main/manual/VHS-Vibes-Manual.pdf).
+To print it, take the one on white paper:
+[VHS-Vibes-Manual-print.pdf](https://github.com/anthonytheinventor/vhs-vibes/blob/main/manual/VHS-Vibes-Manual-print.pdf).
 
 ## ☕ ＴＩＰ　ＪＡＲ
 

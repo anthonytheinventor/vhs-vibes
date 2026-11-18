@@ -181,3 +181,68 @@ table.ql td.no { font: 8pt var(--f-gothic); color: var(--pink-lo); width: 22mm; 
 .sig-key span { display: inline-flex; align-items: center; gap: 1.5mm; }
 .sig-key i { display: inline-block; width: 6mm; height: 3mm; border-radius: .8mm; }
 .sig-key span.plain { font: 8.4pt var(--f-body); letter-spacing: 0; color: var(--text); }
+
+/* ================================================================ BEGIN DARK THEME
+   "Vaporwave night": the text pages on the cover's night instead of paper. Only
+   `python tools/make_manual.py --theme dark` keeps this block; the light build cuts it out
+   whole, so nothing here can change the light manual. Everything above stays the layout;
+   this block only recolors. Contrast against the page (#170b33): body text 14.6:1, bright
+   text 17.4:1, pink headings 8.9:1, small pink 9.9:1, secondary violet 9.4:1, captions 10.6:1
+   (WCAG ratios; zebra rows #271447, note boxes #24114d and table headers #3a1a78 all keep body
+   text above 7:1 and small text above 4.5:1). */
+/* the one decoration: a faint neon horizon across the bottom margin, above the footer text */
+@page {
+  background-color: #170b33;
+  @bottom-left   { color: #b9a3e6; background: linear-gradient(90deg, rgba(255, 46, 151, 0), rgba(255, 46, 151, .5)) 0 4mm / 100% .3mm no-repeat; }
+  @bottom-center { color: #cbb6ea; background: linear-gradient(90deg, rgba(255, 46, 151, .5), rgba(0, 240, 255, .5)) 0 4mm / 100% .3mm no-repeat; }
+  @bottom-right  { color: #ff9fd6; background: linear-gradient(90deg, rgba(0, 240, 255, .5), rgba(0, 240, 255, 0)) 0 4mm / 100% .3mm no-repeat; }
+}
+:root {
+  --page: #170b33; --text: #e9e1f5; --bright: #fbf6ff; --pink-text: #ff9fd6; --pink-head: #ff8fce;
+  --violet-text: #c4adf0; --soft-text: #cdbcec; --raised: #24114d;
+  --rule: rgba(196, 173, 240, .22);
+}
+@media screen { html, body { background: var(--page); } }   /* print: @page paints it (a body background leaves a seam) */strong, h3 { color: var(--bright); }
+code { background: rgba(185, 103, 255, .20); color: #f6e9ff; }
+ol li::marker { color: var(--pink-text); }
+h2 { color: var(--pink-head); }
+
+/* the chapter sticker: a thin neon edge and a glow instead of the white paper edge */
+/* (no outer ring: a shadow that reaches above the sticker is printed at the foot of the page before) */
+.banner { border-color: rgba(255, 143, 206, .55); box-shadow: 0 1.2mm 2.6mm rgba(255, 46, 151, .30); }
+
+/* screenshots and their captions */
+.shot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 .3mm rgba(196, 173, 240, .35); }
+.opener .shot::after { content: none; }
+figcaption { color: var(--soft-text); }
+.keys { color: var(--text); }
+
+/* one control */
+.blk .t { color: var(--pink-head); }
+.blk .jp, .blk .q { color: var(--violet-text); }
+.ctl .n { border-color: var(--night); }
+.ctl .cap { color: var(--bright); }
+.ctl dt { color: var(--violet-text); }
+.ctl dd.v { color: var(--bright); }
+.ctl .txt p.more .tag { color: var(--pink-text); }
+
+/* tables */
+th { background: #3a1a78; color: #f4ecff; }
+tbody tr:nth-child(even) td { background: #271447; }   /* opaque: a translucent fill shows seams between cells */
+td:first-child { color: var(--bright); }
+table.programs td.no, table.ql td.no { color: var(--pink-text); }
+
+/* notes, asides, contents */
+.note { background: var(--raised); box-shadow: inset 0 0 0 .25mm rgba(196, 173, 240, .18); }
+.note .nt { color: var(--pink-text); }
+.aside { color: #7ff3ff; }
+.toc .t { color: var(--bright); }
+.toc .t .jp { color: var(--violet-text); }
+.toc .w { color: #d6c8f0; }
+.toc .dots { border-bottom-color: rgba(196, 173, 240, .45); }
+.toc .p { color: var(--pink-text); }
+.toc a.sub .t { color: var(--violet-text); }
+
+/* signal path key (the figure's own colors come from THEMES in make_manual.py) */
+.sig-key { color: var(--text); }
+/* ================================================================ END DARK THEME ================ */
