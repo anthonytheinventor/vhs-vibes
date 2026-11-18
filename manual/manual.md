@@ -392,7 +392,7 @@ EP is three times as touchy as SP, because the tape runs three times slower. Wit
 
 ## HQ
 
-HQ runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate.
+HQ runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate. Since 1.7 that includes the modelled microphones (Camcorder, Phone, Boombox) and the recording side of B-Type NR.
 
 - **Off:** bright sounds that hit those stages fold back into the midrange as tones that were never played. The plugin sounds as it did before HQ existed.
 - **On:** that is gone for highs at ordinary levels. A full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter.
@@ -1006,13 +1006,15 @@ toc: Projects made with older versions
 epigraph: Nothing you recorded is lost. It only waits.
 :::
 
-**Projects made with an older version load with every setting in place, and projects saved with 1.3 to 1.6 sound as they did.**
+**Projects made with an older version load with every setting in place, and projects saved with 1.3 to 1.6 sound as they did, with two changes made on purpose: HQ now reaches further, and Whistle is louder above 60 %.**
 
 - New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Type at Simple, Azimuth at 0', Visual Vibes off. Mic Model and AGC Model rest at Modeled in a new instance; a project saved before they existed opens with both at Simple.
 - No older program uses the newer controls: the five with the Mic on keep the Simple microphones, every program with the AGC up keeps the Simple AGC, and none of the 39 programs from before 1.7 uses Hi-Fi or Azimuth. They are unchanged.
 - The newer programs come after Init and after each other, so every older program keeps its number.
 - **Type** gained a third position in 1.7. A project stores the choice itself, so VHS stays VHS. The one exception: something that stores only a knob position for Type, a Q-Link assignment or recorded automation made in 1.5 or 1.6, now reads the old VHS position as Hi-Fi, because the same travel is now shared by three positions. Set it again to VHS where that happens.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
+- **HQ reaches further in 1.7.** It now also covers the modelled microphones and the recording side of B-Type NR, which used to fold bright, loud sounds back into the midrange even with HQ on. A project that uses them with HQ on keeps its level and tone and loses those tones; the programs that use them stay within a third of a dB of 1.6 below 10 kHz. With HQ off, and wherever neither is in use, nothing changes.
+- **Whistle** is as it was up to 60 %. Above that it is louder than in 1.6, by 15 dB at 100 %.
 - **Mic Model** is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did.
 - **AGC Model** rests on Modeled, but every program with the AGC up uses Simple, Home Recording included. A project saved before 1.6 opens on Simple, so it sounds as it did.
 

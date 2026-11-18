@@ -296,7 +296,7 @@ what: The picture shows the sound. On the page sticker, the picture behaves like
 note: Off in a new instance and in a project from an older version. It needs Animation on. Choosing a program does not change it, and it makes no difference to the sound. The plugin updates the picture up to 20 times a second through five more read-only parameters (see *The picture shows the sound*, in the chapter ＳＣＲＥＥＮ).
 
 ## HQ
-what: Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played.
+what: Runs the stages that distort (Drive, Slew, Comp, Saturator, the modelled microphones and the recording side of B-Type NR) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played.
 listen: With HQ off, loud bright sounds grow extra, unrelated tones underneath. With it on, they are gone for highs at ordinary levels.
 note: On takes about a quarter more CPU. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
 

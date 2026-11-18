@@ -222,7 +222,7 @@ button turn sunset orange. With the Saturator off, all seven are their own again
 | Azimuth | The head out of line, 0' to 60'. Only with Sat Type on VHS (below). |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 | Visual Vibes | The picture shows the sound (below). Off in a new instance. |
-| HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
+| HQ | Runs the stages that distort (Drive, Slew, Comp, Saturator, the modelled mics, B-Type NR's record side) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
 | B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. Four positions (below). |
 
 **The two AGCs**
@@ -388,6 +388,9 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   Hi-Fi. A project's own Sat Type setting stays as it was.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
+- Since 1.7 HQ also covers the modelled microphones and the recording side of B-Type NR. A project
+  that uses them with HQ on keeps its level and tone and loses the fold-back tones it had. Whistle
+  is louder than in 1.6 above 60 %.
 - Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one
   saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did. The
   five older programs with the Mic on keep Simple; the five programs named Mic - ... are the same
