@@ -206,7 +206,7 @@ CAPTIONS = {
     "Hi Cut 2": "HI CUT", "Noise": "MASTER", "Noise Pos": "POSITION",
     "Sat Type": "TYPE",
     "Wobble On": "POWER", "Noise On": "POWER",
-    "Deck On": "POWER", "Visual Vibes": "VISUAL VIBES",
+    "Deck On": "DECK POWER", "Visual Vibes": "VISUAL VIBES",
 }
 BIPOLAR = {"Tilt", "Lows", "Mic Gain"}
 # The 16 parameters on the knobs in Program (track) Q-Link mode, Q-Link 1..16.

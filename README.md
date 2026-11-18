@@ -213,7 +213,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 
 | Control | What it does |
 |---|---|
-| Power | AGC, Drift, Tracking and Breathing on or off together. (HQ and B-Type NR have their own switches.) |
+| Deck Power | AGC, Drift, Tracking and Breathing on or off together. (HQ and B-Type NR have their own switches.) |
 | AGC | The recorder's automatic level control: loud sound is pulled down, the quiet after it swells back up. Two kinds (AGC Model, below). Comp works in milliseconds; this works in seconds. |
 | AGC Model | Which AGC the AGC knob turns up: Simple or Modeled (below). |
 | Tracking | The Hi-Fi track loses lock now and then: a burst of static, a moment on the dull, quieter mono backup track, another burst, back again. More often only the right channel crackles for a moment, as it is the first to go on a real deck. Higher is more often. (Sat Type = Hi-Fi: see above.) |
