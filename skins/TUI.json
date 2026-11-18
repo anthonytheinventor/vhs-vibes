@@ -3432,6 +3432,35 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "Wobble On",
+                                "type": "vvToggle",
+                                "data": {
+                                    "version": 1,
+                                    "handleName": "Data"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": [
+                                    {
+                                        "key": "Data",
+                                        "value": "Parameter 40"
+                                    }
+                                ]
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "Yes",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "80 260 140 152"
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Warp",
                                 "type": "vvKnobUni",
                                 "data": {
@@ -3454,7 +3483,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "80 260 140 152"
+                                "bounds": "220 260 140 152"
                             }
                         },
                         {
@@ -3483,7 +3512,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "220 260 140 152"
+                                "bounds": "360 260 140 152"
                             }
                         },
                         {
@@ -3512,7 +3541,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "360 260 140 152"
+                                "bounds": "500 260 140 152"
                             }
                         },
                         {
@@ -3600,35 +3629,6 @@
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
                                 "bounds": "920 260 140 152"
-                            }
-                        },
-                        {
-                            "version": 2,
-                            "componentData": {
-                                "version": 1,
-                                "name": "Wobble On",
-                                "type": "vvToggle",
-                                "data": {
-                                    "version": 1,
-                                    "handleName": "Data"
-                                }
-                            },
-                            "handle remapping": {
-                                "version": 1,
-                                "map": [
-                                    {
-                                        "key": "Data",
-                                        "value": "Parameter 40"
-                                    }
-                                ]
-                            },
-                            "bounds": {
-                                "version": 1,
-                                "acceptsHWFocus": "Yes",
-                                "showWhenDataModelInvalid": "Hide",
-                                "whenVisible": "Always",
-                                "boundsType": "Absolute",
-                                "bounds": "1060 260 140 152"
                             }
                         },
                         {
@@ -4137,7 +4137,7 @@
                                 "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "360 260 140 25",
+                                "bounds": "500 260 140 25",
                                 "additionalInvalidatingHandles": [
                                     "IndexedEnabling/2/3/Parameter 55"
                                 ]
@@ -4166,7 +4166,7 @@
                                 "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "500 260 140 25",
+                                "bounds": "640 260 140 25",
                                 "additionalInvalidatingHandles": [
                                     "IndexedEnabling/2/3/Parameter 55"
                                 ]
@@ -4195,10 +4195,39 @@
                                 "showWhenDataModelInvalid": "Show",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "640 260 140 25",
+                                "bounds": "780 260 140 25",
                                 "additionalInvalidatingHandles": [
                                     "IndexedEnabling/2/3/Parameter 55"
                                 ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "Noise On",
+                                "type": "vvToggle",
+                                "data": {
+                                    "version": 1,
+                                    "handleName": "Data"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": [
+                                    {
+                                        "key": "Data",
+                                        "value": "Parameter 41"
+                                    }
+                                ]
+                            },
+                            "bounds": {
+                                "version": 1,
+                                "acceptsHWFocus": "Yes",
+                                "showWhenDataModelInvalid": "Hide",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "80 260 140 152"
                             }
                         },
                         {
@@ -4227,7 +4256,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "80 260 140 152"
+                                "bounds": "220 260 140 152"
                             }
                         },
                         {
@@ -4256,7 +4285,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "220 260 140 152"
+                                "bounds": "360 260 140 152"
                             }
                         },
                         {
@@ -4285,7 +4314,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "360 260 140 152"
+                                "bounds": "500 260 140 152"
                             }
                         },
                         {
@@ -4314,7 +4343,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "500 260 140 152"
+                                "bounds": "640 260 140 152"
                             }
                         },
                         {
@@ -4343,7 +4372,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "640 260 140 152"
+                                "bounds": "780 260 140 152"
                             }
                         },
                         {
@@ -4372,7 +4401,7 @@
                                 "showWhenDataModelInvalid": "Hide",
                                 "whenVisible": "Always",
                                 "boundsType": "Absolute",
-                                "bounds": "780 260 140 152"
+                                "bounds": "920 260 140 152"
                             }
                         },
                         {
@@ -4392,35 +4421,6 @@
                                     {
                                         "key": "Data",
                                         "value": "Parameter 23"
-                                    }
-                                ]
-                            },
-                            "bounds": {
-                                "version": 1,
-                                "acceptsHWFocus": "Yes",
-                                "showWhenDataModelInvalid": "Hide",
-                                "whenVisible": "Always",
-                                "boundsType": "Absolute",
-                                "bounds": "920 260 140 152"
-                            }
-                        },
-                        {
-                            "version": 2,
-                            "componentData": {
-                                "version": 1,
-                                "name": "Noise On",
-                                "type": "vvToggle",
-                                "data": {
-                                    "version": 1,
-                                    "handleName": "Data"
-                                }
-                            },
-                            "handle remapping": {
-                                "version": 1,
-                                "map": [
-                                    {
-                                        "key": "Data",
-                                        "value": "Parameter 41"
                                     }
                                 ]
                             },

@@ -171,14 +171,14 @@ PAGES = [
         ("", "", ["Highs", "Hi Sat", "Hi Cut", "Sat Type"]),
     ]},
     {"name": "WOBBLE", "jp": "ゆらぎ", "file": "bg_wobble.png", "blocks": [
-        ("TRACKING", "トラッキング", ["Warp", "Warp Rate", "Shape", None]),
-        ("FLUTTER", "フラッター", ["Flutter", "Flut Rate", "Scrape", "Wobble On"]),
+        ("TRACKING", "トラッキング", ["Wobble On", "Warp", "Warp Rate", "Shape"]),
+        ("FLUTTER", "フラッター", ["Flutter", "Flut Rate", "Scrape", None]),
         ("RE-RECORD", "ダビング", ["Wow", "Wow Rate", "Flutter 2", "Flut2 Rate"]),
         ("FILTER", "フィルター", ["Lo Cut", "Hi Cut 2", None, None]),
     ]},
     {"name": "NOISE", "jp": "ノイズ", "file": "bg_noise.png", "blocks": [
-        ("NOISE", "ノイズ", ["Hum", "Buzz", "Head Buzz", "Hiss"]),
-        ("", "", ["Crackle", "Noise", "Noise Pos", "Noise On"]),
+        ("NOISE", "ノイズ", ["Noise On", "Hum", "Buzz", "Head Buzz"]),
+        ("", "", ["Hiss", "Crackle", "Noise", "Noise Pos"]),
         ("TV SET", "テレビ", ["Whistle", None, None, None]),
         ("", "", [None, None, None, None]),
     ]},
@@ -205,7 +205,7 @@ CAPTIONS = {
     "Wow Rate": "RATE", "Flutter 2": "FLUTTER", "Flut2 Rate": "RATE",
     "Hi Cut 2": "HI CUT", "Noise": "MASTER", "Noise Pos": "POSITION",
     "Sat Type": "TYPE",
-    "Wobble On": "WOBBLE", "Noise On": "NOISE",
+    "Wobble On": "POWER", "Noise On": "POWER",
     "Deck On": "POWER", "Visual Vibes": "VISUAL VIBES",
 }
 BIPOLAR = {"Tilt", "Lows", "Mic Gain"}

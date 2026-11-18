@@ -149,7 +149,7 @@ listen: A roughness that clings to bright sounds and is silent in silence.
 try: Dirty Heads uses 30 %, Sticky Tape 65 %.
 
 ## Wobble On
-what: Turns both wobbles and Scrape off or on together. The two filters of this page stay in.
+what: The WOBBLE page's POWER switch. It turns both wobbles and Scrape off or on together. The two filters of this page stay in.
 note: With Wobble off, Mix below 100 % blends cleanly.
 
 ## Wow
@@ -211,7 +211,7 @@ what: Where the noise enters. **Post**: after the first wobble, so the noise is 
 listen: On Pre with Comp or AGC turned up, the noise swells whenever the music stops. That is how a real recorder's level control behaves; turn Master down if it is too much.
 
 ## Noise On
-what: Turns all noise off or on: Hum, Buzz, Head Buzz, Hiss, Crackle and Whistle.
+what: The NOISE page's POWER switch. It turns all noise off or on: Hum, Buzz, Head Buzz, Hiss, Crackle and Whistle.
 note: The effect makes noise even with no input. Switch this off, or set Master to 0 %, for a silent background. In Hi-Fi it also silences the FM channel's noise, its clicks and the head switch, and the linear track's hiss; the deck still holds the sound and falls to the linear track when the signal is lost, as that is part of the machine.
 
 ## Whistle

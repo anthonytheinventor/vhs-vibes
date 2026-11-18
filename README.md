@@ -161,6 +161,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 
 | Control | What it does |
 |---|---|
+| Power | Turns both wobbles and Scrape off or on together. The filters stay in. The MPC lists it as Wobble On. |
 | Warp | Depth of the slow pitch wobble (up to about 5 % of pitch). |
 | Warp Rate | Speed of the slow wobble, 0.10 to 5.00 Hz. With Warp high, the slowest speeds hold the depth back (at Warp 100 % below about 0.38 Hz; below Warp 50 % never). |
 | Shape | 0 % is a smooth wobble, 100 % an uneven lurch. |
@@ -168,7 +169,6 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 | Scrape | Scrape flutter: the tape sticking and slipping along its path, far faster than any wobble. A roughness that clings to bright sounds and is silent in silence. 0 % is off. |
 | Wow, Rate, Flutter, Rate (Re-record) | A second, independent wobble: the tape after one more copy. With Wow high, the slowest rates hold its depth back (at Wow 100 % below about 0.23 Hz; below Wow 65 % never). |
 | Lo Cut / Hi Cut | Filters after the second wobble. |
-| Wobble (switch) | Turns both wobbles and Scrape off or on together. The filters stay in. |
 
 ### ＮＯＩＳＥ　ノイズ
 
@@ -176,6 +176,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 
 | Control | What it does |
 |---|---|
+| Power | Turns all noise off or on. The MPC lists it as Noise On. |
 | Hum | 60 Hz mains hum. |
 | Buzz | 120 Hz buzz. |
 | Head Buzz | The video heads switching, 59.94 times a second: a steady rasp, plus a buzz that rides on bright sounds and vanishes on bass (the signal is held for a few samples at each switch). |
@@ -183,7 +184,6 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 | Crackle | Random clicks; the knob sets both how many and how loud. |
 | Whistle | The line whistle of the TV set, 15.7 kHz, steady, never wobbling. About where a real deck has it at 50 %; above 60 % it climbs fast, to a set that screams. Not everyone can hear it. |
 | Master | Level of all noise together. 50 % is nominal, 0 % is silent. |
-| Noise (switch) | Turns all noise off or on. |
 | Position | Post: noise is added after the first wobble (clean noise). Pre: noise goes in at the input and is compressed, clipped and wobbled with the music. |
 
 ### ＩＮＰＵＴ　インプット
