@@ -1803,7 +1803,8 @@ constexpr float kHfRecMaxDb = 28.0f;          // Rec Level at the top of Lo Sat 
 constexpr float kHfCarrierMinDb = -20.0f;     // Carrier at the top of Hi Sat, 0.2 dB per % [the plan; the absolute scale is E]
 constexpr float kHfCalDb = 3.0f;              // Cal at either end of Split [the plan; deck tolerances +-1 to +-2 dB, R]
 // ... and the expander's slope off by this much there, 2 +- 0.25 [E: the TDA's tolerance is 1.93-2.07, R],
-// so a wrong Cal also moves quiet passages further than loud ones: the sound pumps
+// so a wrong Cal's error also changes with the level (measured: +6.75 dB at reference and +1.75 dB
+// 40 dB under it at the top of the knob), and loud and quiet passages move apart or together: the sound pumps
 constexpr float kHfCalSlope = 0.25f;
 
 // Rec Level from Lo Sat (0..1): -10 dB at 0, 0 dB where VHS mode has it (10 / 18, 55.6 %), +28 dB at 1.
@@ -2194,7 +2195,8 @@ struct HiFiPath
                 if (s.headBuzz > 0.0f)
                 {
                     const float a = 0.5f * clickUnit * sq(s.headBuzz);
-                    z += stereo(rngC.nextBipolar(), rngC.nextBipolar()) * a;
+                    const float nl = rngC.nextBipolar(), nr = rngC.nextBipolar();   // (left first, whatever the compiler)
+                    z += stereo(nl, nr) * a;
                 }
             }
         }
