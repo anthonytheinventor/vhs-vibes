@@ -189,7 +189,7 @@ PAGES = [
         ("", "", ["Mic Model", None, None, None]),
     ]},
     {"name": "DECK", "jp": "デッキ", "file": "bg_deck.png", "blocks": [
-        ("DECK", "デッキ", ["Deck On", "AGC", "AGC Model", None]),
+        ("AGC", "オートゲイン", ["Deck On", "AGC", "AGC Model", None]),
         ("ALIGNMENT", "アライメント", ["Tracking", "Breathing", "Drift", "Azimuth"]),
         ("SCREEN", "スクリーン", ["Animation", "Visual Vibes", None, None]),
         ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
