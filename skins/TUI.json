@@ -2176,7 +2176,7 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "snow.png",
-                                    "numFrames": 13,
+                                    "numFrames": 25,
                                     "handleName": "Parameter 59"
                                 }
                             },
@@ -3152,7 +3152,7 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "snow.png",
-                                    "numFrames": 13,
+                                    "numFrames": 25,
                                     "handleName": "Parameter 59"
                                 }
                             },
@@ -3838,7 +3838,7 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "snow.png",
-                                    "numFrames": 13,
+                                    "numFrames": 25,
                                     "handleName": "Parameter 59"
                                 }
                             },
@@ -4495,7 +4495,7 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "snow.png",
-                                    "numFrames": 13,
+                                    "numFrames": 25,
                                     "handleName": "Parameter 59"
                                 }
                             },
@@ -5065,7 +5065,7 @@
                                     "imageType": "FilmStrip",
                                     "colour": "0",
                                     "image": "snow.png",
-                                    "numFrames": 13,
+                                    "numFrames": 25,
                                     "handleName": "Parameter 59"
                                 }
                             },

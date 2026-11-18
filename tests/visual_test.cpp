@@ -24,6 +24,7 @@ struct Fx
         e->dispatcher(e, effSetBlockSize, 0, 128, nullptr, 0.0f);
         e->dispatcher(e, effSetProgram, 0, program, nullptr, 0.0f);
         set(kHq, 0);
+        if (start) set(kVisualVibes, 1);   // (it rests off: the tests that play want the effects)
         if (start) e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
     }
     ~Fx() { e->dispatcher(e, effMainsChanged, 0, 0, nullptr, 0.0f); e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f); }
@@ -95,8 +96,8 @@ int main(int argc, char** argv)
         Fx fx(20, false);
         const mpc::Param& v = fx.plug()->param(kVisualVibes);
         check(fx.e->numParams == 64 && kVisualVibes == 58 && v.id == "visual_vibes" && v.name == "Visual Vibes"
-              && v.kind == mpc::Param::Kind::Bool && v.def == 1.0f && v.automatable && isSetting(kVisualVibes) && groupOf(kVisualVibes) == 0,
-              "64 parameters; number 58 is visual_vibes, \"Visual Vibes\", a switch, on in a new instance, automatable, no sound group");
+              && v.kind == mpc::Param::Kind::Bool && v.def == 0.0f && v.automatable && isSetting(kVisualVibes) && groupOf(kVisualVibes) == 0,
+              "64 parameters; number 58 is visual_vibes, \"Visual Vibes\", a switch, off in a new instance, automatable, no sound group");
         static const char* const ids[] = { "vis_snow", "vis_head", "vis_streak", "vis_grid", "vis_haze" };
         static const char* const names[] = { "Snow", "Head", "Streak", "Grid", "Haze" };
         bool meters = true;
@@ -130,25 +131,25 @@ int main(int argc, char** argv)
     {
         Fx a(3, false); a.set(kWarp, 70); a.set(kHiss, 60); a.set(kAnimate, 0);
         const std::vector<uint8_t> old = stateBefore14(a.state());
-        Fx b(20, false); b.set(kVisualVibes, 0); b.set(kHq, 1);
+        Fx b(20, false); b.set(kVisualVibes, 1); b.set(kHq, 1);
         b.load(old);
         bool same = true;
         for (int i = 0; i < kScrape; ++i) if (isSetting(i)) same = same && b.get(i) == a.get(i);
-        check(same && b.get(kVisualVibes) == 1.0f, "a state from before 1.4: every setting as saved, Visual Vibes on");
+        check(same && b.get(kVisualVibes) == 0.0f, "a state from before 1.4: every setting as saved, Visual Vibes off");
         if (argc > 1)
         {
             std::vector<uint8_t> s;
             if (FILE* f = std::fopen(argv[1], "rb")) { int c; while ((c = std::fgetc(f)) != EOF) s.push_back((uint8_t)c); std::fclose(f); }
-            Fx c(20, false); c.set(kVisualVibes, 0);
+            Fx c(20, false); c.set(kVisualVibes, 1);
             const VstIntPtr r = s.empty() ? 0 : c.load(s);
             check(r != 0 && c.get(kSatType) == 1.0f && c.get(kSatOn) == 1.0f && std::fabs(c.get(kLoSat) - 70.0f) < 1e-3f
                   && std::fabs(c.get(kHiSat) - 25.0f) < 1e-3f && std::fabs(c.get(kSplit) - 3000.0f) < 0.5f && std::fabs(c.get(kHiss) - 12.0f) < 1e-3f
-                  && c.get(kVisualVibes) == 1.0f, "the 1.6.0 state: Sat Type VHS and its knobs as saved, Visual Vibes on");
+                  && c.get(kVisualVibes) == 0.0f, "the 1.6.0 state: Sat Type VHS and its knobs as saved, Visual Vibes off");
         }
         else std::printf("   (no 1.6.0 state given: skipped)\n");
-        Fx d(20, false); d.set(kVisualVibes, 0);
+        Fx d(20, false); d.set(kVisualVibes, 1);
         Fx e(20, false); e.load(d.state());
-        check(e.get(kVisualVibes) == 0.0f, "a 1.7 state brings its own Visual Vibes");
+        check(e.get(kVisualVibes) == 1.0f, "a 1.7 state brings its own Visual Vibes");
     }
 
     std::printf("4. The meters while the sound plays\n");
@@ -188,9 +189,22 @@ int main(int argc, char** argv)
             // (a deep enough carrier dropout sends the path to the linear track for a moment: then the band)
             check(seen[0] > 0 && seen[1] > 2 * kHeadVariants && seen[2] >= 1 && f.frame(kVisLevel, kSunFrames) / kLevelFrames == 2,
                   "Hi-Fi: snow from the FM channel's hiss, the head strip, streaks at its carrier dropouts, the orange sun");
-            f.set(kDropouts, 0.0f); f.set(kHiSat, 100.0f);   // the carrier 30 dB down: the path stays on the linear track
+            f.set(kDropouts, 0.0f); f.set(kHiSat, 100.0f);   // the carrier 20 dB down: the path stays on the linear track
             int lin[5] = {}; f.play(1.0f, true, lin);
-            check(lin[2] > kStreakVariants && lin[0] > seen[0], "Hi-Fi with the carrier 30 dB down: the band, and more snow (its hiss rises as the carrier falls)");
+            check(lin[2] > kStreakVariants && lin[0] > 0, "Hi-Fi with the carrier 20 dB down: the band, and the linear track's snow");
+        }
+        {
+            // Hi-Fi's snow on the same scale as the other types' (the same step at the same Hiss and Noise at
+            // full carrier), and a weaker carrier pushes it up
+            int at[3] = {};
+            for (int k = 0; k < 3; ++k)
+            {
+                Fx f; quiet(f); f.set(kSatOn, 1.0f); f.set(kSatType, k == 0 ? 1.0f : 2.0f); f.set(kHiss, 40.0f); f.set(kHiSat, k == 2 ? 60.0f : 0.0f);
+                int seen[5] = {}; f.play(1.0f, true, seen);
+                at[k] = (seen[0] + kSnowVariants - 1) / kSnowVariants;   // the step
+            }
+            std::printf("   Hiss 40 %%: snow step %d in VHS, %d in Hi-Fi at full carrier, %d with the carrier 12 dB down\n", at[0], at[1], at[2]);
+            check(at[0] == 2 && at[1] == at[0] && at[2] > at[1], "snow: the same steps in Hi-Fi as in VHS at full carrier, higher at a weak carrier");
         }
         {
             Fx f; loud(f, 1); f.play(0.5f);

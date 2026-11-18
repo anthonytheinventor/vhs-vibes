@@ -104,7 +104,8 @@ FX_BOX = (3, 3, STICKER_W - 3, STICKER_H - 3)
 HEAD_H = 20                                                           # the head switch strip's box, along the bottom
 HEAD_BOX = (3, STICKER_H - 3 - HEAD_H, STICKER_W - 3, STICKER_H - 3)
 GRID_BEND = [0.0, 3.25, 5.35, 8.15]   # px the grid's lines swing at the bottom edge, per wobble step (0: straight)
-FX_STRENGTH = [0.25, 0.55, 0.95]      # snow and head strip strength per step (as the approved mock-ups)
+FX_STRENGTH = [0.25, 0.55, 0.95]      # head strip strength per step (as the approved mock-ups)
+SNOW_STRENGTH = [0.15, 0.40, 0.65, 0.95]   # snow strength per step (one per kSnowSteps)
 HAZE = (120, 92, 150)                 # the haze's colour; its opacity per step: haze_alpha()
 
 # --------------------------------------------------------------------------------------------
@@ -687,13 +688,26 @@ def tint(grey, r=0.92, g=0.85):
     return Image.merge("RGB", (grey.point(lambda v: int(v * r)), grey.point(lambda v: int(v * g)), grey))
 
 
-def snow_layer(s, rng):
-    """Snow at strength s: a fine grain, specks of white, and the stars turned to static (stronger in the sky)."""
+def snow_layer(s, rng, v=0):
+    """Snow at strength s: a fine grain, specks of white, and the stars turned to static (stronger in the sky).
+    Variant v sets what tells the patterns apart at a glance: the grain fine or coarse, and a few brighter
+    bands of noise (video noise bars) at their own heights, some torn sideways."""
     size = (STICKER_W, STICKER_H)
     sky = Image.new("L", size, 255)
     ImageDraw.Draw(sky).rectangle((0, HORIZON, STICKER_W, STICKER_H), fill=110)
-    layer = tint(noise(rng, size)).convert("RGBA")
-    layer.putalpha(sky.point(lambda v: int(v * (0.05 + 0.20 * s))))
+    g = 2 if v % 2 else 1
+    layer = tint(noise(rng, (STICKER_W // g, STICKER_H // g)).resize(size, Image.NEAREST)).convert("RGBA")
+    alpha = sky.point(lambda a: int(a * (0.05 + 0.20 * s)))
+    ad = ImageDraw.Draw(alpha)
+    for _ in range(v % 3 + 1 + (s > 0.5)):
+        y = rng.randrange(4, STICKER_H - 8)
+        ad.rectangle((0, y, STICKER_W, y + rng.randint(1, 3 + int(4 * s))), fill=int(255 * (0.25 + 0.45 * s)))
+    layer.putalpha(alpha)
+    if v >= 3:   # a torn stretch: a band of the grain shifted sideways
+        y = rng.randrange(6, STICKER_H - 16)
+        h = rng.randint(4, 10)
+        band = layer.crop((0, y, STICKER_W, y + h))
+        layer.paste(band, (rng.randint(8, 40) * rng.choice((-1, 1)), y))
     specks = Image.frombytes("L", size, rng.randbytes(size[0] * size[1])).point(lambda v: 255 if v < (0.006 + 0.075 * s) * 255 else 0)
     spk = tint(noise(rng, size, 3).point(lambda v: 150 + v * 105 // 255), 0.95, 0.9).convert("RGBA")
     spk.putalpha(ImageChops.multiply(specks, sky))
@@ -795,7 +809,8 @@ def empty(box):
 def make_fx_strips():
     """The four effect strips (file -> image). Seeded, so a run draws the same pictures."""
     rng = random.Random(1987)
-    snow = [empty(FX_BOX)] + [snow_layer(FX_STRENGTH[st], rng) for st in range(FR["snow_steps"]) for _ in range(FR["snow_vars"])]
+    assert len(SNOW_STRENGTH) == FR["snow_steps"], "SNOW_STRENGTH needs one value per kSnowSteps"
+    snow = [empty(FX_BOX)] + [snow_layer(SNOW_STRENGTH[st], rng, v) for st in range(FR["snow_steps"]) for v in range(FR["snow_vars"])]
     head = [empty(HEAD_BOX)] + [head_layer(FX_STRENGTH[st], rng) for st in range(FR["head_steps"]) for _ in range(FR["head_vars"])]
     streak = [empty(FX_BOX)] + [streak_layer(rng) for _ in range(FR["streaks"])] + [band_layer(p, rng) for p in range(FR["bands"])]
     haze = [empty(FX_BOX)] + [haze_layer(k) for k in range(1, FR["haze_steps"] + 1)]
@@ -1318,7 +1333,7 @@ def make_preview(page, number, bg, params, images, step=0, displays=None, fx=Non
 def fx_previews(page, number, bg, params, images):
     """The picture effects on a page (build/preview/fx_*.png), and fx_sheet.png: the stickers alone, 3x."""
     V = FR["snow_vars"]
-    heavy, mid = 1 + 2 * V, 1 + V                       # the first variant of the top and the middle step
+    heavy, mid = 1 + (FR["snow_steps"] - 1) * V, 1 + V  # the first variant of the top and the second step
     hicut = math.log(1400.0 / 1000.0) / math.log(18.0)  # Hi Cut at 1.4 kHz (its knob runs 1 to 18 kHz, log)
     shots = [
         ("clean", "clean (or Visual Vibes off)", {}, 0, None, None),

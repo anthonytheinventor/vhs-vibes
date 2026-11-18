@@ -338,29 +338,31 @@ int main(int argc, char** argv)
         check(ok, "55 dB within 0.3 dB, 1 dB per dB within 0.2 dB, 6 dB per octave within 0.3 dB");
     }
 
-    std::printf("7. Clicks: Rice's rate (B / 2 sqrt 3) erfc(sqrt CNR), B = 300 kHz, CNR 25 dB at full carrier, per channel\n");
+    std::printf("7. Clicks: Rice's rate (B / 2 sqrt 3) erfc(sqrt CNR), B = 300 kHz, per channel; the CNR is Crackle's margin less what moves the carrier\n");
     {
         bool ok = true;
-        const float cs[3] = { -16.0f, -17.5f, -19.0f };
+        const float cs[3] = { -16.0f, -17.5f, -19.0f };   // a dropout this deep under a 25 dB margin
         const double secs[3] = { 300.0, 60.0, 30.0 };
         for (int k = 0; k < 3; ++k)
         {
-            HiFiPath::Settings s; s.clicks = 1.0f; s.carrierDb = cs[k];
+            HiFiPath::Settings s; s.clicks = 1.0f;
             HiFiPath h; start(h, 44100.0f, s);
+            h.dropDb = -cs[k]; h.dropLeft = 1 << 30;   // (a dropout that lasts)
             const long n = (long)(secs[k] * 44100.0);
             for (long i = 0; i < n; ++i) chan(h, splat(0.0f));
             const double rho = std::pow(10.0, (25.0 + cs[k]) / 10.0);
             const double want = 300.0e3 / (2.0 * std::sqrt(3.0)) * std::erfc(std::sqrt(rho)) * 2.0 * secs[k];
             const double tol = 4.0 * std::sqrt(want) + 0.002 * want;   // 4 sigma of a Poisson count, and the rate rounded to 32 bits
-            std::printf("   carrier %+.1f dB (CNR %.1f dB): %u clicks in %.0f s on two channels, Rice: %.0f (+-%.0f), %.2f a second per channel\n",
+            std::printf("   a dropout of %+.1f dB (CNR %.1f dB): %u clicks in %.0f s on two channels, Rice: %.0f (+-%.0f), %.2f a second per channel\n",
                         cs[k], 25.0 + cs[k], h.clickCount, secs[k], want, tol, h.clickCount / (2.0 * secs[k]));
             ok = ok && std::fabs((double)h.clickCount - want) <= tol;
         }
         check(ok, "the counts within 4 standard deviations of the formula");
-        HiFiPath::Settings s; s.clicks = 1.0f; s.carrierDb = -8.0f;
+        HiFiPath::Settings s; s.clicks = 1.0f; s.cnr0Db = 9.13f; s.carrierDb = -19.0f;
         HiFiPath h; start(h, 44100.0f, s);
         for (long i = 0; i < 44100L * 60; ++i) chan(h, splat(0.0f));
-        check(h.clickCount == 0, "none at a carrier 8 dB down (CNR 17 dB: under one a century)");
+        std::printf("   Crackle 50 %% (CNR 9.1 dB), the Carrier knob at -19 dB: %.2f clicks a second per channel (Rice at 9.1 dB: about 5)\n", h.clickCount / 120.0);
+        check(h.clickCount > 300 && h.clickCount < 900, "the Carrier knob alone does not change the click rate");
     }
 
     std::printf("8. The head switch: 59.94 times a second; residual of a 10 kHz reference tone below 3 kHz at Head Buzz 0 between -73 and -76 dB\n");
@@ -406,7 +408,7 @@ int main(int argc, char** argv)
         check(ok, "between -73 and -76 dB at Head Buzz 0 at every rate, and it grows with Head Buzz");
     }
 
-    std::printf("9. A lost carrier: held below -21 dB; the linear track after 0.3 ms below -17 dB; back after 1-2 HID periods (33-67 ms)\n");
+    std::printf("9. A lost carrier: held below -21 dB; the linear track after 0.3 ms below -17 dB; back after 7-8 HID periods (233-267 ms, the slow mode)\n");
     {
         bool holdOk = true, onOk = true, backOk = true;
         double onMs = 0.0, backMin = 1e9, backMax = 0.0;
@@ -428,8 +430,9 @@ int main(int argc, char** argv)
             // a hold: c at -22 dB, the channel stands still
             s.carrierDb = -22.0f; h.set(s);
             run(kCtrl);
-            const float hl = h.held[0]; bool still = true;
-            for (int k = 0; k < (int)(0.002 * sr); ++k) { run(1); still = still && h.held[0] == hl; }
+            // (it lets go towards silence: never grows, never changes sign)
+            float hl = h.held[0]; bool still = true;
+            for (int k = 0; k < (int)(0.002 * sr); ++k) { run(1); still = still && std::fabs(h.held[0]) <= std::fabs(hl) && h.held[0] * hl >= 0.0f; hl = h.held[0]; }
             s.carrierDb = -20.5f; h.set(s); run(kCtrl + 2);
             const float h2 = h.held[0]; run(4); const bool moves = h.held[0] != h2;
             holdOk = holdOk && still && moves;
@@ -447,19 +450,19 @@ int main(int argc, char** argv)
                 run((long)(0.05 * sr + rng.nextFloat() * 0.02 * sr));
                 s.carrierDb = 0.0f; h.set(s);
                 int upAt = -1, offAt = -1;
-                for (long k = 0; k < (long)(0.1 * sr); ++k) { run(1); if (upAt < 0 && h.lowCount == 0) upAt = (int)k; if (offAt < 0 && !h.linear) offAt = (int)k; }
+                for (long k = 0; k < (long)(0.3 * sr); ++k) { run(1); if (upAt < 0 && h.lowCount == 0) upAt = (int)k; if (offAt < 0 && !h.linear) offAt = (int)k; }
                 const double back = 1000.0 * (offAt - upAt) / sr;
                 backMin = std::min(backMin, back); backMax = std::max(backMax, back);
-                backOk = backOk && upAt >= 0 && offAt >= 0 && back >= 1000.0 / 29.97 - 1000.0 / sr && back <= 2000.0 / 29.97 + 1000.0 / sr;
+                backOk = backOk && upAt >= 0 && offAt >= 0 && back >= 7000.0 / 29.97 - 1000.0 / sr && back <= 8000.0 / 29.97 + 1000.0 / sr;
                 run((long)(0.02 * sr));
             }
         }
-        std::printf("   at -22 dB the channel stands still and at -20.5 dB it moves: %s\n", holdOk ? "yes" : "no");
+        std::printf("   at -22 dB the channel holds (falling towards silence) and at -20.5 dB it moves: %s\n", holdOk ? "yes" : "no");
         std::printf("   on the linear track %.3f ms after the carrier fell below -17 dB (44.1 kHz; 0.3 ms rounded to a sample)\n", onMs);
         std::printf("   back on Hi-Fi %.1f to %.1f ms after the carrier returned (12 trials at each of 4 rates)\n", backMin, backMax);
         check(holdOk, "held below -21 dB, free above it");
         check(onOk, "the linear track 0.3 ms after the carrier fell below -17 dB, at every rate");
-        check(backOk, "back after 33.4 to 66.7 ms");
+        check(backOk, "back after 233.6 to 266.9 ms");
 
         // no click at the crossfades: a tone, the carrier dropping to -18 dB (and to -25 dB: hold first) and coming back
         double worst = 0.0;
@@ -470,8 +473,8 @@ int main(int argc, char** argv)
             std::vector<float> o; float ownHi = 0.0f, ownLin = 0.0f;
             for (long i = 0; i < 44100L * 4; ++i)
             {
-                const long ph = i % 13230;   // 300 ms: on Hi-Fi, then a loss of 150 ms
-                if (ph == 0 || ph == 6615) { s.carrierDb = ph == 0 ? 0.0f : drop; h.set(s); }
+                const long ph = i % 26460;   // 600 ms: on Hi-Fi (back from the last loss after 250 ms), then a loss of 150 ms
+                if (ph == 0 || ph == 19845) { s.carrierDb = ph == 0 ? 0.0f : drop; h.set(s); }
                 const Stereo out = h.process(splat((float)(0.3 * kRefLevel * std::sin(kTau * 1000.0 * (double)i / 44100.0))));
                 if (!o.empty())
                 {
@@ -577,8 +580,8 @@ int main(int argc, char** argv)
             const std::string h0 = (r.set(kHiSat, 0), r.text(kHiSat)), h1 = (r.set(kHiSat, 50), r.text(kHiSat)), h2 = (r.set(kHiSat, 100), r.text(kHiSat));
             const std::string s0 = (r.set(kSplit, 200), r.text(kSplit)), s1 = (r.set(kSplit, 2500), r.text(kSplit)), s2 = (r.set(kSplit, 8000), r.text(kSplit));
             std::printf("   Rec Level %s / %s / %s, Carrier %s / %s / %s, Cal %s / %s / %s\n", l0.c_str(), l1.c_str(), l2.c_str(), h0.c_str(), h1.c_str(), h2.c_str(), s0.c_str(), s1.c_str(), s2.c_str());
-            check(l0 == "-10.0 dB" && l1 == "0.0 dB" && l2 == "+16.0 dB" && h0 == "0 dB" && h1 == "-15 dB" && h2 == "-30 dB" && s0 == "-3.0 dB" && s1 == "right" && s2 == "+3.0 dB",
-                  "read-outs: Rec Level -10 to +16 dB (0 dB at 56 %), Carrier 0 to -30 dB, Cal -3 to +3 dB, right at the default");
+            check(l0 == "-10.0 dB" && l1 == "0.0 dB" && l2 == "+28.0 dB" && h0 == "0 dB" && h1 == "-10 dB" && h2 == "-20 dB" && s0 == "-3.0 dB" && s1 == "right" && s2 == "+3.0 dB",
+                  "read-outs: Rec Level -10 to +28 dB (0 dB at 56 %), Carrier 0 to -20 dB, Cal -3 to +3 dB, right at the default");
             r.set(kSatType, 1); r.set(kLoSat, 100.0f * 10.0f / 18.0f);
             check(r.text(kLoSat) == "0.0 dB", "and VHS mode's Rec Level reads 0 dB at the same place");
         }
@@ -645,6 +648,17 @@ int main(int argc, char** argv)
         }
     }
 
+    {
+        // Crackle at the top with the weaker head at its weakest (Tracking 100 %): that head's share is
+        // kept from the noise detector, so it rattles and the deck stays on the Hi-Fi track
+        HiFiPath::Settings s = clean(); s.clicks = 1.0f; s.cnr0Db = kHfCnrDb[5]; s.imbalanceDb = kHfImbalanceDb;
+        HiFiPath h; start(h, 44100.0f, s);
+        long lin = 0;
+        for (long i = 0; i < 44100L * 4; ++i) { h.process(splat(0.0f)); lin += h.linear ? 1 : 0; }
+        std::printf("   Crackle 100 %% and the weaker head 4 dB down: %u clicks in 4 s on two channels, %ld samples on the linear track\n", h.clickCount, lin);
+        check(lin == 0 && h.clickCount > 2000 && h.clickCount < 20000, "Crackle and Tracking at the top: the weaker head clicks hard and the deck never parks on the linear track");
+    }
+
     std::printf("13. Silence for minutes, a full-scale square, a burst of NaNs\n");
     {
         HiFiPath::Settings s = clean(); s.breathing = 0.5f;
@@ -666,7 +680,7 @@ int main(int argc, char** argv)
             f.e->processReplacing(f.e, io, io, 256);
             for (int i = 0; i < 256; ++i) { finite = finite && std::isfinite(L[i]) && std::isfinite(R[i]); big = std::fmax(big, std::fmax(std::fabs(L[i]), std::fabs(R[i]))); }
         }
-        std::printf("   in the plugin (HQ, Rec Level +16 dB, every impairment up): 2 minutes of silence took %.2f s; a full-scale 100 Hz square peaks at %.2f\n", first, big);
+        std::printf("   in the plugin (HQ, Rec Level +28 dB, every impairment up): 2 minutes of silence took %.2f s; a full-scale 100 Hz square peaks at %.2f\n", first, big);
         check(finite && big < 4.0f, "the square comes out finite and bounded");
         for (int i = 0; i < 256; ++i) L[i] = R[i] = std::nanf("");
         L[10] = INFINITY;
@@ -680,6 +694,156 @@ int main(int argc, char** argv)
         for (int i = 0; i < 5; ++i) g.process(splat(std::nanf("")));
         bool ok = true; for (int i = 0; i < 2000; ++i) { const Stereo v = g.process(splat(0.1f)); if (i > 40) ok = ok && std::isfinite(v[0]) && std::isfinite(v[1]); }
         check(ok, "the path on its own clears a NaN at its next control tick");
+    }
+
+    std::printf("14. Out of spec: the linear track's hiss, Cal's slope, the noise detector, the hold, separate random streams\n");
+    {
+        // the linear track brings its own hiss: the hiss stage, twice the Simple type's, on the Hiss knob and the Noise level
+        auto hissDb = [](float hiSat, float hiss, float noise, bool on, int type)
+        {
+            Fx f; f.hifi(); f.set(kSatType, (float)type); f.set(kHiSat, hiSat); f.set(kHiss, hiss); f.set(kNoise, noise); f.set(kNoiseOn, on ? 1.0f : 0.0f);
+            std::vector<float> o; f.play(0.5f, 0.0, 0.0, nullptr); f.play(2.0f, 0.0, 0.0, &o);
+            double s = 0; for (float v : o) s += (double)v * v; return dB(std::sqrt(s / o.size()) + 1e-30);
+        };
+        const double lin50 = hissDb(95, 50, 50, true, 2), simple50 = hissDb(0, 50, 50, true, 0), lin25 = hissDb(95, 25, 50, true, 2);
+        const double lin50n = hissDb(95, 50, 100, true, 2), lin0 = hissDb(95, 0, 50, true, 2), linOff = hissDb(95, 50, 50, false, 2), hifi50 = hissDb(0, 50, 50, true, 2);
+        std::printf("   silence, Carrier -19 dB (on the linear track): Hiss 50 %.1f dBFS (Simple type %.1f, Hi-Fi track %.1f), Hiss 25 %.1f, Noise 100 %.1f, Hiss 0 %.1f, Noise off %.1f\n",
+                    lin50, simple50, hifi50, lin25, lin50n, lin0, linOff);
+        check(std::fabs(lin50 - simple50 - 6.02) < 1.0 && lin50 > hifi50 + 20.0, "on the linear track the hiss stage's hiss, twice the Simple type's, far over the Hi-Fi track's");
+        check(std::fabs(lin50 - lin25 - 12.04) < 0.5 && std::fabs(lin50n - lin50 - 12.04) < 0.5, "it follows the Hiss knob and the Noise level as the other types' hiss does");
+        check(lin0 < -120.0 && linOff < -120.0, "Hiss 0 or the Noise switch off: none");
+
+        // Cal: right is transparent (1. above); wrong, the expander's slope is off too, so the error depends on the level
+        bool ok = true;
+        for (int sg = -1; sg <= 1; sg += 2)
+        {
+            HiFiPath::Settings s = clean(); s.calDb = 3.0f * sg; s.calSlope = 0.25f * sg;
+            const double g0 = pathTone(44100.0f, s, 1000.0, 0.0).gainDb, g40 = pathTone(44100.0f, s, 1000.0, -40.0).gainDb;
+            // the expander sees the tone Cal dB off and turns it (2 + slope) times that; 40 dB lower, 20 dB lower on the tape, slope x 20 dB less
+            const double want0 = (2.0 + 0.25 * sg) * 3.0 * sg, want40 = want0 - 5.0 * sg;
+            std::printf("   Cal %+.0f dB, slope 2 %+.2f: a 1 kHz tone at reference %+.2f dB, 40 dB under it %+.2f dB (expected %+.2f and %+.2f)\n", 3.0 * sg, 0.25 * sg, g0, g40, want0, want40);
+            ok = ok && std::fabs(g0 - want0) < 0.1 && std::fabs(g40 - want40) < 0.3;
+        }
+        double gp[2][2];
+        for (int k = 0; k < 2; ++k)
+            for (int lv = 0; lv < 2; ++lv)
+            {
+                Fx f; f.hifi(); f.set(kNoiseOn, 0); if (k) f.set(kSplit, 8000);
+                std::vector<float> o; const double a = kRefLevel * (lv ? 0.01 : 1.0);
+                f.play(0.8f, a, 1000.0, nullptr); f.play((float)(wholePeriods(44100.0, 1000.0, 0.3) / 44100.0), a, 1000.0, &o);
+                gp[k][lv] = dB(amp(o, 44100.0, 1000.0, f.pos - (long)o.size()));
+            }
+        std::printf("   in the plugin, Split at the top against Cal right: %+.2f dB at reference, %+.2f dB 40 dB under it\n", gp[1][0] - gp[0][0], gp[1][1] - gp[0][1]);
+        check(ok && gp[1][0] - gp[0][0] > 5.5 && gp[1][1] - gp[0][1] < 2.0, "Cal wrong: the level error grows with the level (2 +- 0.25 slope at the ends), so the sound pumps");
+
+        // the noise detector: under 5 dB CNR the linear track, never a solid static. Crackle 100 % and a
+        // dropout from 0 to 6 dB deep
+        {
+            double worstRate = 0.0; bool lowOk = true;
+            for (float c = 0.0f; c >= -6.0f; c -= 0.125f)
+            {
+                HiFiPath::Settings s = clean(); s.clicks = 1.0f; s.cnr0Db = hifiCnrDb(1.0f);
+                HiFiPath h; start(h, 44100.0f, s);
+                h.dropDb = -c; h.dropLeft = 1 << 30;
+                long hifi = 0; uint32_t c0 = 0;
+                for (long i = 0; i < 22050; ++i) { chan(h, splat(0.0f)); if (i == 2205) c0 = h.clickCount; if (i > 2205 && h.lowCount == 0) ++hifi; }
+                if (hifi > 0) worstRate = std::max(worstRate, (h.clickCount - c0) / 2.0 / (19845.0 / 44100.0));
+                lowOk = lowOk && (s.cnr0Db + c < kHfNoiseDetDb) == (hifi == 0);
+            }
+            std::printf("   Crackle 100 %% (CNR %.2f dB at rest) and a dip: the most clicks while on the Hi-Fi track %.0f a second per channel; under 5 dB CNR always the linear track: %s\n",
+                        hifiCnrDb(1.0f), worstRate, lowOk ? "yes" : "no");
+            check(lowOk && worstRate < 1500.0, "the noise detector: the linear track under 5 dB CNR, at most about 1000 clicks a second above it");
+            // at rest Crackle spreads over its knob, the same at every Carrier: about 0, 1, 5, 30 and 150 a second
+            bool spread = true;
+            const float knob[5] = { 0.1f, 0.25f, 0.5f, 0.75f, 1.0f }, want[5] = { 0.0f, 1.0f, 5.0f, 30.0f, 150.0f };
+            std::printf("   Crackle at rest, clicks a second per channel (Carrier 0 dB / -12 dB):");
+            for (int k = 0; k < 5; ++k)
+            {
+                double r[2];
+                for (int j = 0; j < 2; ++j)
+                {
+                    HiFiPath::Settings s = clean(); s.clicks = 1.0f; s.cnr0Db = hifiCnrDb(knob[k]); s.carrierDb = j ? -12.0f : 0.0f;
+                    HiFiPath h; start(h, 44100.0f, s);
+                    for (long i = 0; i < 44100L * 20; ++i) chan(h, splat(0.0f));
+                    r[j] = h.clickCount / 40.0;
+                }
+                std::printf(" %.0f %%: %.2f / %.2f%s", 100.0 * knob[k], r[0], r[1], k < 4 ? "," : "\n");
+                spread = spread && r[0] == r[1] && (k == 0 ? r[0] < 0.1 : r[0] > 0.5 * want[k] && r[0] < 1.6 * want[k]);
+            }
+            check(spread, "Crackle spread over its knob (about 0, 1, 5, 30 and 150 a second at 10 to 100 %) and the same at every Carrier");
+            // in the plugin, every Carrier with Crackle up: the crackle stays under a -18 dBFS tone
+            double worstRel = -300.0; float wc = 0, wcr = 0;
+            for (float cr : { 25.0f, 50.0f, 75.0f, 100.0f })
+                for (float hs = 0.0f; hs <= 100.0f; hs += 5.0f)
+                {
+                    std::vector<float> o[2];
+                    for (int k = 0; k < 2; ++k) { Fx f; f.hifi(); f.set(kHiss, 0); f.set(kHiSat, hs); f.set(kCrackle, k ? cr : 0.0f); f.play(0.3f, 0.126, 440.0, nullptr); f.play(1.0f, 0.126, 440.0, &o[k]); }
+                    double d = 0, p = 0; for (size_t i = 0; i < o[0].size(); ++i) { d += (double)(o[1][i] - o[0][i]) * (o[1][i] - o[0][i]); p += (double)o[0][i] * o[0][i]; }
+                    const double rel = 10.0 * std::log10(d / p + 1e-30);
+                    if (rel > worstRel) { worstRel = rel; wc = hs; wcr = cr; }
+                }
+            std::printf("   in the plugin, Crackle 25 to 100 %%, Carrier 0 to -20 dB, a -18 dBFS 440 Hz tone: the crackle at most %.1f dB re the tone (Crackle %.0f, Hi Sat %.0f)\n", worstRel, wcr, wc);
+            check(worstRel < 0.0, "the crackle stays under the programme at every Crackle and Carrier");
+        }
+
+        // the hold: never louder than the programme, no thump when it runs into the crossfade (the change
+        // against the same dropout 18 dB deep, which goes to the linear track without a hold)
+        {
+            double worst = -300.0, worstLf = -300.0;
+            for (double hz : { 440.0, 5000.0, 0.0 })   // (0: 100 Hz and 5 kHz together)
+                for (float depth : { 23.0f, 30.0f })
+                    for (double ms : { 0.1, 0.25, 0.5, 2.0, 20.0 })
+                        for (int on = 0; on < 6; ++on)
+                        {
+                            std::vector<float> o[3];
+                            const long at = 22050 + on * 1013;
+                            for (int ev = 0; ev < 3; ++ev)
+                            {
+                                HiFiPath h; start(h, 44100.0f, HiFiPath::Settings());
+                                bool done = false;
+                                for (long i = 0; i < at + 4410; ++i)
+                                {
+                                    if (ev && !done && i >= at && h.n == 0) { h.dropDb = ev == 1 ? depth : 18.0f; h.dropLeft = (int)(ms * 44.1 + 0.5); done = true; }
+                                    const double t = (double)i / 44100.0;
+                                    const double x = hz > 0.0 ? 0.126 * std::sin(kTau * hz * t) : 0.1 * std::sin(kTau * 100.0 * t) + 0.05 * std::sin(kTau * 5000.0 * t);
+                                    o[ev].push_back(h.process(splat((float)x))[0]);
+                                }
+                            }
+                            float pk = 0.0f, pp = 0.0f; double lf = 0.0, pr = 0.0, lp1 = 0.0, lp2 = 0.0;
+                            for (long i = at - 441; i < at + 4410; ++i)
+                            {
+                                const float d = o[1][(size_t)i] - o[2][(size_t)i];
+                                pk = std::fmax(pk, std::fabs(o[1][(size_t)i])); pp = std::fmax(pp, std::fabs(o[0][(size_t)i]));
+                                lp1 += 0.0213 * (d - lp1); lp2 += 0.0213 * (lp1 - lp2);   // under 150 Hz
+                                lf += lp2 * lp2; pr += (double)o[0][(size_t)i] * o[0][(size_t)i];
+                            }
+                            worst = std::max(worst, dB(pk / pp)); worstLf = std::max(worstLf, 10.0 * std::log10(lf / pr + 1e-30));
+                        }
+            std::printf("   dropouts 23 and 30 dB deep, 0.1 to 20 ms, on 440 Hz, 5 kHz and 100 Hz + 5 kHz: the output's peak at most %+.2f dB re the programme's, the change under 150 Hz %.1f dB re the programme\n", worst, worstLf);
+            check(worst <= 0.0 && worstLf < -20.0, "a hold is never louder than the programme and does not thump into the crossfade");
+        }
+
+        // Drift, Tracking and Dropouts each draw from their own random stream
+        {
+            auto events = [](float drop, float track, std::vector<long>& tr, std::vector<long>& dr, std::vector<float>& dt)
+            {
+                HiFiPath::Settings s = clean(); s.tracking = track; s.drift = 0.6f; s.dropouts = drop;
+                HiFiPath h; start(h, 44100.0f, s);
+                int tp = 0; uint32_t d0 = 0;
+                for (long i = 0; i < 44100L * 20; ++i)
+                {
+                    h.process(splat(0.0f));
+                    if (h.trackPasses > tp) tr.push_back(i);
+                    tp = h.trackPasses;
+                    if (h.drops != d0) { dr.push_back(i); d0 = h.drops; }
+                    if ((i & 1023) == 0) dt.push_back(h.driftN2);
+                }
+            };
+            std::vector<long> t1, d1, t2, d2, t3, d3; std::vector<float> x1, x2, x3;
+            events(0.0f, 0.7f, t1, d1, x1); events(1.0f, 0.7f, t2, d2, x2); events(1.0f, 0.3f, t3, d3, x3);
+            std::printf("   20 s: %zu tracking dips with Dropouts 0 and %zu with Dropouts 100 %% (%zu dropouts); %zu dropouts with Tracking 30 %%\n", t1.size(), t2.size(), d2.size(), d3.size());
+            check(!t1.empty() && t1 == t2 && x1 == x2 && !d2.empty() && d2 == d3 && x2 == x3, "turning Dropouts moves neither Tracking's dips nor Drift; turning Tracking leaves the dropouts where they were");
+        }
     }
 
     std::printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);

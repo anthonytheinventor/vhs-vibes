@@ -91,7 +91,7 @@
 // a saved state keeps VHS as VHS (it stores the plain value, which wins), and no program uses
 // Hi-Fi; only something that stores the bare knob position (recorded automation, a Q-Link's
 // position) reads the old VHS position as Hi-Fi now, which was accepted. 1.7 also added Visual
-// Vibes, a switch for the picture only (on in a new instance and in an older state), and five more
+// Vibes, a switch for the picture only (off in a new instance and in an older state), and five more
 // meters for it after it; the sound is the same whatever it says.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
@@ -223,8 +223,8 @@ enum ParamIndex
     // added in 1.7
     kVisualVibes,  // bool   the picture effects on the page sticker (see notifierMain): snow, the head
                    //        switch strip, dropout streaks and the tracking band, the grid bending with
-                   //        the wobble, the Hi Cut haze, the sun in the Sat Type's colour. On in a new
-                   //        instance and in an older state. Like Animation, not part of the programs;
+                   //        the wobble, the Hi Cut haze, the sun in the Sat Type's colour. Off in a new
+                   //        instance and in an older state: for those who want it. Like Animation, not part of the programs;
                    //        the sound never looks at it.
     // Read-only meters for those effects, like Reel and Level. Each one is the frame of a film strip
     // in the skin; frame 0 shows nothing (Grid: the straight grid).
@@ -242,8 +242,8 @@ inline bool isSetting(int i) { return i != kVisReel && i != kVisLevel && i < kVi
 constexpr int kReelFrames  = 24;           // the reel hubs, and the grid's scroll in each wobble step
 constexpr int kLevelFrames = 16;           // the sun's level, in each of its colours
 constexpr int kSunColours = 3;             // the sun's colours: Simple (and Visual Vibes off), VHS, Hi-Fi
-constexpr int kSnowSteps = 3;              // snow: strength steps ...
-constexpr int kSnowVariants = 4;           // ... times random variants, after frame 0
+constexpr int kSnowSteps = 4;              // snow: strength steps ...
+constexpr int kSnowVariants = 6;           // ... times random variants, after frame 0
 constexpr int kHeadSteps = 3;              // the head switch strip: the same
 constexpr int kHeadVariants = 4;
 constexpr int kStreakVariants = 6;         // Streak: the dropout streaks, then ...
@@ -1551,12 +1551,14 @@ struct ModeledAgc
 //
 //   record    Rec Level -> NR emphasis P -> 2:1 compressor (its detector on its output, through
 //             the weighting W) -> FM emphasis Q -> deviation limiter
-//   channel   the demodulator's output: + noise, + clicks, + the head switch; held while the
-//             carrier is lost. All of it follows the carrier level c (dB re nominal).
+//   channel   the demodulator's output: + noise, + clicks, + the head switch. All of it follows
+//             the carrier level c (dB re nominal).
 //   playback  FM de-emphasis 1/Q -> Cal (a level error) -> 1:2 expander (its detector on its
-//             input, through W) -> NR de-emphasis 1/P -> down again by the Rec Level
-//   loss      c 17 dB down for 0.3 ms: crossfade to the linear track (TapeSat, mono); back two
-//             head-drum turns (HID periods) after the carrier returns
+//             input, through W; Cal also puts its slope off) -> NR de-emphasis 1/P -> down again
+//             by the Rec Level; held while the carrier is lost
+//   loss      c 17 dB down, or the CNR under 5 dB, for 0.3 ms: crossfade to the linear track
+//             (TapeSat, mono, with the plugin's hiss stage as its hiss: see VHSVibes::controlTick);
+//             back eight head-drum turns (HID periods) after the carrier returns
 //
 // Level: the reference, 50 kHz deviation at 1 kHz [R], is a 1 kHz sine peaking at kRefLevel, as
 // everywhere in the plugin. The three shelves are scaled to 0 dB at 1 kHz, so such a tone passes
@@ -1588,10 +1590,18 @@ constexpr float kHfClip = 3.0f * kRefLevel;   // limiter: +-150 kHz = 9.5 dB ove
 constexpr float kHfSnrDb   = 55.0f;           // channel noise under reference at full carrier [E in the bench's 54-60 dB, R]
 constexpr float kHfNoiseHz = 20000.0f;        // the band it is measured in, and above which it is cut at high rates
 constexpr float kHfCnr0Db  = 25.0f;           // carrier to noise at full carrier, 300 kHz band [E, report 2: 17-27 dB]
-// Crackle sets that margin: 27 dB at 0 % (the best of the range: no clicks before the deck gives the
-// carrier up), 8 dB at 100 % (a worn-out deck, past the range [E]: clicks at full carrier, about 30 a
-// second on each channel). 25 dB is at about 10 %.
-constexpr float kHfCnrBestDb = 27.0f, kHfCnrSpanDb = 19.0f;
+// Crackle sets that margin (see hifiCnrDb), in straight pieces between these points (0, 10, 25, 50, 75
+// and 100 %) so that the clicks spread over the knob: the 27 to 17 dB of report 2 [E there] in the
+// first 7 % (no clicks), then [E, past that range] about 1, 5, 30 and 150 clicks a second on each
+// channel at 25, 50, 75 and 100 % (Rice's rate), the last still single clicks, not a static. The
+// Carrier knob does not move it: it sets the noise and where the deck gives up; what comes off the
+// margin is only what moves the carrier (Drift, Tracking's dips and weaker head, Dropouts), so those
+// bring bursts of clicks.
+constexpr float kHfCnrDb[6] = { 27.0f, 12.0f, 9.8f, 9.13f, 8.06f, 6.93f };
+// The noise detector: below this CNR the deck goes to the linear track as it does on a low carrier
+// (AN3664 watches the demodulated noise and forces normal [R]; the threshold is E), so a deep dip
+// never turns into a static louder than the sound (just above it the clicks come about 1000 a second).
+constexpr float kHfNoiseDetDb = 5.0f;
 // The knobs reach well past a deck in good order, which is too clean to hear [E]: Hiss is 30 dB over the
 // documented scale (the 55 dB point, at Noise 50 %, is Hiss 9 %; Hiss 50 % is a channel 25 dB under
 // reference), and the spike Head Buzz leaves at each switch is 20 dB over the half cycle a phase step
@@ -1616,29 +1626,57 @@ constexpr float kHfDocDb    = -21.0f;         // dropout canceller holds below t
 constexpr float kHfNormalDb = -17.0f;         // hi-fi detector: the linear track below this [R TDA 3.3 mV of 24 mV]
 constexpr float kHfNormalSec = 300.0e-6f;     // ... after this long [R TDA "switch-on delay", 150-500 us]
 constexpr float kHfDocReleaseSec = 9.0e-6f;   // the hold lets go this long after the carrier is back [R TDA]
-constexpr int   kHfBackEdges = 2;             // back on the second HID rising edge: 1-2 HID periods, 33-67 ms [R TDA fast mode]
+// Where the hold is [E: not given]: on the sound as it leaves playback, not on the demodulator's
+// output, where one sample of an emphasised high note, held as a step, came out of the de-emphasis
+// and the expander up to 15 dB louder than the note. And it falls towards silence with this time
+// constant [E; a real hold's droop is not given]: a long hold mutes instead of sitting as a step
+// under the crossfade to the linear track, which thumped.
+constexpr float kHfHoldDroopSec = 300.0e-6f;
+constexpr int   kHfBackEdges = 8;             // back on the eighth HID rising edge: 7-8 HID periods, 233-267 ms [R TDA slow mode]
 constexpr float kHfXfadeSec  = 0.003f;        // the crossfade to and from the linear track [E: the switch's shape is not given]
 constexpr float kHfImbalanceDb = 4.0f;        // Tracking at 100 %: one head this much weaker [E; 3-5 dB is within service tolerance, R HXV]
-constexpr float kHfDriftDb  = 15.0f;          // Drift at 100 %: the deepest slow wander [E]
+constexpr float kHfDriftDb  = 22.0f;          // Drift at 100 %: the deepest slow wander [E]: past the linear track's 17 dB at full carrier
 constexpr float kHfDriftSec = 1.5f;           // ... and its pace [E]
-constexpr float kHfTrackRate = 4.0f;          // Tracking at 100 %: dips per second [E]
-constexpr float kHfTrackMinDb = 10.0f, kHfTrackSpanDb = 20.0f;   // their depth, 10 to 30 dB [E, the plan]
+// The carrier's own small wander, always there [E]: 1 dB rms, never past 3.5 dB, about 0.3 s to a swing. Near
+// the hi-fi detector's threshold it makes the deck chatter: from about -14 dB it falls to the linear
+// track now and then, more often towards -18 dB, for good from -20 dB. It leaves the click rate alone.
+constexpr float kHfWanderDb = 1.0f, kHfWanderMax = 3.5f, kHfWanderSec = 0.3f;
+// Tracking: dips per second, 4 at 100 % [E], rising with the knob to the power 1.5 (0.5 a second at 25 %)
+constexpr float kHfTrackRate = 4.0f;
+constexpr float kHfTrackMinDb = 14.0f, kHfTrackSpanDb = 16.0f;   // their depth, 14 dB, up to 30 dB at 100 % [E, the plan's 10-30]
 constexpr int   kHfTrackPasses = 8;           // their length: 1 to this many head passes [E]
-constexpr float kHfDropRate = 80.0f / 60.0f;  // Dropouts at 100 %: 80 a minute, a poor tape after 100 passes [R FUJ, video carrier]
+// Dropouts at 100 %: 300 a minute [E], past the 80 a minute of a poor tape after 100 passes [R FUJ, video
+// carrier]. The rate goes with the square of the knob: those 80 at 52 %, a good tape's 1 to 10 [R FUJ] at 6 to 18 %.
+constexpr float kHfDropRate = 300.0f / 60.0f;
 constexpr float kHfDropVideoDb = 20.0f;       // a counted dropout is at least 20 dB deep on the video carrier [R FUJ] ...
-constexpr float kHfDropTailDb = 10.0f;        // ... and deeper by an exponential share of this mean [E]
-constexpr float kHfDropShare = 0.45f;         // the Hi-Fi carriers lose 0.4-0.5 of the video's dB [D, report 2: Wallace]
+// ... and deeper by an exponential share of this mean [E], 10 dB, growing with the square of the knob to 30 dB
+// at 100 % [E], so that from the middle of the knob about 4 in 10 cross the hi-fi detector at full carrier
+constexpr float kHfDropTailDb = 10.0f, kHfDropTailUpDb = 20.0f;
+constexpr float kHfDropShare = 0.5f;          // the Hi-Fi carriers lose 0.4-0.5 of the video's dB: the top of it [D, report 2: Wallace]
 constexpr float kHfDropMinSec = 15.0e-6f;     // and last 15 us [R FUJ: counted from 15 us] ...
-constexpr float kHfDropOctaves = 7.0f;        // ... to 2 ms, evenly in octaves [E]
-constexpr float kHfRecMaxDb = 16.0f;          // Rec Level at the top of Lo Sat [the plan; TDA tests 2:1 to +16 dB, R]
-constexpr float kHfCarrierMinDb = -30.0f;     // Carrier at the top of Hi Sat [the plan; the absolute scale is E]
+// ... to 2 ms, evenly in octaves [E], up to 80 ms at 100 % [E]
+constexpr float kHfDropOctaves = 7.0f, kHfDropOctavesUp = 5.4f;
+constexpr float kHfRecMaxDb = 28.0f;          // Rec Level at the top of Lo Sat [E: past the TDA's 2:1 test range to +16 dB, R]
+constexpr float kHfCarrierMinDb = -20.0f;     // Carrier at the top of Hi Sat, 0.2 dB per % [the plan; the absolute scale is E]
 constexpr float kHfCalDb = 3.0f;              // Cal at either end of Split [the plan; deck tolerances +-1 to +-2 dB, R]
+// ... and the expander's slope off by this much there, 2 +- 0.25 [E: the TDA's tolerance is 1.93-2.07, R],
+// so a wrong Cal also moves quiet passages further than loud ones: the sound pumps
+constexpr float kHfCalSlope = 0.25f;
 
-// Rec Level from Lo Sat (0..1): -10 dB at 0, 0 dB where VHS mode has it (10 / 18, 55.6 %), +16 dB at 1.
+// Rec Level from Lo Sat (0..1): -10 dB at 0, 0 dB where VHS mode has it (10 / 18, 55.6 %), +28 dB at 1.
 inline float hifiRecDb(float n)
 {
     const float n0 = -kTapeLevelMin / kTapeLevelSpan;
     return n <= n0 ? kTapeLevelMin + kTapeLevelSpan * n : kHfRecMaxDb * (n - n0) / (1.0f - n0);
+}
+
+// The CNR at rest from Crackle (0..1), between the points of kHfCnrDb.
+inline float hifiCnrDb(float n)
+{
+    static constexpr float at[6] = { 0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 1.0f };
+    int i = 1;
+    while (i < 5 && n > at[i]) ++i;
+    return kHfCnrDb[i - 1] + (kHfCnrDb[i] - kHfCnrDb[i - 1]) * clamp((n - at[i - 1]) / (at[i] - at[i - 1]), 0.0f, 1.0f);
 }
 
 // First-order shelf (1 + s tz) / (1 + s tp), digital with its zero and pole where the analogue
@@ -1678,6 +1716,7 @@ struct HiFiPath
     struct Settings
     {
         float recDb = 0.0f, carrierDb = 0.0f, calDb = 0.0f;
+        float calSlope = 0.0f;      // the expander's slope error (2 + this)
         float hiss = 0.0f;          // channel noise, x the 55 dB point
         float clicks = 0.0f;        // click size, x the documented area
         float cnr0Db = kHfCnr0Db;   // carrier to noise at full carrier (Crackle)
@@ -1686,11 +1725,13 @@ struct HiFiPath
         float headBuzz = 0.0f;      // 0 = the documented concealment, 1 = none, more: out of spec
         float headGate = 0.0f;      // the head switch at all (the Noise switch and level)
         float breathing = 0.0f, tracking = 0.0f, drift = 0.0f, dropouts = 0.0f;
+        float wanderDb = 0.0f;      // the carrier's own wander, rms (the plugin sets kHfWanderDb)
     };
     // The channel at one carrier level, worked out per control tick.
     struct Carrier
     {
         float c = 1.0e9f;           // dB re nominal (1e9: not yet worked out)
+        float m = 0.0f;             // the part of it that moves (off the click margin)
         float noise = 0.0f;         // noise amplitude
         uint32_t clickThr = 0;      // a click in a sample when a random 32-bit number is below this
         bool doc = false, low = false;   // held; below the hi-fi detector's threshold
@@ -1702,15 +1743,18 @@ struct HiFiPath
     HfDetector recDet, playDet, rmsDet;
     PairBiquad noiseLp;
     TapeSat tape;                   // the linear track
-    Xorshift32 rngL{0x48f1a1u}, rngR{0x2c0ffeeu}, rngC{0x1c11c4u}, rngE{0xe7e47u};
+    // noise left and right, clicks, and one stream each for Drift, Tracking, Dropouts and the carrier's
+    // wander (so that one of those knobs does not move the others' events)
+    Xorshift32 rngL{0x48f1a1u}, rngR{0x2c0ffeeu}, rngC{0x1c11c4u}, rngD{0xe7e47u}, rngT{0x7a3c51u}, rngO{0xd09b17u}, rngW{0x3b1d5u};
 
     // per rate
     static constexpr float kDRef = kHfDetSine * kRefLevel;   // the compressor's unity point
     float pRef = kDRef, pRefInv = 1.0f, rmsCal = 1.0f;     // the expander's (Breathing moves it)
     float noiseUnit = 0.0f, clickUnit = 0.0f, residK = 0.0f, hsInc = 0.0f, smooth = 0.05f, xfInc = 0.0f;
-    float driftK = 0.0f, driftScale = 0.0f, dropP = 0.0f, trackP = 0.0f;
+    float driftK = 0.0f, driftScale = 0.0f, wanderK = 0.0f, wanderScale = 0.0f, dropP = 0.0f, trackP = 0.0f, droop = 0.0f;
+    float dropTail = 0.0f, dropOct = 0.0f;
     int   nOn = 13, nRelease = 0;
-    bool  lpOn = false, rmsOn = false;
+    bool  lpOn = false, rmsOn = false, slopeOn = false;
     float blend = 0.0f;
 
     // smoothed controls and the gains ramped across a tick
@@ -1718,16 +1762,17 @@ struct HiFiPath
     float rec = 1.0f, recTo = 1.0f, recInc = 0.0f, mk = 1.0f, mkTo = 1.0f, mkInc = 0.0f, cal = 1.0f, calTo = 1.0f, calInc = 0.0f;
     Stereo cg = {1.0f, 1.0f};       // the compressor's gain, Dref / d (kept from sample to sample)
     Stereo rmsS = {}, rmsTo = {}, rmsInc = {};   // Breathing: the RMS detector's reading, ramped across a tick
+    Stereo slS = {}, slTo = {}, slInc = {};      // Cal's slope error: the expander's gain to the power calSlope, ramped
     int   n = 0;                    // samples into the control tick
 
     // channel
     Carrier st[2];                  // [0] the carrier as it is, [1] during a dropout
-    Stereo wPrev = {}, yPrev = {}, held = {};
+    Stereo wPrev = {}, yPrev = {}, held = {};   // held: the sound the hold holds (see kHfHoldDroopSec)
     float hsPh = 0.0f;
     bool  headB = false;            // the second head is reading (the weaker one, with Tracking)
     int   dropLeft = 0, relLeft = 0, lowCount = 0, back = 0, trackPasses = 0;
-    float dropDb = 0.0f, trackDb = 0.0f, trackDepth = 0.0f, driftN1 = 0.0f, driftN2 = 0.0f;
-    bool  linear = false, tapeRun = false;
+    float dropDb = 0.0f, trackDb = 0.0f, trackDepth = 0.0f, driftN1 = 0.0f, driftN2 = 0.0f, wanderN1 = 0.0f, wanderN2 = 0.0f;
+    bool  linear = false, tapeRun = false, holding = false;
     float linMix = 0.0f;
     uint32_t clickCount = 0, switchCount = 0;   // for the tests
     uint32_t drops = 0;                         // dropouts so far, for the picture
@@ -1768,8 +1813,11 @@ struct HiFiPath
         xfInc = 1.0f / (kHfXfadeSec * sr);
         nOn = (int)(kHfNormalSec * sr + 0.5f);
         nRelease = (int)(kHfDocReleaseSec * sr + 0.5f);
+        droop = std::exp(-1.0f / (kHfHoldDroopSec * sr));
         driftK = 1.0f - std::exp(-(float)kCtrl / (kHfDriftSec * sr));
         driftScale = std::sqrt(12.0f / driftK);
+        wanderK = 1.0f - std::exp(-(float)kCtrl / (kHfWanderSec * sr));
+        wanderScale = std::sqrt(12.0f / wanderK);                       // (two poles on uniform noise: unit rms)
         set(s);
     }
 
@@ -1800,8 +1848,14 @@ struct HiFiPath
             rmsDet.d = (playDet.d / rmsCal) * (playDet.d / rmsCal);
             rmsS = rmsTo = playDet.d; rmsInc = splat(0.0f);
         }
+        // Cal's slope error: off at Cal right (where calSlope is a rounding error), so the path stays exact
+        const bool slopeWas = slopeOn;
+        slopeOn = std::fabs(s.calSlope) > 1.0e-3f;
+        if (slopeOn && !slopeWas) { slS = slTo = splat(1.0f); slInc = splat(0.0f); }
         dropP  = kHfDropRate * sq(s.dropouts) * (float)kCtrl / sr;
-        trackP = kHfTrackRate * sq(s.tracking) / kHfFieldHz;
+        dropTail = kHfDropTailDb + kHfDropTailUpDb * sq(s.dropouts);
+        dropOct  = kHfDropOctaves + kHfDropOctavesUp * s.dropouts;
+        trackP = kHfTrackRate * s.tracking * std::sqrt(s.tracking) / kHfFieldHz;
         st[0].c = st[1].c = 1.0e9f;                                    // work the channel out again
     }
 
@@ -1811,32 +1865,40 @@ struct HiFiPath
         recDet.d = splat(kDRef); playDet.d = splat(pRef);               // at the unity point: no start-up overshoot
         rmsDet.d = splat(sq(pRef / rmsCal));
         noiseLp.reset(); tape.reset();
-        rngL.reseed(0x48f1a1u); rngR.reseed(0x2c0ffeeu); rngC.reseed(0x1c11c4u); rngE.reseed(0xe7e47u);
+        rngL.reseed(0x48f1a1u); rngR.reseed(0x2c0ffeeu); rngC.reseed(0x1c11c4u);
+        rngD.reseed(0xe7e47u); rngT.reseed(0x7a3c51u); rngO.reseed(0xd09b17u); rngW.reseed(0x3b1d5u);
         recS = recT; calS = calT;
         rec = recTo = recS; mk = mkTo = 1.0f / recS; cal = calTo = calS; recInc = mkInc = calInc = 0.0f;
         cg = splat(1.0f);
         rmsS = rmsTo = splat(pRef); rmsInc = splat(0.0f);
+        slS = slTo = splat(1.0f); slInc = splat(0.0f);
         n = 0;
         st[0] = st[1] = Carrier();
         wPrev = yPrev = held = splat(0.0f);
         hsPh = 0.0f; headB = false;
         dropLeft = relLeft = lowCount = back = trackPasses = 0;
-        dropDb = trackDb = trackDepth = driftN1 = driftN2 = 0.0f;
-        linear = tapeRun = false; linMix = 0.0f;
+        dropDb = trackDb = trackDepth = driftN1 = driftN2 = wanderN1 = wanderN2 = 0.0f;
+        linear = tapeRun = holding = false; linMix = 0.0f;
     }
 
-    // The channel at carrier level c.
-    void carrierAt(Carrier& k, float c) const
+    // The channel at carrier level c, of which m moves (see kHfCnrDb); of m, h (0 or less) is the
+    // weaker head's share. That share is on at every other head pass for as long as Tracking is up, so
+    // it is kept from the noise detector, and it takes the clicks no further than the detector's
+    // threshold: the weaker head rattles, hard at the top, but never parks the deck on the linear track.
+    void carrierAt(Carrier& k, float c, float m, float h) const
     {
-        if (c == k.c) return;
-        k.c = c;
+        if (c == k.c && m == k.m) return;
+        k.c = c; k.m = m;
         k.doc = c < kHfDocDb;
-        k.low = c < kHfNormalDb;
+        // the linear track below the hi-fi detector's threshold, or when the noise detector trips (on
+        // the clicks: with the Noise switch off there are none to trip it)
+        const float cnrDet = s.cnr0Db + m - h;
+        const float cnr = cnrDet + maxf(h, minf(kHfNoiseDetDb - cnrDet, 0.0f));
+        k.low = c < kHfNormalDb || (s.clicks > 0.0f && cnrDet < kHfNoiseDetDb);
         // noise: 1 dB more for every dB of carrier lost [R, FM theory]
         k.noise = s.hiss > 0.0f ? noiseUnit * minf(s.hiss * dbToGain(-c), s.noiseTop) : 0.0f;
         // clicks: Rice's rate for an unmodulated carrier, (B / 2 sqrt 3) erfc(sqrt(CNR)) per channel
         // [D from Rice 1948]. The extra rate with modulation (report 1) is not verified and left out.
-        const float cnr = s.cnr0Db + c;
         k.clickThr = 0;
         if (s.clicks > 0.0f && cnr < 16.0f)                            // above 16 dB: under one click a century
         {
@@ -1854,7 +1916,8 @@ struct HiFiPath
         if (!(maxf(dd[0], dd[1]) < 1.0e6f && minf(dd[0], dd[1]) >= 0.0f && std::fabs(held[0] + held[1]) < 1.0e6f)) reset();
         nrEmph.flush(); wRec.flush(); fmEmph.flush(); fmDe.flush(); wPlay.flush(); nrDe.flush();
         { const Stereo t = splat(1.0e-20f), z = splat(0.0f);
-          recDet.d = recDet.d < t ? z : recDet.d; playDet.d = playDet.d < t ? z : playDet.d; rmsDet.d = rmsDet.d < t * t ? z : rmsDet.d; }
+          recDet.d = recDet.d < t ? z : recDet.d; playDet.d = playDet.d < t ? z : playDet.d; rmsDet.d = rmsDet.d < t * t ? z : rmsDet.d;
+          held = vabs(held) < t ? z : held; }
 
         // Rec Level and Cal: smoothed, then ramped. The level comes back down after the expander
         // by as much as it went up before the compressor.
@@ -1871,27 +1934,47 @@ struct HiFiPath
             rmsTo = stereo(std::sqrt(rmsDet.d[0]), std::sqrt(rmsDet.d[1])) * rmsCal;
             rmsInc = (rmsTo - rmsS) * kCtrlInv;
         }
+        // Cal's slope error: the expander's gain e becomes e^(1 + calSlope); the extra factor (a power,
+        // so per tick) from the gain as it stands now, ramped across the tick
+        if (slopeOn)
+        {
+            slS = slTo;
+            Stereo dp = playDet.d;
+            if (rmsOn) dp += (rmsTo - dp) * blend;
+            const Stereo e = vmin(vmax(dp * pRefInv, splat(1.0f / kHfGainRange)), splat(kHfGainRange));
+            slTo = stereo(std::exp2(s.calSlope * std::log2(e[0])), std::exp2(s.calSlope * std::log2(e[1])));
+            slInc = (slTo - slS) * kCtrlInv;
+        }
 
-        // The carrier: Carrier knob + slow wander (Drift) + the weaker head and the dips (Tracking).
-        float c = s.carrierDb + trackDb + (headB ? -s.imbalanceDb : 0.0f);
+        // The carrier: Carrier knob + its own small wander + slow wander (Drift) + the weaker head and
+        // the dips (Tracking). Of it, what Drift, Tracking (and Dropouts, below) move comes off the click margin.
+        const float h = headB ? -s.imbalanceDb : 0.0f;
+        float m = trackDb + h;
         if (s.drift > 0.0f)
         {
             // two-pole smoothed noise, about unit size; on the track most of the time, deeper now and then
-            driftN1 += driftK * (rngE.nextBipolar() - driftN1);
+            driftN1 += driftK * (rngD.nextBipolar() - driftN1);
             driftN2 += driftK * (driftN1 - driftN2);
-            const float m = clamp(0.4f + 0.5f * driftN2 * driftScale, 0.0f, 1.0f);
-            c -= kHfDriftDb * s.drift * m * m;
+            const float u = clamp(0.4f + 0.5f * driftN2 * driftScale, 0.0f, 1.0f);
+            m -= kHfDriftDb * s.drift * u * u;
         }
-        carrierAt(st[0], c);
-        // Dropouts: the tape lifts off the head. Poisson, evenly in time; deep and long as above.
-        if (dropLeft == 0 && dropP > 0.0f && rngE.nextFloat() < dropP)
+        float c = s.carrierDb + m;
+        if (s.wanderDb > 0.0f)
         {
-            const float video = kHfDropVideoDb - kHfDropTailDb * std::log(1.0f - rngE.nextFloat());
+            wanderN1 += wanderK * (rngW.nextBipolar() - wanderN1);
+            wanderN2 += wanderK * (wanderN1 - wanderN2);
+            c += s.wanderDb * clamp(wanderN2 * wanderScale, -kHfWanderMax, kHfWanderMax);
+        }
+        carrierAt(st[0], c, m, h);
+        // Dropouts: the tape lifts off the head. Poisson, evenly in time; deep and long as above.
+        if (dropLeft == 0 && dropP > 0.0f && rngO.nextFloat() < dropP)
+        {
+            const float video = kHfDropVideoDb - dropTail * std::log(1.0f - rngO.nextFloat());
             dropDb = kHfDropShare * video;
-            dropLeft = 1 + (int)(kHfDropMinSec * std::exp2(kHfDropOctaves * rngE.nextFloat()) * sr);
+            dropLeft = 1 + (int)(kHfDropMinSec * std::exp2(dropOct * rngO.nextFloat()) * sr);
             ++drops;
         }
-        if (dropLeft > 0) carrierAt(st[1], c - dropDb);
+        if (dropLeft > 0) carrierAt(st[1], c - dropDb, m - dropDb, h);
     }
 
     // At each head switch: the weaker head takes over or hands back; a tracking dip starts, goes
@@ -1902,15 +1985,15 @@ struct HiFiPath
         ++switchCount;
         if (trackPasses > 0)
         {
-            if (--trackPasses > 0) trackDb = -trackDepth * (0.6f + 0.4f * rngE.nextFloat());
+            if (--trackPasses > 0) trackDb = -trackDepth * (0.6f + 0.4f * rngT.nextFloat());
             else trackDb = 0.0f;
         }
-        else if (trackP > 0.0f && rngE.nextFloat() < trackP)
+        else if (trackP > 0.0f && rngT.nextFloat() < trackP)
         {
-            trackDepth = kHfTrackMinDb + kHfTrackSpanDb * s.tracking * rngE.nextFloat();
-            const float u = rngE.nextFloat();
+            trackDepth = kHfTrackMinDb + kHfTrackSpanDb * s.tracking * rngT.nextFloat();
+            const float u = rngT.nextFloat();
             trackPasses = 1 + (int)((float)(kHfTrackPasses - 1) * u * u + 0.5f);
-            trackDb = -trackDepth * (0.6f + 0.4f * rngE.nextFloat());
+            trackDb = -trackDepth * (0.6f + 0.4f * rngT.nextFloat());
         }
         if (linear && lowCount == 0 && !headB && ++back >= kHfBackEdges) linear = false;
     }
@@ -1936,12 +2019,13 @@ struct HiFiPath
         }
         else lowCount = 0;
 
-        Stereo z;
-        if (k.doc) { relLeft = nRelease; z = held; }                    // the dropout canceller holds
-        else if (relLeft > 0) { --relLeft; z = held; }
+        // the dropout canceller holds (the sound after playback: see process); meanwhile the playback
+        // side is given the modulation as it was, so that it comes back from the hold as it went in
+        Stereo z = y;
+        holding = k.doc || relLeft > 0;
+        if (holding) relLeft = k.doc ? nRelease : relLeft - 1;
         else
         {
-            z = y;
             if (k.noise > 0.0f)
             {
                 const Stereo w = { rngL.nextBipolar(), rngR.nextBipolar() };
@@ -1970,7 +2054,6 @@ struct HiFiPath
                     z += stereo(rngC.nextBipolar(), rngC.nextBipolar()) * a;
                 }
             }
-            held = z;
         }
         yPrev = y;
         return z;
@@ -1983,7 +2066,8 @@ struct HiFiPath
         const Stereo a = fmDe.inv(z) * cal;
         Stereo dp = playDet.d;
         if (rmsOn) { rmsS += rmsInc; dp += (rmsS - dp) * blend; }
-        const Stereo e = vmin(vmax(dp * pRefInv, splat(1.0f / kHfGainRange)), splat(kHfGainRange));
+        Stereo e = vmin(vmax(dp * pRefInv, splat(1.0f / kHfGainRange)), splat(kHfGainRange));
+        if (slopeOn) { slS += slInc; e *= slS; }
         const Stereo w = wPlay.fwd(a);
         playDet.step(vabs(w));
         if (rmsOn) rmsDet.step(w * w);
@@ -2016,8 +2100,9 @@ struct HiFiPath
         const Stereo v = nrEmph.fwd(x * rec) * cg;
         recDet.step(vabs(wRec.fwd(v)));
         const Stereo y = vclamp(fmEmph.fwd(v), kHfClip);
-        // the tape, then playback
+        // the tape, then playback, and the dropout canceller's hold
         Stereo out = playback(channel(y));
+        out = held = holding ? held * droop : out;
         // the linear track, while it is heard or about to be
         if (tapeRun)
         {
@@ -2116,7 +2201,7 @@ public:
         addParam(choiceParam("agc_model",  "AGC Model",  {"Simple", "Modeled"}, 1));   // the same
 
         // 1.7: the picture effects switch, then their meters (not automatable, as Reel and Level)
-        addParam(boolParam  ("visual_vibes", "Visual Vibes", true));
+        addParam(boolParam  ("visual_vibes", "Visual Vibes", false));   // off in a new instance and in an older state
         const char* const meters[][2] = { {"vis_snow", "Snow"}, {"vis_head", "Head"}, {"vis_streak", "Streak"},
                                           {"vis_grid", "Grid"}, {"vis_haze", "Haze"} };
         for (const auto& m : meters)
@@ -2809,16 +2894,25 @@ public:
         visReel_.store(reelPhase_, std::memory_order_relaxed);
         visLevel_.store(outEnv_, std::memory_order_relaxed);
         // And what the picture effects follow (1.7; the notifier turns it into frames): the hiss as
-        // it is made (its RMS: the hiss stage's with Breathing, or the FM channel's at the carrier
-        // it has now), how far the head switch shows (0..1, 1 at Head Buzz 100 % and Noise 50 %;
-        // nothing on the linear track), how many dropouts so far, and how many times the Hi-Fi
-        // track was lost so far (x 2, + 1 while it is lost). The counters are kept where the events
-        // start; nothing here changes the sound. (0.533 and 0.816: the RMS of the noise each hiss
-        // level scales, the hiss stage's high-passed white noise and the channel's differenced one.)
-        visHiss_.store(hifiOn_ ? 0.816f * hifiPath_.st[0].noise : 0.533f * cur_[cHiss] * hissDyn_, std::memory_order_relaxed);
+        // it is made (the hiss stage's RMS, with Breathing and on the backup track; 0.533: the RMS of
+        // its high-passed white noise), how far the head switch shows (0..1, 1 at Head Buzz 100 % and
+        // Noise 50 %; nothing on the linear track), how many dropouts so far, and how many times the
+        // Hi-Fi track was lost so far (x 2, + 1 while it is lost). The counters are kept where the
+        // events start; nothing here changes the sound. Hi-Fi's hiss is put on the same scale: the
+        // FM channel's noise as a multiple of its 55 dB point, squared (the expander doubles every dB
+        // of it), is what the hiss stage would make at the same Hiss and Noise at full carrier; a
+        // weaker carrier raises it, and as the deck crossfades to the linear track that track's hiss
+        // takes over.
+        if (hifiOn_)
+        {
+            const float r = hifiPath_.noiseUnit > 0.0f ? hifiPath_.st[0].noise / hifiPath_.noiseUnit : 0.0f;
+            visHiss_.store(0.533f * 0.1f / (4.0f * kHfHissGain * kHfHissGain) * r * r * (1.0f - hifiPath_.linMix)
+                           + 0.533f * cur_[cHiss] * hissDyn_, std::memory_order_relaxed);
+        }
+        else visHiss_.store(0.533f * cur_[cHiss] * hissDyn_, std::memory_order_relaxed);
         visHead_.store(hifiOn_ ? (hifiPath_.linear ? 0.0f : hifiPath_.s.headBuzz * (1.0f / kHfBuzzGain))
                                : (hsOn_ ? hsLen_[0] * (1.0f / 6.0f) : 0.0f), std::memory_order_relaxed);
-        const bool linear = hifiOn_ && hifiPath_.linear;   // (lasts at least 33 ms: longer than a block)
+        const bool linear = hifiOn_ && hifiPath_.linear;   // (lasts at least 233 ms: longer than a block)
         if (linear && !visLinear_) ++lostEvents_;
         visLinear_ = linear;
         visDrops_.store(dropEvents_ + hifiPath_.drops, std::memory_order_relaxed);
@@ -2852,7 +2946,7 @@ public:
             return true;
         }
         // With Sat Type on Hi-Fi the same three read Rec Level (dB, 0 where VHS mode has it), the
-        // carrier (0 to -30 dB) and Cal (the playback level error, "right" at the knob's default).
+        // carrier (0 to -20 dB) and Cal (the playback level error, "right" at the knob's default).
         if ((index == kLoSat || index == kHiSat || index == kSplit) && getInt(kSatType) == 2)
         {
             float dB = index == kLoSat ? hifiRecDb(0.01f * v)
@@ -3058,9 +3152,10 @@ private:
             const float master = getBool(kNoiseOn) ? 4.0f * sq(pct(kNoise)) : 0.0f;
             tgt_[cHum]     = sq(pct(kHum))      * 0.12f * master;
             tgt_[cBuzz]    = sq(pct(kBuzz))     * 0.10f * master;
-            // (Hi-Fi on: the FM path makes these three; their stages here rest)
+            // (Hi-Fi on: the FM path makes these three; their stages here rest, but for the hiss of the
+            // linear track while the deck is on it: see controlTick)
             tgt_[cHead]    = hifiOn_ ? 0.0f : sq(pct(kHeadBuzz)) * 0.50f * master;
-            tgt_[cHiss]    = hifiOn_ ? 0.0f : sq(pct(kHiss))     * 0.10f * master;
+            tgt_[cHiss]    = sq(pct(kHiss)) * 0.10f * master;
             tgt_[cCrackle] = hifiOn_ ? 0.0f : sq(pct(kCrackle))  * 0.60f * master;
             // about -45 dBFS at 50 %, where a real deck has it; the factor evens out the oscillator.
             // Up to 60 % as it always was; from there (1.7) it climbs faster, to 15 dB more at 100 %
@@ -3132,8 +3227,9 @@ private:
     // the Noise switch and level (Hiss, the clicks and Head Buzz's spike as levels, x1 at Noise 50 %
     // and +12 dB at 100 %, as every noise; the head switch's concealed residual as an amount, in full from
     // Noise 50 %, as the head-switch hold is), Breathing, Tracking and Drift by Deck On, Dropouts by
-    // nothing. The Noise switch off silences the channel's noise, clicks and head switch; the
-    // holds and the linear track (the deck's behaviour, not noise) stay.
+    // nothing. The Noise switch off silences the channel's noise, clicks and head switch and the
+    // linear track's hiss (and, with no clicks, the noise detector has nothing to trip on); the holds
+    // and the linear track (the deck's behaviour, not noise) stay.
     void setHiFi()
     {
         const auto pct = [this](int i) { return get(i) * 0.01f; };
@@ -3144,10 +3240,11 @@ private:
         s.recDb       = hifiRecDb(pct(kLoSat));
         s.carrierDb   = kHfCarrierMinDb * pct(kHiSat);
         s.calDb       = kHfCalDb * tapeBias(getNormalised(kSplit));
+        s.calSlope    = kHfCalSlope / kHfCalDb * s.calDb;
         s.hiss        = noise ? kHfHissGain * 4.0f * pct(kHiss) * pct(kNoise) : 0.0f;
         s.noiseTop    = dbToGain(kHfSnrDb - kHfNoiseTopDb);
         s.clicks      = master;
-        s.cnr0Db      = kHfCnrBestDb - kHfCnrSpanDb * pct(kCrackle);   // how near the deck sits to the click threshold
+        s.cnr0Db      = hifiCnrDb(pct(kCrackle));                      // how near the deck sits to the click threshold
         s.headBuzz    = noise ? kHfBuzzGain * pct(kHeadBuzz) * 2.0f * pct(kNoise) : 0.0f;   // its spike, squared, goes with the Noise level as every noise
         s.headGate    = gate;
         s.breathing   = deck ? pct(kBreathing) : 0.0f;
@@ -3155,6 +3252,7 @@ private:
         s.imbalanceDb = kHfImbalanceDb * s.tracking;                   // off the track, one head reads worse than the other
         s.drift       = deck ? pct(kDrift) : 0.0f;
         s.dropouts    = pct(kDropouts);
+        s.wanderDb    = kHfWanderDb;
         hifiPath_.set(s);
     }
 
@@ -3461,7 +3559,8 @@ private:
         // Breathing is the Hi-Fi noise reduction at work: the hiss rises and falls with the
         // sound coming in (5 ms up, 70 ms back), and the head buzz is pushed down in the
         // pauses, back to its set level when the sound is at reference level. On the backup
-        // track the hiss is twice as loud.
+        // track the hiss is twice as loud. With Sat Type on Hi-Fi this stage is the linear track's
+        // hiss alone, as loud as that backup track's, in as far as the deck has crossfaded to it.
         const float breath = cur_[cBreath];
         breathOn_ = live(cBreath);
         const float lvl = maxf(inMax_[0], inMax_[1]);
@@ -3469,6 +3568,12 @@ private:
         breathEnv_ += (lvl > breathEnv_ ? breathAtk_ : breathRel_) * (lvl - breathEnv_);
         hissDyn_ = (fallback ? 2.0f : 1.0f) * (1.0f + breath * 6.0f * minf(breathEnv_, 1.0f));
         headAmp_ = cur_[cHead] * (1.0f + breath * (minf(breathEnv_ * (1.0f / kRefLevel), 1.5f) - 1.0f));
+        if (hifiOn_)   // (out of the way of the other types' lines, which stay as they were)
+        {
+            hissOn_ = hissOn_ && hifiPath_.tapeRun;   // only while the linear track runs
+            noiseActive_ = humOn_ || buzzOn_ || headOn_ || hissOn_ || crackleOn_;
+            hissDyn_ = 2.0f * hifiPath_.linMix;
+        }
 
         // Drift: the audio track on the tape's edge wanders off the head. A slow random
         // movement, on the head most of the time with a deeper excursion now and then.
@@ -3505,7 +3610,8 @@ private:
     //   Level   besides the sun's level, its colour: Sat Type's
     // All of them show nothing (frame 0, the straight grid, the first colour) unless Animation and
     // Visual Vibes are both on; with Animation off nothing moves.
-    static constexpr float kSnowDb[kSnowSteps]    = { -38.0f, -28.0f, -18.0f };   // hiss RMS re a reference sine's
+    // hiss RMS re a reference sine's: at Noise 50 % the hiss stage reaches them at Hiss 10, 35, 60 and 85 %
+    static constexpr float kSnowDb[kSnowSteps]    = { -55.0f, -33.0f, -23.5f, -17.5f };
     static constexpr float kHeadAt[kHeadSteps]    = { 0.04f, 0.3f, 0.6f };        // head switch, 0..1
     static constexpr float kWobbleAt[kWobbleSteps] = { 0.003f, 0.012f, 0.03f };   // summed peak pitch error
     static constexpr float kHazeTopHz = 7000.0f;                                  // no haze from here up
@@ -3888,7 +3994,7 @@ private:
             {kAgcModel, 0}, {kAgc, 25}, {kDrift, 10} });
 
         // Added in 1.7, after the others: the Hi-Fi track (Sat Type = Hi-Fi: Lo Sat is the record
-        // level, 0 dB at 56 %; Hi Sat the carrier, 0.3 dB down per %; Split the playback
+        // level, 0 dB at 56 %; Hi Sat the carrier, 0.2 dB down per %; Split the playback
         // calibration; Crackle how near the deck sits to the click threshold). The rotating heads have no wow or flutter to speak of, so the wobble is
         // at rest in all five. 17 dB down the deck goes to the linear track.
         // A good deck and a new tape: nothing but the FM channel's own faint hiss (Hiss 9 % is a
@@ -3898,33 +4004,35 @@ private:
             {kSatType, 2}, {kLoSat, 56}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 0}, {kHiss, 9}, {kCrackle, 0} });
-        // Recorded 10 dB over: the deviation limiter's hard ceiling on every loud hit.
+        // Recorded 18 dB over: the deviation limiter's hard ceiling on every loud hit, and on held loud notes.
         program("Hi-Fi - Hot Signal", {
             {kDrive, 20}, {kWear, 0}, {kComp, 15}, {kHiCut, 18000},
             {kSatType, 2}, {kLoSat, 84}, {kHiSat, 0}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 10}, {kHiss, 12}, {kCrackle, 0} });
-        // A tape that has been through a lot of machines: a weak carrier, a steady scatter of
-        // clicks, more when it wanders, noise that comes and goes with the music.
+        // A tape that has been through a lot of machines: a carrier 10 dB down, a scatter of clicks
+        // (a few a second), more when it wanders, noise that comes and goes with the music, now
+        // and then a quarter second on the hissy linear track.
         program("Hi-Fi - Worn Rental", {
             {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
-            {kSatType, 2}, {kLoSat, 60}, {kHiSat, 40}, {kHighs, 0},
+            {kSatType, 2}, {kLoSat, 60}, {kHiSat, 50}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
-            {kHum, 5}, {kHeadBuzz, 25}, {kHiss, 50}, {kCrackle, 25},
-            {kDropouts, 30}, {kDrift, 30}, {kBreathing, 20} });
-        // The tracking knob is off: the buzz of the head switch, bursts of clicks, and every
-        // so often the dull mono linear track takes over.
+            {kHum, 5}, {kHeadBuzz, 25}, {kHiss, 20}, {kCrackle, 15},
+            {kDropouts, 30}, {kDrift, 15}, {kBreathing, 20} });
+        // The tracking knob is off: the buzz of the head switch, bursts of clicks at the dips, and
+        // a few times every ten seconds the dull, hissy mono linear track takes over for a quarter second.
         program("Hi-Fi - Tracking Lost", {
             {kDrive, 15}, {kWear, 5}, {kComp, 20}, {kHiCut, 16000},
-            {kSatType, 2}, {kLoSat, 58}, {kHiSat, 45}, {kHighs, 0},
+            {kSatType, 2}, {kLoSat, 58}, {kHiSat, 25}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 30}, {kHiCut2, 16000},
-            {kHum, 5}, {kHeadBuzz, 55}, {kHiss, 50}, {kCrackle, 22},
-            {kDropouts, 40}, {kDrift, 40}, {kTracking, 70} });
-        // Recorded on one deck, played on another: the expander disagrees with the compressor,
-        // so the level is off and the sound pumps.
+            {kHum, 5}, {kHeadBuzz, 55}, {kHiss, 35}, {kCrackle, 15},
+            {kDropouts, 20}, {kDrift, 10}, {kTracking, 25} });
+        // Recorded on one deck, played on another: the expander disagrees with the compressor
+        // (Cal low, its slope off) and follows the sound differently (Breathing), so quiet
+        // passages come up, loud ones do not, and the sound pumps.
         program("Hi-Fi - Wrong Deck", {
             {kDrive, 10}, {kWear, 0}, {kComp, 10}, {kHiCut, 18000},
-            {kSatType, 2}, {kLoSat, 62}, {kHiSat, 20}, {kSplit, 4500}, {kHighs, 0},
+            {kSatType, 2}, {kLoSat, 62}, {kHiSat, 30}, {kSplit, 300}, {kHighs, 0},
             {kWarp, 0}, {kFlutter, 0}, {kWow, 0}, {kFlutter2, 0}, {kLoCut, 20}, {kHiCut2, 18000},
             {kHum, 0}, {kHeadBuzz, 15}, {kHiss, 55}, {kCrackle, 10},
             {kBreathing, 85} });
@@ -4099,7 +4207,7 @@ private:
 //    be in that list, so the program is first told the present position of the three switches.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
 //    their resting values before any state is loaded (HQ off, Mic Model and AGC Model Simple: a new instance
-//    has them otherwise; Visual Vibes on, as in a new instance), so such a state sounds as it was
+//    has them otherwise; Visual Vibes off, as in a new instance), so such a state sounds as it was
 //    saved whatever this instance was doing before; a newer state then sets them.
 //  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was.
 //  - While a program or a state is being written, the audio thread takes in none of the new
