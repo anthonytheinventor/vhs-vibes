@@ -24,7 +24,9 @@ grep -q "\"version\": \"$V\"" "$P/build/$F/plugin.json" || { echo "the build fol
 
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/omp" "$W/out"
-# the tools as the repository has them, whatever the checkout on disk looks like
+# the tools as the repository has them now, whatever the checkout on disk looks like
+git -C "$OMP_REPO" -c safe.directory='*' fetch -q origin || echo "could not fetch $OMP_REPO: using what it has" >&2
+echo "Open MPC tools: $REF at $(git -C "$OMP_REPO" -c safe.directory='*' rev-parse --short "$REF")"
 git -C "$OMP_REPO" -c core.autocrlf=false -c safe.directory='*' archive "$REF" tools docs | tar -x -C "$W/omp"
 T=${OMP_TOOLS:-$W/omp/tools}          # (OMP_TOOLS: only to prove that the checks below catch a bad copy)
 

@@ -380,12 +380,12 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
 - Projects made with an older version load with every setting in place; those from 1.3 to 1.6 sound as they
-  did. Scrape, Whistle, B-Type NR, Sat Type, Azimuth and Visual Vibes rest at 0, off or Simple, an older
-  project opens with Mic Model and AGC Model on Simple, the 39 programs from before 1.7 are unchanged and
+  did, apart from the two changes to HQ and Whistle below. Scrape, Whistle, B-Type NR, Sat Type, Azimuth and
+  Visual Vibes rest at 0, off or Simple, a project saved before 1.6 opens with Mic Model and AGC Model on
+  Simple, the 39 programs from before 1.7 are unchanged and
   use none of the newer controls, and the newer programs come after Init so every older one keeps its number.
-- One exception, accepted: Sat Type has three positions now, so something that stores only its knob
-  position (a Q-Link assignment or recorded automation made in 1.5 or 1.6) reads the old VHS position as
-  Hi-Fi. A project's own Sat Type setting stays as it was.
+- One exception, accepted: Sat Type has three positions now, so automation of it recorded in 1.5 or 1.6,
+  which stores only a knob position, reads the old VHS position as Hi-Fi. A project's own Sat Type setting stays as it was.
 - HQ is on in a new instance. A project keeps the HQ setting it was saved with; one saved
   before HQ existed opens with it off, so it sounds as it did.
 - Since 1.7 HQ also covers the modeled microphones and the recording side of B-Type NR. A project
