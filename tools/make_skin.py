@@ -3,11 +3,13 @@
 
 Run it on the PC that has the fonts (Windows; needs Pillow):
 
-    python "plugins/VHS Vibes/tools/make_skin.py"
+    python "plugins/VHS Vibes/tools/make_skin.py" [--out DIR] [--dim-power]
 
 Reads   build/params.json            (written by tools/build.py; run a build first)
 Writes  skins/TUI.json, skins/Q-Links.json and every PNG they use
         build/preview/page_N.png     (a mock-up of each page, for looking at on the PC)
+        --out DIR writes DIR/skins and DIR/preview instead (for trials; the repo's skins/ is untouched)
+        --dim-power turns on the power dimming trial (see DIM_POWER)
 
 tools/build.py copies skins/ into the plugin folder as "Plugin Skins/" unchanged.
 
@@ -30,6 +32,7 @@ from that file's kXxx constants, so the two cannot disagree. The words on the st
 of their own over the sun, so one sun strip serves every page.
 """
 
+import argparse
 import json
 import math
 import os
@@ -246,6 +249,23 @@ CAPTION_OVERRIDE = {}              # name -> (caption, colour), used while a mod
 # control itself is valid only on that step, so in the other modes there is nothing to see or touch.
 MODE_ONLY = {"Azimuth": 1}
 
+# Power dimming (1.8; the VIBE block so far): while DIM_SWITCH is off, the controls it governs fade to about
+# a third of their brightness (caption, knob seat, value window, knob, read-out, buttons). It is the same
+# kind of swap as the modes: every look is a child of the control's own slot (or a picture under the slot)
+# made valid only on its switch steps, so nothing is ever drawn over a control and touch is never in
+# question. A control that a mode also recolours gets one dim look per mode run; the slot shows the look
+# whose mode run AND power state are both valid (additionalInvalidatingHandles hides a child when any one
+# of its handles is invalid, so a list of two handles is an AND). Hi Cut is left out: it works with the
+# Saturator off. Azimuth is on the DECK page, but the Saturator governs it too.
+DIM_POWER = True
+DIM_SWITCH = "Saturator"
+DIM_CONTROLS = {"Split", "Lows", "Lo Sat", "Highs", "Hi Sat", "Sat Type", "Azimuth"}
+DIM_LEVEL = 0.35                   # how much of the lit look is left (blended over the bare panel)
+HIDE_CONTROLS = set()              # names draw_panel leaves out, while the bare panel is being painted
+# The dim read-out: CYAN a third of the way up from the value window's fill (12, 3, 34), as an opaque
+# colour, so it does not depend on the MPC honouring a label colour's alpha.
+ARGB_VALUE_DIM = "ff%02x%02x%02x" % tuple(int(round(f + (c - f) * DIM_LEVEL)) for f, c in zip((12, 3, 34), CYAN))
+
 
 def mode_steps(params):
     return len(params[MODE_PARAM].choices)
@@ -282,8 +302,37 @@ def swap_file(name, mode):
     return "cap_%s_%s.png" % (name.lower().replace(" ", ""), mode["key"])
 
 
-def knob_file(bipolar, mode=None):
-    return ("knob_bi" if bipolar else "knob_uni") + ("_" + mode["key"] if mode else "") + ".png"
+def knob_file(bipolar, mode=None, dim=False):
+    return ("knob_bi" if bipolar else "knob_uni") + ("_" + mode["key"] if mode else "") + ("_dim" if dim else "") + ".png"
+
+
+def dimmed(name):
+    return DIM_POWER and name in DIM_CONTROLS
+
+
+def power_handle(on, params):
+    """Valid only while DIM_SWITCH (a two-step switch) is on (or off)."""
+    return "IndexedEnabling/%d/2/%s" % (1 if on else 0, params[DIM_SWITCH].handle)
+
+
+def dim_file(name, mode=None):
+    return "dim_%s_%s.png" % (name.lower().replace(" ", ""), mode["key"] if mode else "plain")
+
+
+def dim_runs(name, steps):
+    """knob_runs, without the runs a MODE_ONLY control is never seen in."""
+    runs = knob_runs(name, steps)
+    if name in MODE_ONLY:
+        runs = [r for r in runs if r[0] <= MODE_ONLY[name] <= r[1]]
+    return runs
+
+
+def faded(im):
+    """A transparent picture (knob strip, button) at DIM_LEVEL: over the dimmed slot it reads as a third."""
+    im = im.convert("RGBA")
+    a = im.getchannel("A").point(lambda v: int(round(v * DIM_LEVEL)))
+    im.putalpha(a)
+    return im
 
 
 # Segment switches: parameter -> (button size, [(dx, dy) inside the slot], [captions])
@@ -934,7 +983,7 @@ def draw_panel(img, page, params):
             span = 2 if i + 1 < len(cells) and cells[i + 1] == "<" else 1
             cx = bx + i * CELL_W
             sy = by + SLOT_DY
-            if name in MODE_ONLY and name not in CAPTION_OVERRIDE:
+            if name in MODE_ONLY and name not in CAPTION_OVERRIDE or name in HIDE_CONTROLS:
                 continue
             cap, cap_col = CAPTION_OVERRIDE.get(name, (CAPTIONS.get(name, name.upper()), CAPTION_COLOUR))
             draw_text(d, (cx + span * CELL_W / 2, sy + 4), cap, f_cap, cap_col, 1.5, "m")
@@ -1109,8 +1158,8 @@ def make_segment(size, caption, on, mode=None):
     return img.resize((w, h), Image.LANCZOS)
 
 
-def seg_file(name, index, on):
-    return "seg_%s_%d_%s.png" % (name.lower().replace(" ", ""), index, "on" if on else "off")
+def seg_file(name, index, on, dim=False):
+    return "seg_%s_%d_%s%s.png" % (name.lower().replace(" ", ""), index, "on" if on else "off", "_dim" if dim else "")
 
 
 # --------------------------------------------------------------------------------------------
@@ -1130,22 +1179,36 @@ def focus_entry(width):
     return G.entry("focus", "Focus", data, "0 0 %d %d" % (width, SLOT_H), "No", "Show", "WhenFocussed")
 
 
-def knob_def(bipolar, runs=None, steps=0, switch=None):
+def knob_def(bipolar, runs=None, steps=0, switch=None, power=None):
     """A knob slot. With mode runs (see knob_runs) it holds one knob picture per run, each shown only
-    while the mode switch (handle `switch`, `steps` steps) is on that run's steps."""
+    while the mode switch (handle `switch`, `steps` steps) is on that run's steps. With `power` (the
+    handles from power_handle: (on, off)) every knob picture and the read-out come twice, lit while
+    the power switch is on and dimmed while it is off."""
     vx, vy, vw, vh = VALUE_BOX
     knob_bounds = "%d %d %d %d" % (KNOB_POS[0], KNOB_POS[1], KNOB, KNOB)
     if runs is None or len(runs) == 1:
-        knobs = [G.entry("knob", "Knob", G.knob_filmstrip_data(knob_file(bipolar), KNOB_FRAMES),
-                         knob_bounds, "No", "Show", "Always")]
+        looks = [("knob", None, [])]
     else:
-        knobs = [G.entry("knob " + (m["key"] if m else "plain"), "Knob", G.knob_filmstrip_data(knob_file(bipolar, m), KNOB_FRAMES),
-                         knob_bounds, "No", "Show", "Always", invalidating=[step_handle(a, b, steps, switch)])
-                 for a, b, m in runs]
-    children = [focus_entry(CELL_W)] + knobs + [
-        G.entry("value", "Label", label_data("Value", ARGB_CYAN, 20.0, "horizontallyCentred verticallyCentred"),
-                "%d %d %d %d" % (vx, vy, vw, vh), "No", "Show", "Always"),
-    ]
+        looks = [("knob " + (m["key"] if m else "plain"), m, [step_handle(a, b, steps, switch)]) for a, b, m in runs]
+    value_bounds = "%d %d %d %d" % (vx, vy, vw, vh)
+    value_style = ("Value", 20.0, "horizontallyCentred verticallyCentred")
+    if power is None:
+        knobs = [G.entry(n, "Knob", G.knob_filmstrip_data(knob_file(bipolar, m), KNOB_FRAMES),
+                         knob_bounds, "No", "Show", "Always", invalidating=inv or None)
+                 for n, m, inv in looks]
+        values = [G.entry("value", "Label", label_data(value_style[0], ARGB_CYAN, *value_style[1:]),
+                          value_bounds, "No", "Show", "Always")]
+    else:
+        on, off = power
+        knobs = [G.entry(n + (" dim" if dim else ""), "Knob", G.knob_filmstrip_data(knob_file(bipolar, m, dim), KNOB_FRAMES),
+                         knob_bounds, "No", "Show", "Always", invalidating=inv + [off if dim else on])
+                 for dim in (False, True) for n, m, inv in looks]
+        # the MPC draws the read-out in one fixed colour, so the dim read-out is a second label
+        values = [G.entry("value", "Label", label_data(value_style[0], ARGB_CYAN, *value_style[1:]),
+                          value_bounds, "No", "Show", "Always", invalidating=[on]),
+                  G.entry("value dim", "Label", label_data(value_style[0], ARGB_VALUE_DIM, *value_style[1:]),
+                          value_bounds, "No", "Show", "Always", invalidating=[off])]
+    children = [focus_entry(CELL_W)] + knobs + values
     return G.component_definition(G.control_actions("knob overlay bipolar" if bipolar else "knob overlay"), children, "00000000")
 
 
@@ -1158,13 +1221,17 @@ def toggle_def():
     return G.component_definition(G.control_actions("menu overlay", double_click=False), children, "00000000")
 
 
-def segment_def(name, span):
+def segment_def(name, span, power=None):
+    """A segment switch. With `power` (on, off handles) each button comes twice: lit look while the power
+    switch is on, dimmed while it is off (only one of the two is ever valid, so only one takes the touch)."""
     size, offsets, captions = SEGMENTS[name]
     children = [focus_entry(CELL_W * span)]
-    for i, (dx, dy) in enumerate(offsets):
-        children.append(G.entry("seg %d" % i, "Button",
-                                G.button_data(seg_file(name, i, True), seg_file(name, i, False), i, len(offsets)),
-                                "%d %d %d %d" % (dx, dy, size[0], size[1]), "No", "Show", "Always"))
+    for dim in ((False, True) if power else (False,)):
+        for i, (dx, dy) in enumerate(offsets):
+            children.append(G.entry("seg %d" % i + (" dim" if dim else ""), "Button",
+                                    G.button_data(seg_file(name, i, True, dim), seg_file(name, i, False, dim), i, len(offsets)),
+                                    "%d %d %d %d" % (dx, dy, size[0], size[1]), "No", "Show", "Always",
+                                    invalidating=[power[1] if dim else power[0]] if power else None))
     return G.component_definition(G.control_actions("menu overlay", double_click=False), children, "00000000")
 
 
@@ -1197,13 +1264,14 @@ def animation_entries(page, number, params):
 def definition_name(p, steps):
     if p.kind == "bool":
         return "vvToggle"
+    dim = " dim" if dimmed(p.name) else ""
     if p.kind == "choice":
-        return "vvSeg " + p.name
+        return "vvSeg " + p.name + dim
     base = "vvKnobBi" if p.name in BIPOLAR else "vvKnobUni"
     runs = knob_runs(p.name, steps)
     if len(runs) == 1:
-        return base
-    return base + " " + " ".join((m["key"] if m else "plain") + str(a) for a, b, m in runs)   # e.g. "vvKnobUni plain0 vhs1"
+        return base + dim
+    return base + " " + " ".join((m["key"] if m else "plain") + str(a) for a, b, m in runs) + dim   # e.g. "vvKnobUni plain0 vhs1"
 
 
 def iter_controls(page):
@@ -1234,6 +1302,18 @@ def build_tui(params):
                                                              SLOT_H if name in MODE_ONLY else CAPTION_H),
                                             "No", "Show", "Always",
                                             invalidating=[step_handle(m["step"], m["step"], steps, switch)]))
+        # the dimmed slots (caption, knob seat, value window), one per mode run, over the captions above
+        # and under the controls, as the mode captions are
+        for b, i, span, name in iter_controls(page):
+            if not dimmed(name):
+                continue
+            runs = knob_runs(name, steps)
+            for a, z, m in dim_runs(name, steps):
+                pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", dim_file(name, m)))
+                inv = ([step_handle(a, z, steps, switch)] if len(runs) > 1 else []) + [power_handle(False, params)]
+                children.append(G.entry("dim %s %s" % (name, m["key"] if m else "plain"), "Image", pic,
+                                        "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, SLOT_H),
+                                        "No", "Show", "Always", invalidating=inv))
         groups = []
         for b in range(4):
             if any(c is not None for c in page["blocks"][b][2]):
@@ -1245,10 +1325,11 @@ def build_tui(params):
             referenced[p.index] = p
             dname = definition_name(p, steps)
             if not any(k == dname for k, _ in defs):
+                power = (power_handle(True, params), power_handle(False, params)) if dimmed(name) else None
                 if p.kind == "choice":
-                    defs.append((dname, segment_def(name, span)))
-                else:   # a knob some mode recolours
-                    defs.append((dname, knob_def(name in BIPOLAR, knob_runs(name, steps), steps, switch)))
+                    defs.append((dname, segment_def(name, span, power)))
+                else:   # a knob some mode recolours (or the power switch dims)
+                    defs.append((dname, knob_def(name in BIPOLAR, knob_runs(name, steps), steps, switch, power)))
             bounds = "%d %d %d %d" % (cell_x(b, i), block_row(b) + SLOT_DY, CELL_W * span, SLOT_H)
             only = [step_handle(MODE_ONLY[name], MODE_ONLY[name], steps, switch)] if name in MODE_ONLY else None
             children.append(G.entry(p.name, dname, G.obj(("version", 1), ("handleName", "Data")), bounds,
@@ -1313,6 +1394,13 @@ def make_preview(page, number, bg, params, images, step=0, displays=None, fx=Non
         for b, i, span, name in iter_controls(page):
             if name in mode["knobs"]:
                 img.alpha_composite(images[swap_file(name, mode)].convert("RGBA"), (cell_x(b, i), block_row(b) + SLOT_DY))
+    sw = params[DIM_SWITCH]
+    power_off = DIM_POWER and (values or {}).get(DIM_SWITCH, sw.default if sw.default is not None else 1.0) < 0.5
+    if power_off:
+        for b, i, span, name in iter_controls(page):
+            if dimmed(name) and not (name in MODE_ONLY and MODE_ONLY[name] != step):
+                m = mode if mode and name in mode["knobs"] else None
+                img.alpha_composite(images[dim_file(name, m)].convert("RGBA"), (cell_x(b, i), block_row(b) + SLOT_DY))
     for cx, cy in REEL_CENTRES:
         img.alpha_composite(frame_of(images["reel_hub.png"], 7, REEL_FRAMES), (cx - HUB // 2, cy - HUB // 2))
     img.alpha_composite(frame_of(images["grid.png"], fx["grid"], FR["grid"]), sticker_bounds(GRID_BOX)[:2])
@@ -1329,6 +1417,7 @@ def make_preview(page, number, bg, params, images, step=0, displays=None, fx=Non
         if name in MODE_ONLY and MODE_ONLY[name] != step:
             continue
         p = params[name]
+        dim = power_off and dimmed(name)
         x, y = cell_x(b, i), block_row(b) + SLOT_DY
         t = p.default if p.default is not None else 0.0
         if name == MODE_PARAM:
@@ -1341,15 +1430,16 @@ def make_preview(page, number, bg, params, images, step=0, displays=None, fx=Non
             size, offsets, _ = SEGMENTS[name]
             cur = int(round(t * (len(offsets) - 1)))
             for k, (dx, dy) in enumerate(offsets):
-                img.alpha_composite(images[seg_file(name, k, k == cur)], (x + dx, y + dy))
+                img.alpha_composite(images[seg_file(name, k, k == cur, dim)], (x + dx, y + dy))
         else:
-            strip = images[knob_file(name in BIPOLAR, mode if mode and name in mode["knobs"] else None)]
+            strip = images[knob_file(name in BIPOLAR, mode if mode and name in mode["knobs"] else None, dim)]
             frame = int(round(t * (KNOB_FRAMES - 1)))
             img.alpha_composite(strip.crop((0, frame * KNOB, KNOB, (frame + 1) * KNOB)), (x + KNOB_POS[0], y + KNOB_POS[1]))
             vx, vy, vw, vh = VALUE_BOX
             text = (displays or {}).get(name, p.display)
             tw = d.textlength(text, font=vf)
-            d.text((x + vx + (vw - tw) / 2, y + vy + 3), text, font=vf, fill=CYAN + (255,))
+            colour = tuple(int(ARGB_VALUE_DIM[k:k + 2], 16) for k in (2, 4, 6)) if dim else CYAN
+            d.text((x + vx + (vw - tw) / 2, y + vy + 3), text, font=vf, fill=colour + (255,))
     return img.convert("RGB")
 
 
@@ -1393,6 +1483,14 @@ def fx_previews(page, number, bg, params, images):
 
 # --------------------------------------------------------------------------------------------
 def main():
+    global SKINS, PREVIEW, DIM_POWER
+    ap = argparse.ArgumentParser(description="Draws the VHS Vibes skin.")
+    ap.add_argument("--out", help="write DIR/skins and DIR/preview instead of skins/ and build/preview/")
+    ap.add_argument("--dim-power", action="store_true", help="turn on the power dimming trial (DIM_POWER)")
+    args = ap.parse_args()
+    if args.out:
+        SKINS, PREVIEW = os.path.join(args.out, "skins"), os.path.join(args.out, "preview")
+    DIM_POWER = DIM_POWER or args.dim_power
     if not os.path.isfile(PARAMS):
         sys.exit("make_skin: %s not found. Run tools/build.py --target native first." % PARAMS)
     plist = G.load_params(PARAMS)
@@ -1435,6 +1533,17 @@ def main():
         for i, cap in enumerate(captions):
             images[seg_file(name, i, True)] = make_segment(size, cap, True, mode_at(i) if name == MODE_PARAM else None)
             images[seg_file(name, i, False)] = make_segment(size, cap, False)
+    if DIM_POWER:
+        if params[DIM_SWITCH].kind != "bool":
+            sys.exit('make_skin: the dimming switch "%s" must be an on/off parameter' % DIM_SWITCH)
+        for name in sorted(DIM_CONTROLS & shown):   # the faded strips and buttons the dimmed controls use
+            if params[name].kind == "choice":
+                for i in range(len(SEGMENTS[name][1])):
+                    for on in (True, False):
+                        images[seg_file(name, i, on, True)] = faded(images[seg_file(name, i, on)])
+            elif not params[name].is_discrete:
+                for _, _, m in knob_runs(name, steps):
+                    images.setdefault(knob_file(name in BIPOLAR, m, True), faded(images[knob_file(name in BIPOLAR, m)]))
     images["reel_hub.png"] = make_hub_strip()
     images["grid.png"] = make_grid_strip()
     images["sun.png"] = make_sun_strip()
@@ -1448,18 +1557,33 @@ def main():
         bg = make_background(page, n, params)
         bg.save(os.path.join(SKINS, page["file"]), optimize=True)
         # each mode's captions: the same background painted with them, cut out strip by strip
+        alts = {}
         for m in MODES:
             swaps = [(b, i, span, name) for b, i, span, name in iter_controls(page) if name in m["knobs"]]
             if not swaps:
                 continue
             for name, cap in m["knobs"].items():
                 CAPTION_OVERRIDE[name] = (cap or CAPTIONS.get(name, name.upper()), m["caption"])
-            alt = make_background(page, n, params)
+            alt = alts[m["key"]] = make_background(page, n, params)
             CAPTION_OVERRIDE.clear()
             for b, i, span, name in swaps:
                 x, y = cell_x(b, i), block_row(b) + SLOT_DY
                 images[swap_file(name, m)] = alt.crop((x, y, x + CELL_W * span, y + (SLOT_H if name in MODE_ONLY else CAPTION_H)))
                 images[swap_file(name, m)].save(os.path.join(SKINS, swap_file(name, m)), optimize=True)
+        # the power dimming: each dimmed slot as the page shows it lit (plain, or in a mode's captions),
+        # blended over the bare panel (the page painted without the dimmed controls), cut out slot by slot
+        dims = [(b, i, span, name) for b, i, span, name in iter_controls(page) if dimmed(name)]
+        if dims:
+            HIDE_CONTROLS.update(DIM_CONTROLS)
+            bare = make_background(page, n, params)
+            HIDE_CONTROLS.clear()
+            for b, i, span, name in dims:
+                x, y = cell_x(b, i), block_row(b) + SLOT_DY
+                box = (x, y, x + CELL_W * span, y + SLOT_H)
+                for _, _, m in dim_runs(name, steps):
+                    lit = alts[m["key"]] if m else bg
+                    images[dim_file(name, m)] = Image.blend(bare.crop(box), lit.crop(box), DIM_LEVEL)
+                    images[dim_file(name, m)].save(os.path.join(SKINS, dim_file(name, m)), optimize=True)
         stem = "page_%d_%s" % (n, page["name"].lower())
         make_preview(page, n, bg, params, images).save(os.path.join(PREVIEW, stem + ".png"))
         if n == 1:
@@ -1484,6 +1608,20 @@ def main():
                     make_preview(page, n, bg, params, images, m["step"], dict(displays or {}, **{name: text}),
                                  {"sun": m["step"] * LEVEL_FRAMES + 12}, {name: pos}) \
                         .save(os.path.join(PREVIEW, "%s_%s_up%d.png" % (stem, m["key"], k)))
+        # and with the power switch off (_off, _vhs_off, ...), in every mode that shows a dimmed control
+        if dims:
+            for step in range(steps):
+                m = mode_at(step)
+                if not any(not (name in MODE_ONLY and MODE_ONLY[name] != step) for _, _, _, name in dims):
+                    continue
+                dfile = os.path.join(PROJECT, "build", "displays_%s.json" % m["key"]) if m else ""
+                displays = None
+                if m and os.path.isfile(dfile):
+                    with open(dfile, "r", encoding="utf-8") as fh:
+                        displays = json.load(fh)
+                make_preview(page, n, bg, params, images, step, displays,
+                             {"sun": step * LEVEL_FRAMES + 12} if m else None, {DIM_SWITCH: 0.0}) \
+                    .save(os.path.join(PREVIEW, "%s%s_off.png" % (stem, "_" + m["key"] if m else "")))
 
     with open(os.path.join(SKINS, "TUI.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write(G.dump_json(build_tui(params)) + "\n")

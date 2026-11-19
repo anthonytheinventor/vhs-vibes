@@ -549,7 +549,7 @@
                     }
                 },
                 {
-                    "key": "vvKnobUni plain0 vhs1 hifi2",
+                    "key": "vvKnobUni plain0 vhs1 hifi2 dim",
                     "value": {
                         "version": 2,
                         "actions": [
@@ -645,7 +645,8 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/0/3/Parameter 55"
+                                        "IndexedEnabling/0/3/Parameter 55",
+                                        "IndexedEnabling/1/2/Parameter 6"
                                     ]
                                 }
                             },
@@ -676,7 +677,8 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/1/3/Parameter 55"
+                                        "IndexedEnabling/1/3/Parameter 55",
+                                        "IndexedEnabling/1/2/Parameter 6"
                                     ]
                                 }
                             },
@@ -707,7 +709,104 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/2/3/Parameter 55"
+                                        "IndexedEnabling/2/3/Parameter 55",
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob plain dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/3/Parameter 55",
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob vhs dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_vhs_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/3/Parameter 55",
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob hifi dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_hifi_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/2/3/Parameter 55",
+                                        "IndexedEnabling/0/2/Parameter 6"
                                     ]
                                 }
                             },
@@ -740,19 +839,492 @@
                                     "map": []
                                 },
                                 "bounds": {
-                                    "version": 1,
+                                    "version": 2,
                                     "acceptsHWFocus": "No",
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "10 122 120 26"
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value dim",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff08566f",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
                                 }
                             }
                         ]
                     }
                 },
                 {
-                    "key": "vvSeg Sat Type",
+                    "key": "vvKnobBi dim",
+                    "value": {
+                        "version": 2,
+                        "actions": [
+                            {
+                                "version": 1,
+                                "onAction": "Mouse Down",
+                                "handler": "Q-Link",
+                                "handleName": "Data",
+                                "additionalData": ""
+                            },
+                            {
+                                "version": 1,
+                                "onAction": "Double Click",
+                                "handler": "Show Overlay",
+                                "handleName": "Data",
+                                "additionalData": "knob overlay bipolar"
+                            },
+                            {
+                                "version": 1,
+                                "onAction": "Enter Pressed",
+                                "handler": "Show Overlay",
+                                "handleName": "Data",
+                                "additionalData": "knob overlay bipolar"
+                            }
+                        ],
+                        "backgroundData": {
+                            "version": 1,
+                            "focussed": {
+                                "version": 1,
+                                "colour": "00000000",
+                                "image": ""
+                            },
+                            "unfocussed": {
+                                "version": 1,
+                                "colour": "00000000",
+                                "image": ""
+                            }
+                        },
+                        "ignoreMousePresses": false,
+                        "disableCoarseDataWheel": false,
+                        "componentsData": [
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "focus",
+                                    "type": "Focus",
+                                    "data": {
+                                        "version": 1,
+                                        "backgroundColour": "1400f0ff",
+                                        "outlineColour": "ff00f0ff",
+                                        "backgroundInset": 2.0,
+                                        "outlineThickness": 2.0
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 1,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "WhenFocussed",
+                                    "boundsType": "Absolute",
+                                    "bounds": "0 0 140 152"
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_bi.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_bi_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff00f0ff",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value dim",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff08566f",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "key": "vvKnobUni dim",
+                    "value": {
+                        "version": 2,
+                        "actions": [
+                            {
+                                "version": 1,
+                                "onAction": "Mouse Down",
+                                "handler": "Q-Link",
+                                "handleName": "Data",
+                                "additionalData": ""
+                            },
+                            {
+                                "version": 1,
+                                "onAction": "Double Click",
+                                "handler": "Show Overlay",
+                                "handleName": "Data",
+                                "additionalData": "knob overlay"
+                            },
+                            {
+                                "version": 1,
+                                "onAction": "Enter Pressed",
+                                "handler": "Show Overlay",
+                                "handleName": "Data",
+                                "additionalData": "knob overlay"
+                            }
+                        ],
+                        "backgroundData": {
+                            "version": 1,
+                            "focussed": {
+                                "version": 1,
+                                "colour": "00000000",
+                                "image": ""
+                            },
+                            "unfocussed": {
+                                "version": 1,
+                                "colour": "00000000",
+                                "image": ""
+                            }
+                        },
+                        "ignoreMousePresses": false,
+                        "disableCoarseDataWheel": false,
+                        "componentsData": [
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "focus",
+                                    "type": "Focus",
+                                    "data": {
+                                        "version": 1,
+                                        "backgroundColour": "1400f0ff",
+                                        "outlineColour": "ff00f0ff",
+                                        "backgroundInset": 2.0,
+                                        "outlineThickness": 2.0
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 1,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "WhenFocussed",
+                                    "boundsType": "Absolute",
+                                    "bounds": "0 0 140 152"
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff00f0ff",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value dim",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff08566f",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "key": "vvSeg Sat Type dim",
                     "value": {
                         "version": 2,
                         "actions": [
@@ -835,12 +1407,15 @@
                                     "map": []
                                 },
                                 "bounds": {
-                                    "version": 1,
+                                    "version": 2,
                                     "acceptsHWFocus": "No",
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "5 28 130 32"
+                                    "bounds": "5 28 130 32",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
                                 }
                             },
                             {
@@ -864,12 +1439,15 @@
                                     "map": []
                                 },
                                 "bounds": {
-                                    "version": 1,
+                                    "version": 2,
                                     "acceptsHWFocus": "No",
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "5 66 130 32"
+                                    "bounds": "5 66 130 32",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
                                 }
                             },
                             {
@@ -893,12 +1471,111 @@
                                     "map": []
                                 },
                                 "bounds": {
-                                    "version": 1,
+                                    "version": 2,
                                     "acceptsHWFocus": "No",
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "5 104 130 32"
+                                    "bounds": "5 104 130 32",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "seg 0 dim",
+                                    "type": "Button",
+                                    "data": {
+                                        "version": 2,
+                                        "onImage": "seg_sattype_0_on_dim.png",
+                                        "offImage": "seg_sattype_0_off_dim.png",
+                                        "buttonId": 0,
+                                        "numButtonsInGroup": 3,
+                                        "handleName": "Data",
+                                        "gestureBehaviour": "Instant"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "5 28 130 32",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "seg 1 dim",
+                                    "type": "Button",
+                                    "data": {
+                                        "version": 2,
+                                        "onImage": "seg_sattype_1_on_dim.png",
+                                        "offImage": "seg_sattype_1_off_dim.png",
+                                        "buttonId": 1,
+                                        "numButtonsInGroup": 3,
+                                        "handleName": "Data",
+                                        "gestureBehaviour": "Instant"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "5 66 130 32",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "seg 2 dim",
+                                    "type": "Button",
+                                    "data": {
+                                        "version": 2,
+                                        "onImage": "seg_sattype_2_on_dim.png",
+                                        "offImage": "seg_sattype_2_off_dim.png",
+                                        "buttonId": 2,
+                                        "numButtonsInGroup": 3,
+                                        "handleName": "Data",
+                                        "gestureBehaviour": "Instant"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "5 104 130 32",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
                                 }
                             }
                         ]
@@ -1459,7 +2136,7 @@
                     }
                 },
                 {
-                    "key": "vvKnobUni plain0 vhs1 plain2",
+                    "key": "vvKnobUni plain0 vhs1 plain2 dim",
                     "value": {
                         "version": 2,
                         "actions": [
@@ -1555,7 +2232,8 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/0/3/Parameter 55"
+                                        "IndexedEnabling/0/3/Parameter 55",
+                                        "IndexedEnabling/1/2/Parameter 6"
                                     ]
                                 }
                             },
@@ -1586,7 +2264,8 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/1/3/Parameter 55"
+                                        "IndexedEnabling/1/3/Parameter 55",
+                                        "IndexedEnabling/1/2/Parameter 6"
                                     ]
                                 }
                             },
@@ -1617,7 +2296,104 @@
                                     "boundsType": "Absolute",
                                     "bounds": "24 26 92 92",
                                     "additionalInvalidatingHandles": [
-                                        "IndexedEnabling/2/3/Parameter 55"
+                                        "IndexedEnabling/2/3/Parameter 55",
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob plain dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/3/Parameter 55",
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob vhs dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_vhs_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/3/Parameter 55",
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "knob plain dim",
+                                    "type": "Knob",
+                                    "data": {
+                                        "version": 2,
+                                        "knobType": "FilmStrip",
+                                        "filmStrip": "knob_uni_dim.png",
+                                        "numFrames": 127,
+                                        "invert": false,
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "24 26 92 92",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/2/3/Parameter 55",
+                                        "IndexedEnabling/0/2/Parameter 6"
                                     ]
                                 }
                             },
@@ -1650,12 +2426,55 @@
                                     "map": []
                                 },
                                 "bounds": {
-                                    "version": 1,
+                                    "version": 2,
                                     "acceptsHWFocus": "No",
                                     "showWhenDataModelInvalid": "Show",
                                     "whenVisible": "Always",
                                     "boundsType": "Absolute",
-                                    "bounds": "10 122 120 26"
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/1/2/Parameter 6"
+                                    ]
+                                }
+                            },
+                            {
+                                "version": 2,
+                                "componentData": {
+                                    "version": 1,
+                                    "name": "value dim",
+                                    "type": "Label",
+                                    "data": {
+                                        "version": 1,
+                                        "textStyle": {
+                                            "version": 1,
+                                            "font": {
+                                                "version": 1,
+                                                "name": "Nexa",
+                                                "style": "Bold",
+                                                "height": 20.0
+                                            },
+                                            "colour": "ff08566f",
+                                            "justification": "horizontallyCentred verticallyCentred",
+                                            "case": "Original"
+                                        },
+                                        "type": "Value",
+                                        "handleName": "Data"
+                                    }
+                                },
+                                "handle remapping": {
+                                    "version": 1,
+                                    "map": []
+                                },
+                                "bounds": {
+                                    "version": 2,
+                                    "acceptsHWFocus": "No",
+                                    "showWhenDataModelInvalid": "Show",
+                                    "whenVisible": "Always",
+                                    "boundsType": "Absolute",
+                                    "bounds": "10 122 120 26",
+                                    "additionalInvalidatingHandles": [
+                                        "IndexedEnabling/0/2/Parameter 6"
+                                    ]
                                 }
                             }
                         ]
@@ -2659,6 +3478,363 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "dim Split plain",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_split_plain.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "220 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/0/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Split vhs",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_split_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "220 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Split hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_split_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "220 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Lows plain",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_lows_plain.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "360 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Lo Sat plain",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_losat_plain.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "500 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/0/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Lo Sat vhs",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_losat_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "500 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Lo Sat hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_losat_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "500 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Highs plain",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_highs_plain.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "640 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Hi Sat plain",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_hisat_plain.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "780 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/0/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Hi Sat vhs",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_hisat_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "780 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Hi Sat hifi",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_hisat_hifi.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "780 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/2/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
+                                "name": "dim Sat Type plain",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_sattype_plain.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "1060 444 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Drive",
                                 "type": "vvKnobUni",
                                 "data": {
@@ -2921,7 +4097,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Split",
-                                "type": "vvKnobUni plain0 vhs1 hifi2",
+                                "type": "vvKnobUni plain0 vhs1 hifi2 dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2950,7 +4126,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Lows",
-                                "type": "vvKnobBi",
+                                "type": "vvKnobBi dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -2979,7 +4155,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Lo Sat",
-                                "type": "vvKnobUni plain0 vhs1 hifi2",
+                                "type": "vvKnobUni plain0 vhs1 hifi2 dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -3008,7 +4184,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Highs",
-                                "type": "vvKnobUni",
+                                "type": "vvKnobUni dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -3037,7 +4213,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Hi Sat",
-                                "type": "vvKnobUni plain0 vhs1 hifi2",
+                                "type": "vvKnobUni plain0 vhs1 hifi2 dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -3095,7 +4271,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Sat Type",
-                                "type": "vvSeg Sat Type",
+                                "type": "vvSeg Sat Type dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
@@ -5461,6 +6637,36 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
+                                "name": "dim Azimuth vhs",
+                                "type": "Image",
+                                "data": {
+                                    "version": 2,
+                                    "imageType": "Regular",
+                                    "colour": "0",
+                                    "image": "dim_azimuth_vhs.png"
+                                }
+                            },
+                            "handle remapping": {
+                                "version": 1,
+                                "map": []
+                            },
+                            "bounds": {
+                                "version": 2,
+                                "acceptsHWFocus": "No",
+                                "showWhenDataModelInvalid": "Show",
+                                "whenVisible": "Always",
+                                "boundsType": "Absolute",
+                                "bounds": "1060 260 140 152",
+                                "additionalInvalidatingHandles": [
+                                    "IndexedEnabling/1/3/Parameter 55",
+                                    "IndexedEnabling/0/2/Parameter 6"
+                                ]
+                            }
+                        },
+                        {
+                            "version": 2,
+                            "componentData": {
+                                "version": 1,
                                 "name": "Deck On",
                                 "type": "vvToggle",
                                 "data": {
@@ -5636,7 +6842,7 @@
                             "componentData": {
                                 "version": 1,
                                 "name": "Azimuth",
-                                "type": "vvKnobUni plain0 vhs1 plain2",
+                                "type": "vvKnobUni plain0 vhs1 plain2 dim",
                                 "data": {
                                     "version": 1,
                                     "handleName": "Data"
