@@ -2411,10 +2411,10 @@ public:
         dryDelay_.prepare(kTapeDelaySamples);
         choDelay_.prepare(2 * kChorusDelaySamples);   // the delay time plus its swing
 
-        // See notifierMain(): sets the meters, asks the host to redraw the screen and reports the
-        // latency. If the system cannot start a thread, the plugin runs without it (the sound is
-        // the same; the meters then stand still and no latency is reported) rather than throwing
-        // into the host.
+        // See notifierMain(): sets the meters and gets them onto the screen, has the screen drawn
+        // again after a load or a change of Sat Type and reports the latency. If the system
+        // cannot start a thread, the plugin runs without it (the sound is the same; the meters
+        // then stand still and no latency is reported) rather than throwing into the host.
         try { notifier_ = std::thread(&VHSVibes::notifierMain, this); }
         catch (...) { mpc::log("VHSVibes: could not start the helper thread; no meters or latency reports"); }
     }
@@ -2449,6 +2449,16 @@ public:
     {
         if (took) reset();
         loadState_.fetch_add(kLoadEvent - 1u, std::memory_order_release);
+    }
+    // The host wrote parameter i itself (see vhsSetParameter): touch, Q-Link, data wheel or
+    // automation. For about 300 ms the notifier then reports no meter and asks for redraws
+    // instead (see notifierMain). A meter does not count: some MPCs write back every meter the
+    // notifier reports. Nor does a write while a program or a state is being loaded. Any thread,
+    // the audio thread too: no wait, no clock.
+    void hostWrote(int i)
+    {
+        if (i >= 0 && i < kNumParams && isSetting(i) && (loadState_.load(std::memory_order_relaxed) & (kLoadEvent - 1u)) == 0)
+            knobMoved_.store(true, std::memory_order_relaxed);
     }
 
     // A program is about to be chosen: it takes over the Animation, HQ and Visual Vibes switches
@@ -3837,18 +3847,36 @@ private:
     // Three things change from the inside: choosing a built-in program or loading a state (all
     // the knobs), the meters that drive the reels, the sun and the picture, and how late the
     // output is. Calls into the host must not come from the audio thread, so this small thread
-    // makes them. It looks 20 times a second, sets the meters' values itself (they are only
-    // read by the skin) and, when anything on the screen has changed since the last look (a
-    // meter's frame, the knobs after a load, the three read-outs Sat Type renames), asks the
-    // host once to draw the screen again (audioMasterUpdateDisplay): at most 20 requests a
-    // second, however many values changed. It never reports a parameter as changed
-    // (audioMasterAutomate). That report is what a plugin's own controls send when they are
-    // moved, and up to 1.6 this thread sent one for every meter that moved and for every knob
-    // after a load or a change of Sat Type; the MPC's Q-Link screen was seen to lock up during
-    // fast Q-Link sweeps (not reproduced, cause not proven), and those reports arriving in the
-    // middle of a sweep were the one thing the plugin added to it. The latency goes its own way
-    // (setLatency). Nothing is sent before the host has started the plugin or while it is
-    // suspended.
+    // makes them. It looks 20 times a second and sets the meters' values itself (they are only
+    // read by the skin). How it gets them onto the screen depends on what the host is doing:
+    //   - Normally it reports each meter whose frame changed (audioMasterAutomate) and asks for
+    //     no redraw. Some MPCs write each report straight back (setParameter from inside the
+    //     report); that write is a meter's, so it does not count as a knob moving (see hostWrote).
+    //   - While a knob is moving (the host wrote a setting in the last kKnobLooks looks, 300 ms:
+    //     touch, Q-Link, data wheel or automation; a program or a state does not count), it
+    //     reports nothing. It sets the meters silently and asks the host once per look to draw
+    //     the screen again (audioMasterUpdateDisplay): at most 20 requests a second. Up to 1.6
+    //     the reports went on during fast Q-Link sweeps, the MPC's Q-Link screen was seen to lock
+    //     up then (not reproduced, cause not proven), and those reports were the one thing the
+    //     plugin added to such a sweep.
+    //   - After a load or a change of Sat Type (three read-outs change name) it asks for one
+    //     redraw at once, at the next look, and never reports a setting.
+    // Why not redraw requests all the time: at each one the MPC rebuilds the plugin's screen and
+    // reads all the program names and the current program again. It applies data wheel steps on
+    // its program field only about every 0.7 s and collects the steps in between; a request that
+    // arrives in between puts the field back on the plugin's current program, and the collected
+    // steps are lost. 1.7.0 asked for a redraw at every look in which something moved (with
+    // Animation on, up to 20 a second), and programs appeared to skip or bounce back. Reports do
+    // not disturb the program field. One request right after a load is harmless (no steps have
+    // been collected yet); a later one is not, which is why the redraw after a load goes out at
+    // once. A gap remains: while automation keeps writing a setting, the plugin stays on redraw
+    // requests, and scrolling through programs can then skip.
+    // A frame set silently counts as not shown (`unshown`) until a redraw request has gone out.
+    // Until then no other meter is reported either (that request will show them all), and a
+    // request that cannot be sent (the host suspended the plugin during the look) stays due for
+    // the next look. So every frame reaches the screen, by a report or by a request made after it
+    // was set. The latency goes its own way (setLatency). Nothing is sent before the host has
+    // started the plugin or while it is suspended.
     //
     // The picture effects (1.7) are decided here too, from what the audio thread published at the
     // end of its last block (see process()) and from the knobs, and shown through the meters:
@@ -3869,6 +3897,7 @@ private:
     static constexpr float kWobbleAt[kWobbleSteps] = { 0.003f, 0.012f, 0.03f };   // summed peak pitch error
     static constexpr float kHazeTopHz = 7000.0f;                                  // no haze from here up
     static constexpr int   kStreakHold = 2, kBandHold = 3;                        // looks (50 ms each)
+    static constexpr int   kKnobLooks = 6;           // looks (300 ms) a knob counts as moving after the host wrote it
 
     void notifierMain()
     {
@@ -3888,13 +3917,17 @@ private:
         // have suspended or started closing it since the last look. (suspended_ as well as
         // started_: doReset can set started_ for a moment while a suspend comes in.)
         auto speaking = [this] { return started_.load() && !suspended_.load(); };
-        bool redraw = false;   // something on the screen changed at this look
+        bool unshown = false;    // a meter set silently, or the knobs to be drawn, and no redraw request sent since
+        int knobLooks = 0;       // looks left in which a knob counts as moving
         auto show = [&](int i, int frame, int frames, int& last)
         {
             if (frame == last) return;
             last = frame;
-            setNormalised(i, (float)frame / (float)(frames - 1));   // silently: the redraw below shows it
-            redraw = true;
+            setNormalised(i, (float)frame / (float)(frames - 1));
+            // reported, unless a redraw request is due anyway or a knob is moving (see above);
+            // knobMoved_ too, so a write that comes in during this look counts at once
+            if (unshown || knobLooks > 0 || knobMoved_.load(std::memory_order_relaxed) || !speaking()) unshown = true;
+            else notifyHostParameterChanged(i);
         };
         for (;;)
         {
@@ -3910,10 +3943,12 @@ private:
             // shown so every meter is set again below.
             if (redrawDue_.exchange(false))
             {
-                redraw = true;
+                unshown = true;
                 lastReel = lastLevel = -1;
                 for (int& l : lastFx) l = -1;
             }
+            if (knobMoved_.exchange(false, std::memory_order_relaxed)) knobLooks = kKnobLooks;
+            else if (knobLooks > 0) --knobLooks;
 
             const bool anim = animate_.load(std::memory_order_relaxed);
             if (anim)
@@ -3958,8 +3993,8 @@ private:
             show(kVisHead, head, kHeadFrames, lastFx[kVisHead - kVisSnow]);
             show(kVisStreak, streak, kStreakFrames, lastFx[kVisStreak - kVisSnow]);
             show(kVisHaze, haze, kHazeFrames, lastFx[kVisHaze - kVisSnow]);
-            // one request for the whole look, never a report per parameter (see above)
-            if (redraw) { redraw = false; if (speaking()) requestDisplayUpdate(); }
+            // one request for the whole look, however many meters it set silently
+            if (unshown && speaking()) { unshown = false; requestDisplayUpdate(); }
 
             // Latency: the output is late by the resting length of the two wobble delays. Tell
             // the host once that length has been steady for half a second and is more than
@@ -4317,6 +4352,7 @@ private:
     std::thread notifier_;
     std::atomic<bool> quit_{false};
     std::atomic<bool> redrawDue_{false};                  // a load or a change of Sat Type: the notifier asks for a redraw
+    std::atomic<bool> knobMoved_{false};                  // the host wrote a setting since the notifier last looked (hostWrote)
     std::mutex quitMutex_;                                // with quitCv_: wakes the notifier when the plugin closes
     std::condition_variable quitCv_;
     std::atomic<bool> started_{false};                    // the host has started us: the notifier may speak
@@ -4526,11 +4562,20 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     return result;
 }
 
-// The exported entry point: MPC_PLUGIN_ENTRY of the framework, plus the dispatcher above. Keep it last.
+// The framework's setParameter, which only the host calls; first it tells the notifier which
+// parameter the host wrote (see hostWrote). It may come on the audio thread.
+static void vhsSetParameter(AEffect* e, VstInt32 index, float value)
+{
+    VHSVibes* p = static_cast<VHSVibes*>(static_cast<mpc::Plugin*>(e->object));
+    if (p != nullptr) p->hostWrote((int)index);
+    mpc::detail::setParameter(e, index, value);
+}
+
+// The exported entry point: MPC_PLUGIN_ENTRY of the framework, plus the dispatcher and setParameter above. Keep it last.
 extern "C" MPC_EXPORT AEffect* VSTPluginMain(audioMasterCallback host)
 {
     if (host != nullptr && host(nullptr, audioMasterVersion, 0, 0, nullptr, 0.0f) == 0) return nullptr;   // VST1-only host
     AEffect* e = mpc::detail::createEffect(new VHSVibes(), host);
-    if (e != nullptr) e->dispatcher = &vhsDispatcher;
+    if (e != nullptr) { e->dispatcher = &vhsDispatcher; e->setParameter = &vhsSetParameter; }
     return e;
 }

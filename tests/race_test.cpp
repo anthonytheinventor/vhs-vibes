@@ -13,10 +13,11 @@
 
 static std::atomic<long> g_automate{0}, g_redraw{0}, g_io{0};
 
-static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float)
+static VstIntPtr hostCb(AEffect* e, VstInt32 opcode, VstInt32 index, VstIntPtr, void*, float opt)
 {
     if (opcode == audioMasterVersion) return 2400;
-    if (opcode == audioMasterAutomate) g_automate.fetch_add(1, std::memory_order_relaxed);
+    // a meter report is written straight back, from inside the report, as the MPC does
+    if (opcode == audioMasterAutomate) { g_automate.fetch_add(1, std::memory_order_relaxed); if (e != nullptr) e->setParameter(e, index, opt); }
     if (opcode == audioMasterUpdateDisplay) g_redraw.fetch_add(1, std::memory_order_relaxed);
     if (opcode == audioMasterIOChanged) g_io.fetch_add(1, std::memory_order_relaxed);
     return 0;
