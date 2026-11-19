@@ -146,7 +146,7 @@ enum ParamIndex
 {
     kOutput = 0,   // dB    output level. Index 0 is nudged by the MPC on load: harmless here.
     // preamp / tape
-    kDrive,        // %     preamp soft clip amount
+    kDrive,        // %     preamp soft clip amount (read out in dB since 1.8: the gain into the clipper)
     kTone,         // -100..100  tilt (shown as "Tilt", read out in dB): negative = darker, positive = brighter
     kWear,         // %     slew limiter amount (shown as "Slew", read out as a swing time in microseconds)
     kComp,         // %     compressor amount (threshold down, make-up up)
@@ -360,6 +360,7 @@ inline float lfoSin(float turns)
 // Signals around this peak level keep their loudness when a clipper or the compressor
 // is turned up; quieter material comes up, louder material is held down.
 constexpr float kRefLevel = 0.4f;   // -8 dBFS
+constexpr float kDriveExtraGain = 15.0f;   // Drive: gain into the preamp clipper 1 + 15 a^2 (setDrive; read out in dB)
 
 // ---------------------------------------------------------------------------
 // Stereo: left and right in one two-float vector. +, -, * work on both channels at once
@@ -391,6 +392,23 @@ inline Stereo softClip(Stereo x)
 inline Stereo driveSat(Stereo x, float g, float makeup, float mix)
 {
     return x + (softClip(x * g) * makeup - x) * mix;
+}
+// The same clipper on four lanes: two Stereo values side by side (quad(a, b): a in lanes 0-1,
+// b in 2-3), each pair with its own gain, make-up and blend. Where two clippers run on the
+// same sample, one 4-lane NEON register does both for about the price of one. Each lane does
+// the same operations in the same order as driveSat, so the result is the same to the bit.
+typedef float Quad __attribute__((vector_size(16)));
+inline Quad quad(Stereo a, Stereo b) { return __builtin_shufflevector(a, b, 0, 1, 2, 3); }
+inline Quad quad2(float a, float b) { const Quad v = {a, a, b, b}; return v; }
+inline Stereo lo2(Quad q) { return __builtin_shufflevector(q, q, 0, 1); }
+inline Stereo hi2(Quad q) { return __builtin_shufflevector(q, q, 2, 3); }
+inline Quad driveSat4(Quad x, Quad g, Quad makeup, Quad mix)
+{
+    Quad t = x * g;
+    t = t < 1.5f ? t : (Quad){1.5f, 1.5f, 1.5f, 1.5f};     // vclamp's order: the top first
+    t = t > -1.5f ? t : (Quad){-1.5f, -1.5f, -1.5f, -1.5f};
+    t = t - (4.0f / 27.0f) * t * t * t;
+    return x + (t * makeup - x) * mix;
 }
 
 // ---------------------------------------------------------------------------
@@ -2585,6 +2603,7 @@ private:
         headAmp_ = tgt_[cHead];
         for (int i = 0; i < kNumCtl; ++i) cur_[i] = tgt_[i];
         for (int i = 0; i < kNumRamp; ++i) { rampS_[i] = rampT_[i]; ramp_[i].snap(rampT_[i]); }
+        ctlBusy_ = rampBusy_ = rampMoving_ = true;   // (see controlTick; the fade-in below moves rOut)
 
         // Every delay starts at the resting length its settings need, so nothing glides (and
         // bends the pitch) after a program change.
@@ -2646,7 +2665,25 @@ private:
     __attribute__((always_inline)) Stereo shape(Stereo x, float satMix)
     {
         if (driveOn_) x = driveSat(x, cur_[cDrvG], cur_[cDrvMk], cur_[cDrvMix]);
-
+        return shapeRest(x, satMix);
+    }
+    // HQ: both doubled samples (a is the earlier one). The preamp clipper has no memory and its
+    // values do not change between the two, so both go through it at once (driveSat4). Every
+    // stage after it has memory and keeps its order: all of a, then all of b.
+    __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
+    {
+        if (driveOn_)
+        {
+            const float g = cur_[cDrvG], mk = cur_[cDrvMk], mx = cur_[cDrvMix];
+            const Quad q = driveSat4(quad(a, b), quad2(g, g), quad2(mk, mk), quad2(mx, mx));
+            a = lo2(q); b = hi2(q);
+        }
+        a = shapeRest(a, satMix);
+        b = shapeRest(b, satMix);
+    }
+    // shape() after the preamp clipper.
+    __attribute__((always_inline)) Stereo shapeRest(Stereo x, float satMix)
+    {
         // ----- wear: slew limiter ----------------------------------------
         if (slewOn_)
         {
@@ -2679,8 +2716,16 @@ private:
             splitLp_ += splitCoeff_ * (x - splitLp_);
             Stereo lo = splitLp_ * cur_[cLowsG];
             Stereo hi = (x - splitLp_) * cur_[cHighsG];
-            if (loSatOn_) lo = driveSat(lo, cur_[cLoG], cur_[cLoMk], cur_[cLoMix]);
-            if (hiSatOn_) hi = driveSat(hi, cur_[cHiG], cur_[cHiMk], cur_[cHiMix]);
+            if (loSatOn_ && hiSatOn_)   // (the usual case: both clippers at once)
+            {
+                const Quad q = driveSat4(quad(lo, hi), quad2(cur_[cLoG], cur_[cHiG]), quad2(cur_[cLoMk], cur_[cHiMk]), quad2(cur_[cLoMix], cur_[cHiMix]));
+                lo = lo2(q); hi = hi2(q);
+            }
+            else
+            {
+                if (loSatOn_) lo = driveSat(lo, cur_[cLoG], cur_[cLoMk], cur_[cLoMix]);
+                if (hiSatOn_) hi = driveSat(hi, cur_[cHiG], cur_[cHiMk], cur_[cHiMix]);
+            }
             x += (lo + hi - x) * satMix;
         }
         else if (satMix > 0.0f) x = hifiShape(x, satMix);
@@ -2806,13 +2851,16 @@ public:
             Stereo x = stereo(l, r);
             inSum += x;                                        // see the end of process()
             if (breathOn_) inMax_ = vmax(inMax_, vabs(x));     // what the noise reduction hears
-            float outGain = ramp_[rOut].next();
+            // The six ramps step only while one of them moves (rampMoving_, see controlTick).
+            // Standing still each would add an increment of 0, which leaves its value as it is.
+            if (rampMoving_) for (Ramp& rp : ramp_) rp.next();
+            float outGain = ramp_[rOut].v;
             if (gateOn_) outGain *= gate_.next();   // a moment after a reset only (the chorus swing)
-            const float mix     = ramp_[rMix].next();
-            const float monoMix = ramp_[rMono].next();
-            const float choMix  = ramp_[rChorus].next();
-            const float micMix  = ramp_[rMic].next();
-            const float satMix  = ramp_[rSat].next();
+            const float mix     = ramp_[rMix].v;
+            const float monoMix = ramp_[rMono].v;
+            const float choMix  = ramp_[rChorus].v;
+            const float micMix  = ramp_[rMic].v;
+            const float satMix  = ramp_[rSat].v;
 
             // kept for Mix below 100 %, lined up with the tape path: the same phase shift as HQ's
             // half-band pair, and as the mic's own pair as far as that mic is heard
@@ -2965,8 +3013,7 @@ public:
                     a = nrEnc_.encode(a, nrEncMix_);
                     b = nrEnc_.encode(b, nrEncMix_);
                 }
-                a = shape(a, satMix);
-                b = shape(b, satMix);
+                shape2(a, b, satMix);
                 x = hbDown_.down(a, b);
             }
             else x = shape(x, satMix);
@@ -3228,6 +3275,18 @@ public:
             out = buf;
             return true;
         }
+        // Drive (1.8; the read-out only, the stored value is still 0..100 %): the gain into the
+        // preamp clipper, 1 + 15 a^2 as setDrive makes it, in dB. 0 dB at 0 %, +24.1 dB at the top.
+        // (Below about 17 % the knob also blends the clean signal back in; the figure does not show that.)
+        if (index == kDrive)
+        {
+            const float a = 0.01f * v;
+            const double dB = 20.0 * std::log10(1.0 + (double)(kDriveExtraGain * a * a));
+            if (std::fabs(dB) < 0.05) std::snprintf(buf, sizeof(buf), "0.0 dB");
+            else std::snprintf(buf, sizeof(buf), "%+.1f dB", dB);
+            out = buf;
+            return true;
+        }
         switch (units_[index])
         {
             case 1: std::snprintf(buf, sizeof(buf), "%.0f %%", (double)v); break;
@@ -3274,6 +3333,7 @@ private:
     // / cos work of the plugin is in here, so a group that did not change costs nothing.
     void readParams(uint32_t groups)
     {
+        ctlBusy_ = rampBusy_ = true;   // it may write any tgt_ / rampT_: the smoothing has work (see controlTick)
         const float sr = sr_;
         auto pct = [this](int i) { return get(i) * 0.01f; };
 
@@ -3310,7 +3370,7 @@ private:
             const float tiltDb = pct(kTone) * 6.0f;
             tgt_[cTiltLo] = dbToGain(-tiltDb);
             tgt_[cTiltHi] = dbToGain(tiltDb);
-            setDrive(pct(kDrive), 15.0f, cDrvG, cDrvMk, cDrvMix);
+            setDrive(pct(kDrive), kDriveExtraGain, cDrvG, cDrvMk, cDrvMix);
         }
         if (groups & gWear)
         {
@@ -3563,15 +3623,29 @@ private:
             else if (fromSimple) micRun_ = false;
             micSwap_ = false;
             rampT_[rMic] = micOn_ ? 1.0f : 0.0f;
+            rampBusy_ = true;
         }
 
         // Smoothed control values land exactly on their targets, so "is this stage doing
         // anything" below is a plain compare.
-        for (int i = 0; i < kNumCtl; ++i)
+        // Once every value has landed and no target was written since, a pass changes nothing
+        // (d is 0, so cur_ = tgt_ again), so it is skipped: ctlBusy_ and rampBusy_ say whether
+        // there is work. Whatever writes a tgt_, rampT_, rampS_ or ramp_ must leave them true:
+        // readParams and doReset set both, the mic swap above sets rampBusy_, and the holds and
+        // fades below are covered by the look at the end of controlTick. (A ramp's values are
+        // never -0, which "+ 0" would turn into +0: their targets are > 0, 0, 1 or a percentage.)
+        if (ctlBusy_)
         {
-            const float d = tgt_[i] - cur_[i];
-            cur_[i] = std::fabs(d) < 1.0e-5f ? tgt_[i] : cur_[i] + kSmooth * d;
+            bool busy = false;
+            for (int i = 0; i < kNumCtl; ++i)
+            {
+                const float d = tgt_[i] - cur_[i];
+                cur_[i] = std::fabs(d) < 1.0e-5f ? tgt_[i] : cur_[i] + kSmooth * d;
+                busy |= cur_[i] != tgt_[i];
+            }
+            ctlBusy_ = busy;
         }
+        if (rampBusy_)
         for (int i = 0; i < kNumRamp; ++i)
         {
             rampS_[i] += kSmooth * (rampT_[i] - rampS_[i]);
@@ -3579,6 +3653,7 @@ private:
             if (ramp_[i].v == rampS_[i]) ramp_[i].inc = 0.0f; else ramp_[i].to(rampS_[i]);
         }
         // A ramp that has arrived must sit exactly on its target so "== 0" skips work.
+        if (rampBusy_)
         for (int i = 0; i < kNumRamp; ++i)
             if (rampS_[i] == rampT_[i] && std::fabs(ramp_[i].v - rampT_[i]) < 1.0e-4f) ramp_[i].snap(rampT_[i]);
 
@@ -3841,6 +3916,16 @@ private:
             edgeMuffle_ += 0.05f * (edge * m - edgeMuffle_);
             edgeGain_   += 0.05f * ((1.0f - 0.65f * edge * m) - edgeGain_);
         }
+
+        // Last, after every write of this tick (the holds and fades above): is there ramp work at
+        // the next tick, and does a ramp move during the next 16 samples (see process())?
+        bool busy = false, moving = false;
+        for (int i = 0; i < kNumRamp; ++i)
+        {
+            busy |= rampS_[i] != rampT_[i] || ramp_[i].v != rampS_[i] || ramp_[i].inc != 0.0f;
+            moving |= ramp_[i].inc != 0.0f;
+        }
+        rampBusy_ = busy; rampMoving_ = moving;
     }
 
     // ----- showing on the screen what changed inside the plugin --------------------
@@ -4399,6 +4484,7 @@ private:
 
     float tgt_[kNumCtl] = {}, cur_[kNumCtl] = {};
     float rampT_[kNumRamp] = {}, rampS_[kNumRamp] = {};
+    bool  ctlBusy_ = true, rampBusy_ = true, rampMoving_ = true;   // (audio thread only) the smoothing has work; a ramp moves (see controlTick)
     Ramp  ramp_[kNumRamp];
 
     // chorus

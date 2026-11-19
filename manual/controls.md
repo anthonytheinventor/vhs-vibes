@@ -21,9 +21,11 @@ not matter (the manual follows the screen), but keeping them in screen order hel
 <!-- ======================================================================== TAPE -->
 
 ## Drive
-what: Soft clipping in the preamp, the recorder's input stage. 0 % is clean; the further you turn it, the harder the sound is pushed into the clipper.
+what: Soft clipping in the preamp, the recorder's input stage. The read-out is the gain into the clipper, from 0.0 dB (clean) to +24.1 dB; the further you turn it, the harder the sound is pushed into the clipper.
 listen: Peaks round off and the sound thickens. Sound around -8 dBFS keeps its loudness; quieter sound comes up, louder sound is held down.
-try: 25 % is Home Recording. Subtle Glue uses 20 %, Bootleg Concert 60 %.
+try: +5.7 dB is Home Recording. Subtle Glue uses +4.1 dB, Bootleg Concert +16.1 dB.
+note: Below about +3.1 dB (the first 17 % of the knob), the knob also blends the clean signal with the clipped one, so the dB figure is the gain into the clipper.
+range: 0.0 to +24.1 dB
 
 ## Tilt
 what: Tilts the balance of lows against highs, in front of the Drive clipper. The sound is split at 800 Hz: to the right the highs come up and the lows go down by the same amount, to the left the reverse. The read-out is what the highs get, up to 6 dB either way; 0.0 dB is flat.

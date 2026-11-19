@@ -77,6 +77,25 @@ if ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE_STATE "-DSRC=\"$OUT
 else
   "$OUT/azimuth_test" "$OUT/state160.bin" "$OUT/state140.bin" || status=1
 fi
-# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, hq_test, ab14_test, hifi_test, visual_test and azimuth_test end with PASS or FAIL;
+# Drive's read-out in dB (1.8, see drive_test.cpp): the same test program built against the 1.7.0 source,
+# taken from git, writes Drive's parameter, values and saved states; this one must give the same.
+echo "===== drive_test ====="
+if ! git -C "$REPO" rev-parse -q --verify "v1.7.0^{commit}" > /dev/null 2>&1; then
+  git -C "$REPO" fetch -q --tags origin 2> "$OUT/drive_test.log"
+fi
+if ! git -C "$REPO" show "v1.7.0:src/VHSVibes.cpp" > "$OUT/VHSVibes_v170.cpp" 2>> "$OUT/drive_test.log"; then
+  echo "cannot get src/VHSVibes.cpp of v1.7.0 from git (see $OUT/drive_test.log)"
+  echo "FAIL"
+  status=1
+elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE170 "-DSRC=\"$OUT/VHSVibes_v170.cpp\"" "$HERE/drive_test.cpp" -o "$OUT/drive_write170" 2>> "$OUT/drive_test.log" \
+  || ! "$OUT/drive_write170" "$OUT/drive170.bin" > /dev/null \
+  || ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/drive_test.cpp" -o "$OUT/drive_test" 2>> "$OUT/drive_test.log"; then
+  grep -E "error" -A6 "$OUT/drive_test.log" | head -30
+  echo "FAIL"
+  status=1
+else
+  "$OUT/drive_test" "$OUT/drive170.bin" || status=1
+fi
+# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, hq_test, ab14_test, hifi_test, visual_test, azimuth_test and drive_test end with PASS or FAIL;
 # deck_test and levels_test print measurements to read.
 exit $status

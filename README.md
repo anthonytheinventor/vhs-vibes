@@ -70,7 +70,7 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 
 | Control | What it does |
 |---|---|
-| Drive | Preamp soft clipping. 0 % is clean. |
+| Drive | Preamp soft clipping. Reads as the gain into the clipper, 0.0 dB (clean) to +24.1 dB. Below about +3.1 dB it also blends the clean signal with the clipped one. |
 | Tilt | Tilts lows against highs around 800 Hz: left is darker, right is brighter. Reads as what the highs get, -6.0 to +6.0 dB. |
 | Slew | A slew limiter: limits how fast the signal can move, which dulls and smears loud, bright sound like an old or copied tape. Reads as the shortest time left for a swing from silence to full level, from 12 to 1890 µs; off at the bottom. |
 | Comp | One-knob compressor. Past about a third it squashes and brings quiet sound (and noise) up. |
