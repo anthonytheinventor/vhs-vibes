@@ -115,6 +115,17 @@ elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/nrclip_test.cpp" -
 else
   "$OUT/nrclip_test" "$OUT/nrclip170.bin" "$OUT/nrclip170.hash" || status=1
 fi
-# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, hq_test, ab14_test, hifi_test, visual_test, azimuth_test, readout_test and nrclip_test end with PASS or FAIL;
+# Hysteresis (1.8, see hyst_test.cpp): it loads the states saved by 1.6.0, 1.4.0 and 1.7.0 above.
+echo "===== hyst_test ====="
+if ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/hyst_test.cpp" -o "$OUT/hyst_test" 2> "$OUT/hyst_test.log"; then
+  grep -E "error" -A6 "$OUT/hyst_test.log" | head -30
+  echo "FAIL"
+  status=1
+else
+  olds=""
+  for s in state160.bin state140.bin nrclip170.bin; do [ -s "$OUT/$s" ] && olds="$olds $OUT/$s"; done
+  "$OUT/hyst_test" $olds || status=1
+fi
+# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, hq_test, ab14_test, hifi_test, visual_test, azimuth_test, readout_test, nrclip_test and hyst_test end with PASS or FAIL;
 # deck_test and levels_test print measurements to read.
 exit $status

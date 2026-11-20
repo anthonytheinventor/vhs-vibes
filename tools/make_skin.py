@@ -195,10 +195,13 @@ PAGES = [
     {"name": "DECK", "jp": "デッキ", "file": "bg_deck.png", "blocks": [
         ("AGC", "オートゲイン", ["Deck On", "AGC", "AGC Model", None]),
         ("ALIGNMENT", "アライメント", ["Tracking", "Breathing", "Drift", "Azimuth"]),
-        ("SCREEN", "スクリーン", ["Animation", "Visual Vibes", None, None]),
-        ("QUALITY", "高音質", ["HQ", None, "B-Type NR", "<"]),
+        ("GLOBAL", "グローバル", ["Animation", "Visual Vibes", "HQ", None]),
+        # (1.8) two half headers: the linear track's Hysteresis over the left two cells, NR over the right two
+        ([("LINEAR", "リニア", 0, 2), ("NR", "ノイズリダクション", 2, 4)], "", ["Hysteresis", None, "B-Type NR", "<"]),
     ]},
 ]
+# A block's title may be a list of (title, katakana, first cell, end cell) instead: a header of its own over
+# each span of cells (title, katakana and rule each), the first one leaving room for the MPC's Q marker.
 
 # Caption printed above a control (default: the parameter name in capitals).
 CAPTIONS = {
@@ -254,7 +257,9 @@ CAPTION_OVERRIDE = {}              # name -> (caption, colour), used while a mod
 # Controls that are on the page only while MODE_PARAM is on one step (name -> step): the page's background
 # leaves their slot empty, the whole slot (caption, knob seat, value window) is that mode's overlay, and the
 # control itself is valid only on that step, so in the other modes there is nothing to see or touch.
-MODE_ONLY = {"Azimuth": 1}
+MODE_ONLY = {"Azimuth": 1, "Hysteresis": 1}
+# (1.8) A MODE_ONLY control that is not one of the mode's knobs (a switch: Hysteresis) is seen in that mode's
+# caption color as well: its whole slot is the mode's picture too (see mode_has).
 
 # Power dimming (1.8): while a power switch is off, the controls it governs fade to about a third of their
 # brightness (caption, knob seat, value window, knob, read-out, buttons). It is the same kind of swap as
@@ -272,7 +277,7 @@ MODE_ONLY = {"Azimuth": 1}
 # but Hi-Fi with the Saturator on leaves it idle: the mode's "ignores" dims it then (see MODES).
 DIM_POWER = True
 DIM_GROUPS = {   # power switch -> the controls it governs (Azimuth is on the DECK page, but the Saturator's)
-    "Saturator": {"Split", "Lows", "Lo Sat", "Highs", "Hi Sat", "Sat Type", "Azimuth"},
+    "Saturator": {"Split", "Lows", "Lo Sat", "Highs", "Hi Sat", "Sat Type", "Azimuth", "Hysteresis"},
     "Wobble On": {"Warp", "Warp Rate", "Shape", "Flutter", "Flut Rate", "Scrape",
                   "Wow", "Wow Rate", "Flutter 2", "Flut2 Rate"},
     "Noise On": {"Hum", "Buzz", "Head Buzz", "Hiss", "Crackle", "Noise", "Noise Pos", "Whistle"},
@@ -303,12 +308,17 @@ def mode_at(step):
     return None
 
 
+def mode_has(m, name):
+    """True if mode m draws this control its own way: one of its knobs, or a control seen only in its step."""
+    return m is not None and (name in m["knobs"] or MODE_ONLY.get(name) == m["step"])
+
+
 def knob_runs(name, steps):
     """[(first step, last step, mode or None)]: the switch steps split into runs that draw this knob alike."""
     runs = []
     for s in range(steps):
         m = mode_at(s)
-        m = m if m is not None and name in m["knobs"] else None
+        m = m if mode_has(m, name) else None
         if runs and runs[-1][2] is m:
             runs[-1] = (runs[-1][0], s, m)
         else:
@@ -421,7 +431,7 @@ def look_at(name, step, switch_on):
     """What the control shows with MODE_PARAM on `step` and the switches as switch_on(name) says:
     (the mode drawn or None, dim)."""
     m = mode_at(step)
-    m = m if m is not None and name in m["knobs"] else None
+    m = m if mode_has(m, name) else None
     need, idle = mode_needs(m, name), mode_ignores(mode_at(step), name)
     if need is not None and not switch_on(need):
         m = None
@@ -446,6 +456,7 @@ SEGMENTS = {
     "AGC Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # the same, beside AGC
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
     "B-Type NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
+    "Hysteresis": ((130, 32), [(5, 28), (5, 66), (5, 104)], ["OFF", "LITE", "FULL"]),   # (1.8) three in a column, as Sat Type
 }
 TOGGLE_SIZE = (88, 44)
 TOGGLE_POS = (26, 50)
@@ -1065,21 +1076,26 @@ def draw_panel(img, page, params):
         used = [c for c in cells if c is not None]
         if not used:
             continue
-        # header: title, katakana, then a fading rule
-        hx = bx + 46        # the MPC draws its "Q" marker in the top-left corner of the selected Q-Link group
-        if title:
-            hx += draw_text(d, (hx, by + 5), title, f_head, (255, 130, 205), 1.0) + 10
-            hx += draw_text(d, (hx, by + 11), jp, f_jp, (130, 225, 240), 1.0) + 10
-        last_used = max(i for i, c in enumerate(cells) if c is not None)
-        end = bx + (last_used + 1) * CELL_W - 10
-        # an untitled block to the right continues this one: the rule runs on across it (and the
-        # untitled block draws none of its own, nor a divider: see below)
-        if continues(page, b + 1):
-            rc = page["blocks"][b + 1][2]
-            end = cell_x(b + 1, 0) + (max(i for i, c in enumerate(rc) if c is not None) + 1) * CELL_W - 10
-        if end > hx + 10 and not continues(page, b):
-            rule = gradient(sc((end - hx, 2)), PINK, CYAN, horizontal=True)
-            img.paste(rule, sc((hx, by + 17)))
+        # header: title, katakana, then a fading rule (1.8: or one of each per span, see PAGES)
+        if isinstance(title, (list, tuple)):
+            heads = [(t, j, bx + (46 if c0 == 0 else 12) + c0 * CELL_W, bx + c1 * CELL_W - 10) for t, j, c0, c1 in title]
+        else:
+            last_used = max(i for i, c in enumerate(cells) if c is not None)
+            end = bx + (last_used + 1) * CELL_W - 10
+            # an untitled block to the right continues this one: the rule runs on across it (and the
+            # untitled block draws none of its own, nor a divider: see below)
+            if continues(page, b + 1):
+                rc = page["blocks"][b + 1][2]
+                end = cell_x(b + 1, 0) + (max(i for i, c in enumerate(rc) if c is not None) + 1) * CELL_W - 10
+            # the MPC draws its "Q" marker in the top-left corner of the selected Q-Link group
+            heads = [(title, jp, bx + 46, end)]
+        for head, kana, hx, end in heads:
+            if head:
+                hx += draw_text(d, (hx, by + 5), head, f_head, (255, 130, 205), 1.0) + 10
+                hx += draw_text(d, (hx, by + 11), kana, f_jp, (130, 225, 240), 1.0) + 10
+            if end > hx + 10 and not continues(page, b):
+                rule = gradient(sc((end - hx, 2)), PINK, CYAN, horizontal=True)
+                img.paste(rule, sc((hx, by + 17)))
         # cells
         for i, name in enumerate(cells):
             if name is None or name == "<":
@@ -1427,7 +1443,7 @@ def build_tui(params):
         children += animation_entries(page, ti + 1, params)
         for m in MODES:
             for b, i, span, name in iter_controls(page):
-                if name in m["knobs"]:
+                if mode_has(m, name):
                     pic = G.obj(("version", 2), ("imageType", "Regular"), ("colour", "0"), ("image", swap_file(name, m)))
                     need = mode_needs(m, name)   # (a takeover: the mode's caption only while its switch is on too)
                     children.append(G.entry("caption %s %s" % (name, m["key"]), "Image", pic,
@@ -1778,11 +1794,14 @@ def main():
         # each mode's captions: the same background painted with them, cut out strip by strip
         alts = {}
         for m in MODES:
-            swaps = [(b, i, span, name) for b, i, span, name in iter_controls(page) if name in m["knobs"]]
+            swaps = [(b, i, span, name) for b, i, span, name in iter_controls(page) if mode_has(m, name)]
             if not swaps:
                 continue
             for name, cap in m["knobs"].items():
                 CAPTION_OVERRIDE[name] = (cap or CAPTIONS.get(name, name.upper()), m["caption"])
+            for name in MODE_ONLY:   # (1.8) a switch seen only in this mode: its caption in the mode's color
+                if MODE_ONLY[name] == m["step"] and name not in m["knobs"]:
+                    CAPTION_OVERRIDE[name] = (CAPTIONS.get(name, name.upper()), m["caption"])
             alt = alts[m["key"]] = make_background(page, n, params)
             CAPTION_OVERRIDE.clear()
             for b, i, span, name in swaps:

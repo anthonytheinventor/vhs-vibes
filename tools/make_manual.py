@@ -268,7 +268,8 @@ def load():
         blocks, title, jp, number = [], "", "", 0
         for b, (t, j, cells) in enumerate(page["blocks"]):
             if t:
-                title, jp = t, j
+                # (1.8) a block with a header per span (see make_skin.PAGES): its titles together
+                title, jp = (" / ".join(h[0] for h in t), " / ".join(h[1] for h in t)) if isinstance(t, (list, tuple)) else (t, j)
             ctrls = []
             for i, name in enumerate(cells):
                 if name is None or name == "<":

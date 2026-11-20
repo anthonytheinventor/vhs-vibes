@@ -14,12 +14,14 @@
 #else
 #include "../src/VHSVibes.cpp"
 #endif
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float) { return opcode == audioMasterVersion ? 2400 : 0; }
+static const int k170Params = 65;   // 1.7.0's parameters; 1.8 adds Hysteresis after them
 #ifndef WRITE170
 // 1.8 saves one thing more after the parameters (the B-Type NR clip level, see nrclip_test.cpp): eight
 // bytes of extra state, which 1.7.0 passes over. They are checked and taken off before the comparison.
@@ -30,6 +32,17 @@ static std::vector<uint8_t> withoutExtra(std::vector<uint8_t> s)
     if (s.size() < 12 || std::memcmp(s.data() + s.size() - 12, tail, 12) != 0) { ++g_extraWrong; return s; }
     s.resize(s.size() - 8);
     std::memset(s.data() + s.size() - 4, 0, 4);
+    // and the parameters added after 1.7.0 (Hysteresis, 1.8), which come last: 1.7.0 has the first 65
+    uint32_t n = 0;
+    std::memcpy(&n, s.data() + 8, 4);
+    size_t pos = 12;
+    for (uint32_t k = 0; k < n && k < (uint32_t)k170Params && pos < s.size(); ++k) pos += 1 + (size_t)s[pos] + 8;
+    if (n > (uint32_t)k170Params && pos + 4 <= s.size())
+    {
+        s.erase(s.begin() + (long)pos, s.end() - 4);
+        n = (uint32_t)k170Params;
+        std::memcpy(s.data() + 8, &n, 4);
+    }
     return s;
 }
 #endif
@@ -75,7 +88,7 @@ static std::vector<uint8_t> record(std::vector<std::vector<uint8_t>>& chunks)
 {
     std::vector<uint8_t> out;
     Fx f;
-    const uint32_t head[] = { (uint32_t)f.p->numParams(), (uint32_t)f.p->numPrograms() };
+    const uint32_t head[] = { (uint32_t)std::min(f.p->numParams(), k170Params), (uint32_t)f.p->numPrograms() };   // (1.7.0's; see withoutExtra)
     put(out, head, sizeof(head));
     auto state = [&] { chunks.push_back(f.chunk()); putS(out, std::string(chunks.back().begin(), chunks.back().end())); };
     for (int i : kWatched)
@@ -121,7 +134,7 @@ static std::string texts()
         f.e->dispatcher(f.e, effSetProgram, 0, prog, nullptr, 0.0f);
         out += "program " + std::to_string(prog) + ":";
         const int type = (int)std::lround(f.p->get(kSatType));
-        for (int i = 0; i < kNumParams; ++i) if (isSetting(i) && !changed(i, type)) out += " " + std::to_string(i) + "=" + f.text(i);
+        for (int i = 0; i < kNumParams && i < k170Params; ++i) if (isSetting(i) && !changed(i, type)) out += " " + std::to_string(i) + "=" + f.text(i);
         out += "\n";
     }
     for (int type : { 1, 2 })

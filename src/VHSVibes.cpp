@@ -154,10 +154,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include "hysteresis_tables.h"   // (1.8) the tape hysteresis recorder's tables (see hysteresis.h)
 
 using namespace mpc::dsp;
 
@@ -272,6 +275,10 @@ enum ParamIndex
     kAzimuth,      // arc-min the playback head's gap is tilted against the recording, 0 to 60 along the
                    //        square of the knob (see Azimuth). Sat Type = VHS with the Saturator on only.
                    //        Rests at 0, where the stage is not there; 0 in an older state and program.
+    // added in 1.8
+    kHysteresis,   // choice the tape's memory (see hysteresis.h): Off (TapeSat's curve, as before), Lite, Full.
+                   //        Sat Type = VHS with the Saturator on only. Off in a new instance, in an older state
+                   //        and in every program.
     kNumParams
 };
 
@@ -335,6 +342,18 @@ constexpr float kHbDelay            = 1.8851f;                        // the pai
 constexpr float kHqDelay            = kHbDelay + 1.25f - 0.01592f;    // the main section: 3.119
 constexpr float kHqEq[5]            = { 1.024980868f, 0.712512201f, 0.129521390f, 0.732774751f, 0.134239709f };  // b0 b1 b2 a1 a2
 constexpr int   kFadeTicks          = 8;      // control ticks of fade-out before a reset while sound plays (3 ms)
+// (1.8) Hysteresis (see hysteresis.h): how much later the sound is while the recorder is heard, in samples
+// at the session rate, [HQ off, HQ on]. HQ off: the recorder's own 41.5. HQ on: it also takes the place
+// of the saturator's sample of delay (0.5) and adds the pair that takes its result back up (kHbDelay), but
+// its own pair on the way in is HQ's: 41.5 - 0.5 - 1.885 + 1.885 = 41.0 on top of kHqDelay (measured:
+// see tests/hyst_test.cpp). Those are at 44.1 kHz; above it the recorder's element lag grows with the rate
+// (hys::Engine::lagOf), and its lateness with it (hyLateNow). The dry copy follows (whole samples, and a half
+// sample more where it is one), the playback side takes a knob's change that late (in the stage's own
+// samples), and a recorder that starts from rest runs unheard for kHyWarmTicks first (its filters fill).
+constexpr float kHyLate[2]          = { 41.5f, 41.0f };
+constexpr float kHyD0               = 2.95e-5f;   // seconds: the groups' delays' share of that (measured at 48 and 96 kHz, SP, bias right)
+constexpr int   kHyWarmTicks        = 8;
+constexpr float kHyFadeSec          = 0.010f;   // the crossfades: Hysteresis on and off, Lite and Full, SP and EP
 
 // Which values a parameter feeds. A knob move only recomputes its own group in readParams().
 enum Group : uint32_t
@@ -342,7 +361,7 @@ enum Group : uint32_t
     gRamps = 1u << 0, gPreamp = 1u << 1, gWear = 1u << 2, gComp = 1u << 3, gSat = 1u << 4, gHiCut = 1u << 5,
     gWobble = 1u << 6, gCuts = 1u << 7, gNoise = 1u << 8, gChorus = 1u << 9, gMic = 1u << 10, gDeck = 1u << 11,
     gQuality = 1u << 12,   // the HQ switch: not a group to recompute, the whole plugin restarts
-    gNr = 1u << 13, gAz = 1u << 14,
+    gNr = 1u << 13, gAz = 1u << 14, gHyst = 1u << 15,
     gAll = 0xffffffffu
 };
 inline uint32_t groupOf(int param)
@@ -369,7 +388,8 @@ inline uint32_t groupOf(int param)
         case kHq:                                                           return gQuality;
         case kNr:                                                           return gNr;
         case kAzimuth:                                                      return gAz;
-        case kSatType:                                                      return gQuality;   // fade out, restart
+        case kHysteresis:                                                   return gHyst;
+        case kSatType:                                                     return gQuality;   // fade out, restart
         default:                                                            return 0;   // the meters, and Visual Vibes (the picture only)
     }
 }
@@ -843,7 +863,10 @@ struct NoiseRed
     // the sample (h = (e - e1) / 2 either way) or one through (1 + r) / (1 + r z^-1) would follow
     // 1.7.0 more closely, but gave back 4 to 12 dB of the fold-back. (All of this with the old clip
     // level, kNrClip; at 1.8's a steady tone up to 10 kHz and 10 dB over reference level does not reach it.)
-    template <bool adaa = false, bool c18 = false> Stereo decode(Stereo y, Stereo* clipP = nullptr)
+    // (copy, 1.8: the sample loop's copy for Hysteresis has a copy of its own, so that each copy of the
+    // function has one caller: with two, the compiler stopped writing it into the loop, and the loop
+    // without the recorder came out 10 instructions a sample longer)
+    template <bool adaa = false, bool c18 = false, int copy = 0> Stereo decode(Stereo y, Stereo* clipP = nullptr)
     {
         constexpr float clip = c18 ? kNrClip18 : kNrClip;
         // y = x + gain * vB(x), and vB is a straight line in x: solved for x (rec = 1 / (D + off))
@@ -1331,6 +1354,9 @@ struct HalfBand
         return x;
     }
 };
+
+// (1.8) The tape hysteresis recorder, Hysteresis Lite and Full (it uses HalfBand): see hysteresis.h
+#include "hysteresis.h"
 
 // The tape transport: turns "how wrong is the tape speed right now" into a delay time.
 // Speed error = slow wobble (a shaped sine plus slow random drift) + fast wobble (a sine
@@ -2953,6 +2979,8 @@ public:
         }
         // 1.7, after the meters: arc-min, 60 x the square of the knob (skew 0.5), resting at 0 (no stage)
         addParam(floatParam ("azimuth",    "Azimuth",      0.0f, kAzMaxArcMin, 0.0f, "", 1, 0.5f));
+        // 1.8: the tape's memory, Off (TapeSat's curve, as before it existed), Lite or Full
+        addParam(choiceParam("hysteresis", "Hysteresis", {"Off", "Lite", "Full"}, 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -2967,6 +2995,7 @@ public:
         }
 
         addPrograms();
+        hy_.reset(new hys::Stage());   // (1.8) the hysteresis recorder: made here once and never again
 
         // The delay lines have fixed sizes, so they are made here once and never again.
         wf1Delay_.prepare(kTapeDelaySamples);   // the longest delay read is kTapeDelaySamples - 7
@@ -3129,6 +3158,180 @@ private:
     // Out of line: inline in readParams it cost the loop around the sample loop instructions.
     __attribute__((noinline)) void resetTape() { tapeSat_.reset(); tapeWPP_ = splat(0.0f); }
 
+    // ----- (1.8) Hysteresis: the tape hysteresis recorder (hysteresis.h) in Sat Type = VHS ----------------
+    // With Hysteresis on and the Saturator on, the recorder takes the place of TapeSat's curve: TapeSat
+    // still makes the pre-emphasis (without its bias term: see hyTapeSet), the record level, and after
+    // the recorder the de-emphasis, band edge and make-up (hyPlay); the curve's ceiling and its bias tilt
+    // are left out (the recorder makes both effects itself). The Bias knob (Split) sets 25 to 150 % of
+    // correct bias, its "right" 100 %; Hi Sat's speed picks the SP tables below half way, EP from there.
+    // The sound comes kHyLate later (the reported latency and the dry copy follow). Switching Hysteresis
+    // on starts the recorder from rest unheard for kHyWarmTicks, then crossfades from the curve in
+    // kHyFadeSec; off crossfades back. Lite to Full, or SP to EP: the other engine starts from rest unheard,
+    // then a crossfade. A moving Bias knob glides (the whole range in 0.5 s at most) and the tables follow
+    // it every 32 samples (Lite) or 128 (Full). All of it runs only in the sample loop's copy for the
+    // recorder (hyAny_) and in hyTick: with Hysteresis Off the plugin is what it was.
+    int hyLag() const { return hy_->lagN; }
+    // how late the recorder makes the sound (session samples) at this rate and HQ setting, and from it the
+    // dry copy's delay and the playback side's lag
+    void hyLateNow()
+    {
+        hys::Stage& s = *hy_;
+        // (the groups read the field kHyD0 later, in seconds: at a higher rate that is more samples, and the
+        // FIRs, made at 44.1 kHz, take off the same number of samples as there)
+        s.late = kHyLate[hq_ ? 1 : 0] + 0.5f * (float)(hys::Engine::lagOf(sr_) - hys::kLat) - kHyD0 * (sr_ - 44100.0f);
+        s.dInt = (int)std::floor(s.late);
+        s.dHalf = s.late - (float)s.dInt > 0.25f;
+        s.lagN = (int)std::lround(hq_ ? 2.0f * s.late : s.late);
+    }
+    // What the recorder takes from the knobs (after TapeSat::set): its bias, its speed, and while it is in
+    // (hyEmph_) the emphasis without TapeSat's bias term (1 - 0.3 bias: too much bias costing the highs
+    // headroom, which the recorder makes itself). The playback side takes the new values `lag` samples
+    // later (Stage::lag), or at once.
+    __attribute__((noinline)) void hyTapeSet(int lag)
+    {
+        hys::Stage& s = *hy_;
+        const float speed = 0.01f * get(kHiSat);
+        s.bpTo = hys::biasPercent(tapeBias(getNormalised(kSplit)));
+        s.wantEp = speed >= 0.5f ? 1 : 0;
+        if (hyEmph_)
+        {
+            TapeSat& t = tapeSat_;
+            const float sr = nlSr_, fz = 1326.3f * std::pow(3.0f, -speed);   // TapeSat::set's, without the bias
+            const float kz = std::tan(kPi * fz / sr), kp = std::tan(kPi * minf(10.0f * fz, 0.45f * sr) / sr);
+            const float norm = 1.0f / (1.0f + 1.0f / kp);
+            t.b0 = (1.0f + 1.0f / kz) * norm;
+            t.b1 = (1.0f - 1.0f / kz) * norm;
+            t.a1 = (1.0f - 1.0f / kp) * norm;
+            t.invB0 = 1.0f / t.b0;
+        }
+        s.nA1 = tapeSat_.a1; s.nB1 = tapeSat_.b1; s.nInvB0 = tapeSat_.invB0; s.nAEdge = tapeSat_.aEdge; s.nMakeup = tapeSat_.makeup;
+        if (lag > 0) s.lag = lag; else hyPlayNow(s);
+    }
+    void hyTapeRefresh(int lag)
+    {
+        const auto pct = [this](int i) { return get(i) * 0.01f; };
+        tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(getNormalised(kSplit)));
+        hyTapeSet(lag);
+    }
+    // The recorder from rest: engine 0 for the switch's engine and the speed, the tables at the bias now.
+    // f1: in at once (no crossfade from the curve: nothing is heard yet); hold: control ticks the
+    // Saturator waits (it is coming in from silence) while the recorder fills.
+    __attribute__((noinline)) void hyStart(bool f1, int hold)
+    {
+        hys::Stage& s = *hy_;
+        s.clear();
+        hyLateNow();
+        hyEmph_ = true;
+        hyTapeRefresh(0);   // (the knobs' values for it; the curve is all that is heard now: the two sides change together)
+        for (Stereo& v : s.dl) v = splat(0.0f);
+        s.thX = s.thY = splat(0.0f);
+        s.bpStep = 125.0f * (float)kCtrl / (0.5f * sr_);
+        s.bpNow = s.bpTo;
+        s.cur = 0; s.run[1] = false; s.xe = s.xeInc = 0.0f;
+        s.eng[0].configure(hyMode_ == 2, s.wantEp, sr_);
+        s.eng[0].setBias(s.bpNow);
+        s.run[0] = true; s.warm[0] = kHyWarmTicks; s.tick[0] = 0;
+        s.feeding = true;
+        s.f = f1 ? 1.0f : 0.0f; s.fTo = 1.0f; s.fInc = 0.0f;
+        hyHold_ = hold;
+    }
+    __attribute__((noinline)) void hyStop()
+    {
+        hys::Stage& s = *hy_;
+        s.run[0] = s.run[1] = false;
+        s.feeding = false;
+        s.f = s.fTo = s.fInc = 0.0f;
+        s.xe = s.xeInc = 0.0f;
+        hyHold_ = 0;
+        if (hyEmph_) { hyEmph_ = false; if (tape_) hyTapeRefresh(0); }
+    }
+    // after readParams: whether the recorder's copy of the sample loop runs
+    __attribute__((noinline)) void hyUpdate()
+    {
+        const hys::Stage& s = *hy_;
+        if (!tape_) { if (s.run[0] || s.run[1] || hyEmph_) hyStop(); hyAny_ = false; return; }
+        hyAny_ = s.run[0] || s.run[1] || (hyMode_ != 0 && rampT_[rSat] > 0.0f);
+    }
+    // at a reset (after readParams): from rest, and in at once if it is heard (the output is shut meanwhile)
+    void hyReset()
+    {
+        hyStop();
+        if (tape_ && hyMode_ != 0 && rampT_[rSat] > 0.0f) hyStart(true, 0);
+        hyUpdate();
+    }
+    // Once per control tick while hyAny_: the bias glide and the tables, the recorder in and out, the
+    // engine and speed crossfades, the Saturator's wait, the latency.
+    __attribute__((noinline)) void hyTick()
+    {
+        hys::Stage& s = *hy_;
+        const float xfStep = 1.0f / (kHyFadeSec * sr_);
+        // the bias: towards the knob, the whole range in 0.5 s at most
+        if (s.bpNow != s.bpTo)
+        {
+            const float d = s.bpTo - s.bpNow;
+            s.bpNow = std::fabs(d) < 0.01f ? s.bpTo : s.bpNow + clamp(0.2f * d, -s.bpStep, s.bpStep);
+        }
+        // an engine crossfade that has ended
+        if (s.run[1 - s.cur] && s.warm[1 - s.cur] == 0 && s.xe >= 1.0f) { s.run[s.cur] = false; s.cur = 1 - s.cur; s.xe = 0.0f; }
+        for (int e = 0; e < 2; ++e)
+        {
+            if (!s.run[e]) continue;
+            if (s.warm[e] > 0) --s.warm[e];
+            ++s.tick[e];
+            if (s.eng[e].bp != s.bpNow && s.tick[e] >= (s.eng[e].slope ? 8 : 2)) { s.tick[e] = 0; s.eng[e].setBias(s.bpNow); }
+        }
+        const bool want = hyMode_ != 0;
+        const bool satIn = rampT_[rSat] > 0.0f || ramp_[rSat].v > 0.0f;   // the Saturator is heard, or fading
+        if (!s.run[s.cur])
+        {
+            if (want && rampT_[rSat] > 0.0f)
+            {
+                // from silence (the Saturator coming in): in at once while it waits; else after the warm-up, by a crossfade
+                const bool silent = ramp_[rSat].v == 0.0f && rampS_[rSat] == 0.0f;
+                hyStart(silent, silent ? kHyWarmTicks : 0);
+            }
+        }
+        else if (!satIn) hyStop();   // the Saturator is off and silent: nothing of the tape is heard
+        else if (!want)
+        {
+            s.fTo = 0.0f;
+            if (s.f <= 0.0f) hyStop();
+            else if (s.fInc >= 0.0f) s.fInc = -xfStep;
+        }
+        else
+        {
+            s.fTo = 1.0f;
+            if (s.warm[s.cur] == 0 && s.f < 1.0f && s.fInc <= 0.0f) s.fInc = xfStep;
+            // a new engine or speed: from rest, unheard, then a crossfade (or in place while nothing of it is heard)
+            const int slope = hyMode_ == 2 ? 1 : 0, o = 1 - s.cur;
+            hys::Engine& c = s.eng[s.cur];
+            if ((c.slope != slope || c.ep != s.wantEp) && !s.run[o])
+            {
+                if (s.f <= 0.0f && s.fInc <= 0.0f)
+                {
+                    c.configure(slope, s.wantEp, sr_); c.setBias(s.bpNow); s.warm[s.cur] = kHyWarmTicks; s.tick[s.cur] = 0;
+                    s.fInc = 0.0f;
+                }
+                else
+                {
+                    hys::Engine& n = s.eng[o];
+                    n.configure(slope, s.wantEp, sr_); n.setBias(s.bpNow);
+                    s.run[o] = true; s.warm[o] = kHyWarmTicks; s.tick[o] = 0;
+                    s.xe = 0.0f; s.xeInc = xfStep;
+                }
+            }
+        }
+        if (hyHold_ > 0) { --hyHold_; rampS_[rSat] = 0.0f; ramp_[rSat].snap(0.0f); }
+        s.feeding = s.run[0] || s.run[1];
+        // heard (or coming in): the sound is that much later, and the host is told so
+        if (s.feeding && s.fTo == 1.0f && rampT_[rSat] > 0.0f)
+        {
+            const float micLate = micHq_ && rampT_[rMic] > 0.0f ? kHbDelay : 0.0f;
+            wantLatency_.store((int)(wf1_.base + wf2_.base + (hq_ ? kHqDelay : 0.0f) + micLate + s.late + 0.5f), std::memory_order_relaxed);
+        }
+        hyAny_ = tape_ && (s.feeding || (want && rampT_[rSat] > 0.0f));
+    }
+
     // Clears every memory and jumps all smoothed values to the current settings.
     void doReset()
     {
@@ -3180,6 +3383,7 @@ private:
         for (int i = 0; i < kNumCtl; ++i) cur_[i] = tgt_[i];
         for (int i = 0; i < kNumRamp; ++i) { rampS_[i] = rampT_[i]; ramp_[i].snap(rampT_[i]); }
         ctlBusy_ = rampBusy_ = rampMoving_ = true;   // (see controlTick; the fade-in below moves rOut)
+        hyReset();   // (1.8) the hysteresis recorder from rest, in at once if it is heard
 
         // Every delay starts at the resting length its settings need, so nothing glides (and
         // bends the pitch) after a program change.
@@ -3207,6 +3411,7 @@ private:
         ramp_[rOut].snap(0.0f);
         fadeHold_ = (int)((wf1_.base + wf2_.base + (choActive_ ? choBase_ : 0.0f)) * kCtrlInv) + 1;
         if (micRun_ && !micSimple_) fadeHold_ += micHoldFor();   // the model starts from rest too: it settles unheard (see controlTick)
+        if (hyAny_) fadeHold_ += kHyWarmTicks;                  // (1.8) and so does the hysteresis recorder
         // The chorus also swings: on the first tick one side's delay moves up to its depth (the
         // one controlTick gives it) further back, and until the sound has got there that side
         // would come in with a step in the middle of the fade-in. So the output waits those few
@@ -3238,16 +3443,16 @@ private:
     // The stages that distort: preamp clip, Slew, the compressor with the clip on its boost,
     // and the 2-band saturator. Once per sample, or twice per sample in HQ (their per-sample
     // values are then set for the doubled rate: see setQuality, slewStep_, splitCoeff_).
-    __attribute__((always_inline)) Stereo shape(Stereo x, float satMix)
+    template <bool hy = false> __attribute__((always_inline)) Stereo shape(Stereo x, float satMix)
     {
         if (driveOn_) x = driveSat(x, cur_[cDrvG], cur_[cDrvMk], cur_[cDrvMix]);
-        return shapeRest<false>(x, satMix);
+        return shapeRest<false, hy>(x, satMix);
     }
     // HQ: the stages run at twice the sample rate, so what they add above 22 kHz is filtered off
     // instead of folding back down into the sound. The NR encoder comes first, in its place in the
     // chain: its overshoot clipper distorts too (it is prepared for this rate in setQuality).
     // (vhs: Sat Type = VHS, its own copy of the sample loop: see runFrames and tape2)
-    template <bool vhs, bool c18> __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
+    template <bool vhs, bool c18, bool hy = false> __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
     {
         Stereo a, b;
         hbUp_.up(x, a, b);
@@ -3257,7 +3462,7 @@ private:
             a = nrEnc_.encode<true, c18>(a, nrEncMix_, &nrClipP_);
             b = nrEnc_.encode<true, c18>(b, nrEncMix_, &nrClipP_);
         }
-        shape2<vhs>(a, b, satMix);
+        shape2<vhs, hy>(a, b, satMix);
         return hqEq_.process(hbDown_.down(a, b));
     }
     // The dry copy with HQ: what the HQ section does to a sound that nothing clips, so that the two
@@ -3279,7 +3484,7 @@ private:
     // between its ends. With the clipper off the sound is kHqD itself: the stage is 1.5 samples late
     // always (see kHqDelay). Every stage after it keeps its order: all of a, then all of b.
     // (vhs: Sat Type = VHS, see tape2)
-    template <bool vhs> __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
+    template <bool vhs, bool hy = false> __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
     {
         const Quad x = quad(a, b), x1 = quad(drvX_, a), x2 = quad(drvX2_, drvX_), x3 = quad(drvX3_, drvX2_);
         drvX3_ = drvX_; drvX2_ = a; drvX_ = b;
@@ -3290,7 +3495,8 @@ private:
             const Quad d = y - 0.5f * (x1 + x2);
             y += (softClipMean((x1 + d) * g, (x2 + d) * g) * mk - y) * mx;
         }
-        if constexpr (vhs) if (satMix > 0.0f) { tape2(a, b, y, satMix); return; }
+        if constexpr (hy) { if (satMix > 0.0f || hy_->feeding) { tape2Hy(a, b, y, satMix); return; } }   // (1.8, see tape2Hy)
+        else if constexpr (vhs) if (satMix > 0.0f) { tape2(a, b, y, satMix); return; }
         a = shapeRest<true>(lo2(y), satMix);
         if (__builtin_expect(slewCOn_, 0)) a += slewTake(satMix);
         b = shapeRest<true>(hi2(y), satMix);
@@ -3314,6 +3520,99 @@ private:
         if (hasA) a += ta;
         b = tapeRest(xb, azRun_ ? tapeSat_.play(az_.process(rb)) : tapeSat_.play(rb), satMix);
         if (hasB) b += tb;
+    }
+    // (1.8) tape2 with the hysteresis recorder in (Hysteresis Lite or Full: hy_). TapeSat's curve still
+    // makes its means (record2: the emphasis, and the curve for the fades), and the recorder takes the
+    // pre-emphasized pair at the doubled rate as it is, so it runs in this section without a rate change
+    // of its own on the way in: it goes down to the session rate per group for its playback filters (they
+    // are designed at 44.1 kHz) and comes back up for the playback side here (Stage::run2). Every value
+    // up to the recorder is what tape2 gives.
+    __attribute__((always_inline)) void tape2Hy(Stereo& a, Stereo& b, Quad y, float satMix)
+    {
+        const Stereo xa = shapePre<true>(lo2(y));
+        Stereo ta = splat(0.0f), tb = splat(0.0f);
+        const bool hasA = __builtin_expect(slewCOn_, 0);
+        if (hasA) ta = slewTake(satMix);
+        const Stereo xb = shapePre<true>(hi2(y));
+        const bool hasB = __builtin_expect(slewCOn_, 0);
+        if (hasB) tb = slewTake(satMix);
+        Stereo ra, rb;
+        tapeSat_.record2(xa, xb, ra, rb, tapeWPP_);   // (leaves the pre-emphasized pair in tapeWPP_ and wP)
+        hys::Stage& s = *hy_;
+        if (s.feeding)
+        {
+            Stereo ya, yb;
+            s.run2(tapeWPP_ * hys::kFieldPerUnit, tapeSat_.wP * hys::kFieldPerUnit, ya, yb);
+            hyStepF(s);
+            ra = hyBlend(s, ra, ya * hys::kInvField);
+            rb = hyBlend(s, rb, yb * hys::kInvField);
+        }
+        a = tapeRest(xa, hyPlay(azRun_ ? az_.process(ra) : ra), satMix);
+        if (hasA) a += ta;
+        b = tapeRest(xb, hyPlay(azRun_ ? az_.process(rb) : rb), satMix);
+        if (hasB) b += tb;
+    }
+    // (1.8) With HQ off: TapeSat's record, then the recorder at twice the rate (Stage::run1), the
+    // crossfade between the two while Hysteresis is switched, Azimuth and the playback side.
+    __attribute__((always_inline)) Stereo hyTape(Stereo x)
+    {
+        const Stereo old = tapeSat_.record(x);   // (leaves the pre-emphasized sample in wP)
+        hys::Stage& s = *hy_;
+        Stereo r = old;
+        if (s.feeding)
+        {
+            const Stereo h = s.run1(tapeSat_.wP * hys::kFieldPerUnit) * hys::kInvField;
+            hyStepF(s);
+            r = hyBlend(s, old, h);
+        }
+        return hyPlay(azRun_ ? az_.process(r) : r);
+    }
+    // the share of the recorder against TapeSat's curve moves by fInc a sample while Hysteresis switches
+    static __attribute__((always_inline)) void hyStepF(hys::Stage& s)
+    {
+        if (__builtin_expect(s.fInc != 0.0f, 0))
+        {
+            s.f += s.fInc;
+            if (s.f >= 1.0f) { s.f = 1.0f; s.fInc = 0.0f; }
+            else if (s.f <= 0.0f) { s.f = 0.0f; s.fInc = 0.0f; }
+        }
+    }
+    static __attribute__((always_inline)) Stereo hyBlend(const hys::Stage& s, Stereo old, Stereo h)
+    {
+        return s.f >= 1.0f ? h : s.f <= 0.0f ? old : old + (h - old) * s.f;
+    }
+    // TapeSat::play with the recorder in: the de-emphasis, band edge and make-up take a change of Rec
+    // Level or speed as late as the recorder delivers what was recorded with it (Stage::lag), and the
+    // bias tilt (gBias) goes as the recorder comes in (it makes the bias's effects itself). With the
+    // recorder out and nothing pending it is TapeSat::play, operation for operation.
+    __attribute__((always_inline)) Stereo hyPlay(Stereo v)
+    {
+        hys::Stage& s = *hy_;
+        if (__builtin_expect(s.lag > 0, 0) && --s.lag == 0) hyPlayNow(s);
+        TapeSat& t = tapeSat_;
+        const Stereo y = (v + s.pA1 * t.vP - s.pB1 * t.yP) * s.pInvB0;
+        t.vP = v; t.yP = y;
+        t.edge += s.pAEdge * (y * s.pMakeup - t.edge);
+        t.biasLp += t.aBias * (t.edge - t.biasLp);
+        const float g = s.f <= 0.0f ? t.gBias : t.gBias + (1.0f - t.gBias) * s.f;
+        return t.biasLp + (t.edge - t.biasLp) * g;
+    }
+    static void hyPlayNow(hys::Stage& s) { s.pA1 = s.nA1; s.pB1 = s.nB1; s.pInvB0 = s.nInvB0; s.pAEdge = s.nAEdge; s.pMakeup = s.nMakeup; s.lag = 0; }
+    // The dry copy for Mix while the recorder is heard: as late as it is (whole samples, and where it is
+    // one, half a sample more through a first-order allpass), blended in as far as the recorder is in.
+    __attribute__((always_inline)) Stereo hyDry(Stereo x, float satMix)
+    {
+        hys::Stage& s = *hy_;
+        s.dl[s.dw & 127] = x;
+        Stereo d = s.dl[(s.dw - s.dInt) & 127];
+        ++s.dw;
+        if (s.dHalf)
+        {
+            const Stereo y = (1.0f / 3.0f) * (d - s.thY) + s.thX;   // (1/3 + z^-1) / (1 + z^-1 / 3): half a sample at low frequencies
+            s.thX = d; s.thY = y; d = y;
+        }
+        const float w = s.f * satMix;
+        return w > 0.0f ? x + (d - x) * w : x;
     }
     // HQ's slew limiter (1.8). The plain one (in shapeRest) turns direction only on a sample: driven
     // hard, its triangle's corners land on the sample grid, each up to a whole step from where they
@@ -3404,10 +3703,10 @@ private:
         return c;
     }
     // shape() after the preamp clipper (hq: at the doubled rate, see shape2).
-    template <bool hq> __attribute__((always_inline)) Stereo shapeRest(Stereo x, float satMix)
+    template <bool hq, bool hy = false> __attribute__((always_inline)) Stereo shapeRest(Stereo x, float satMix)
     {
         x = shapePre<hq>(x);
-        return shapeSat<hq>(x, satMix);
+        return shapeSat<hq, hy>(x, satMix);
     }
     // HQ, VHS: what follows the tape curve (y: the tape's output for x, its input)
     __attribute__((always_inline)) Stereo tapeRest(Stereo x, Stereo y, float satMix)
@@ -3447,8 +3746,23 @@ private:
         return x;
     }
     // ... and its second: the saturator's place
-    template <bool hq> __attribute__((always_inline)) Stereo shapeSat(Stereo x, float satMix)
+    template <bool hq, bool hy = false> __attribute__((always_inline)) Stereo shapeSat(Stereo x, float satMix)
     {
+        // (1.8) Sat Type = VHS with the hysteresis recorder in, HQ off (hy: tape_ holds): see hyTape. It is
+        // fed while it starts, before the Saturator fades in.
+        if constexpr (hy && !hq)
+        {
+            if (satMix > 0.0f || hy_->feeding)
+            {
+                const Stereo y = hyTape(x);
+                if (satMix > 0.0f)
+                {
+                    splitLp_ += splitCoeff_ * (y - splitLp_);
+                    x += (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - x) * satMix;
+                }
+            }
+            return x;
+        }
         // ----- 2-band saturator ------------------------------------------
         if constexpr (hq)
         {
@@ -3570,7 +3884,9 @@ public:
     // (1.8) c18: the B-Type NR clip level of 1.8 (see kNrClip18), a copy of each: read from memory
     // in one loop, the level cost 1 to 19 instructions a sample, also where NR is off.
     // Returns the sum of the input (see the end of process()).
-    template <bool hq, bool vhs = false, bool c18 = false> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
+    // (1.8) hy: Sat Type = VHS with the hysteresis recorder in or on its way in or out (hyAny_): a copy of
+    // its own, so that with Hysteresis Off every other copy is the one it was.
+    template <bool hq, bool vhs = false, bool c18 = false, bool hy = false> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
     {
         Stereo inSum = splat(0.0f);
         for (int i = 0; i < frames; ++i)
@@ -3600,9 +3916,11 @@ public:
             // kept for Mix below 100 %, lined up with the tape path: the same phase shift as HQ's
             // half-band pair, and as the mic's own pair as far as that mic is heard
             float dryLen = 0.0f;
+            Stereo xd = x;
+            if constexpr (hy) xd = hyDry(x, satMix);   // (1.8) as late as the recorder, while it is heard
             if (dryActive_)
             {
-                Stereo d = hq ? hqDry(x) : x;
+                Stereo d = hq ? hqDry(xd) : xd;
                 if (micHq_ && micRun_) d += (hbMicDry_.trip(d) - d) * micMix;
                 dryDelay_.write(d);
                 dryLen = dryD_.next();
@@ -3734,8 +4052,8 @@ public:
                 }
             }
             // ----- drive, wear, compressor, saturator: the stages that distort ----
-            if constexpr (hq) x = hqShape<vhs, c18>(x, nrEnc, satMix);
-            else x = shape(x, satMix);
+            if constexpr (hq) x = hqShape<vhs, c18, hy>(x, nrEnc, satMix);
+            else x = shape<hy>(x, satMix);
 
             // ----- 4-pole high cut -------------------------------------------
             x = lpfB_.process(lpfA_.process(x));
@@ -3842,8 +4160,8 @@ public:
             {
                 if (nrDecSeed_) { nrDec_.seed(x); nrDecSeed_ = false; nrDecP_ = splat(0.0f); }
                 Stereo plain;
-                if constexpr (hq) plain = nrDec_.decode<true, c18>(x, &nrDecP_);
-                else plain = nrDec_.decode<false, c18>(x);
+                if constexpr (hq) plain = nrDec_.decode<true, c18, hy ? 1 : 0>(x, &nrDecP_);
+                else plain = nrDec_.decode<false, c18, hy ? 1 : 0>(x);
                 if (nrDecMix_ == 1.0f && nrDecOn_) x = plain;
                 else
                 {
@@ -3958,7 +4276,13 @@ public:
 
         // (1.8) The B-Type NR clip level picks its own copy of the sample loop (see kNrClip18): with the
         // old one the loop is the one it was, to the instruction; 1.8's costs the same or less.
-        const Stereo inSum = nrClip18On_
+        // (1.8) The hysteresis recorder in, or on its way in or out: its own copies (hyAny_ holds tape_ too).
+        const Stereo inSum = __builtin_expect(hyAny_, 0)
+                           ? (nrClip18On_ ? (!hq_ ? runFrames<false, false, true, true>(ctx.numFrames, inL, inR, outL, outR)
+                                                  : runFrames<true, true, true, true>(ctx.numFrames, inL, inR, outL, outR))
+                                          : (!hq_ ? runFrames<false, false, false, true>(ctx.numFrames, inL, inR, outL, outR)
+                                                  : runFrames<true, true, false, true>(ctx.numFrames, inL, inR, outL, outR)))
+                           : nrClip18On_
                            ? (!hq_ ? runFrames<false, false, true>(ctx.numFrames, inL, inR, outL, outR)
                               : tape_ ? runFrames<true, true, true>(ctx.numFrames, inL, inR, outL, outR)
                                       : runFrames<true, false, true>(ctx.numFrames, inL, inR, outL, outR))
@@ -4255,6 +4579,7 @@ private:
                 // halves of the result around 1 kHz.
                 tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(getNormalised(kSplit)));
                 splitCoeff_ = lpCoeff(1000.0f, nlSr_);
+                if (__builtin_expect(hyEmph_ || hyAny_, 0)) hyTapeSet(hyEmph_ ? hyLag() : 0);   // (1.8) what the hysteresis recorder takes from the three knobs
             }
             else if (hifiType_) splitCoeff_ = lpCoeff(1000.0f, nlSr_);   // Hi-Fi: Lows and Highs around 1 kHz, as in VHS mode
             else splitCoeff_ = lpCoeff(get(kSplit), nlSr_);   // the 2-band crossover
@@ -4364,6 +4689,9 @@ private:
             nrEncRun_ = enc || nrEncMix_ > 0.0f; nrDecRun_ = dec || nrDecMix_ > 0.0f;
         }
         if (hifiType_ && (groups & (gRamps | gSat | gNoise | gDeck))) setHiFi();
+        // (1.8) Hysteresis: the switch, and whether the recorder's copy of the sample loop is needed
+        if (groups & gHyst) hyMode_ = getInt(kHysteresis);
+        if ((groups & (gRamps | gSat | gHyst)) && (hyMode_ != 0 || hyAny_)) hyUpdate();   // (Off and out: nothing to do)
     }
 
     // The knobs, as the Hi-Fi path reads them. Lo Sat, Hi Sat and Split: Rec Level, Carrier, Cal.
@@ -4618,6 +4946,7 @@ private:
         if (micWant && !micRun_) { micRun_ = true; if (!micSimple_) { resetMic(); micHold_ = micHoldFor(); } }
         else if (!micWant && ramp_[rMic].v == 0.0f) micRun_ = false;
         if (micHold_ > 0) { --micHold_; rampS_[rMic] = 0.0f; ramp_[rMic].snap(0.0f); }
+        if (__builtin_expect(hyAny_, 0)) hyTick();   // (1.8) Hysteresis: see there
         if (choActive_)
         {
             // L and R LFOs up to half a cycle apart. A jump of Cho Delay is followed at a
@@ -5326,8 +5655,12 @@ private:
 
     float sr_ = 0.0f;
     int   ctrlCount_ = 0;
-    float lastNorm_[kNumParams] = {};   // parameter values readParams() last saw
-    int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 turns per minute, shown in Hz (see formatValue)
+    // (1.8) lastNorm_ and units_ (one entry per parameter) are the last members now; their room here is
+    // kept, as 1.7's 65 entries each, so that every member after it keeps its place: with Hysteresis
+    // appended they grew, the members after them moved, and the sample loop came out 5 instructions a
+    // sample longer (32-bit ARM build, counted).
+    static constexpr int kParams17 = 65;
+    [[maybe_unused]] char paramsRoom_[kParams17 * (sizeof(float) + sizeof(int))] = {};
 
     float tgt_[kNumCtl] = {}, cur_[kNumCtl] = {};
     float rampT_[kNumRamp] = {}, rampS_[kNumRamp] = {};
@@ -5484,6 +5817,18 @@ private:
     // (which copy of the sample loop runs, see process). Last for the same reason.
     std::atomic<bool> nrClip18_{true};
     bool nrClip18On_ = true;
+
+    // (1.8) Hysteresis (see hysteresis.h and hyTick), last for the same reason. The recorder itself (its
+    // tables take 200 KB) lives on the heap, made once in the constructor.
+    std::unique_ptr<hys::Stage> hy_;
+    int   hyMode_ = 0;          // the Hysteresis switch: 0 Off, 1 Lite, 2 Full
+    bool  hyAny_ = false;       // the sample loop's copy with the recorder runs (see process)
+    bool  hyEmph_ = false;      // the tape's emphasis is the recorder's (no bias in it: see hyTapeSet)
+    int   hyHold_ = 0;          // control ticks the Saturator waits while the recorder starts from rest
+
+    // (see paramsRoom_)
+    float lastNorm_[kNumParams] = {};   // parameter values readParams() last saw
+    int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 turns per minute, shown in Hz (see formatValue)
 };
 
 // (1.8) Whether a saved state was cut short inside the part after the parameters (see

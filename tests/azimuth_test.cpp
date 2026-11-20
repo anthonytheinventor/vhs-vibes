@@ -200,7 +200,7 @@ int main(int argc, char** argv)
         }
         const mpc::Param& p = fx.plug()->param(kAzimuth);
         check(ok, "0', 3.8', 9.6', 15', 34', 60' along the knob (60' x the knob squared)");
-        check(kAzimuth == 64 && kNumParams == 65 && p.id == "azimuth" && p.name == "Azimuth" && p.def == 0.0f && isSetting(kAzimuth)
+        check(kAzimuth == 64 && kNumParams == 66 && p.id == "azimuth" && p.name == "Azimuth" && p.def == 0.0f && isSetting(kAzimuth)
               && !isSetting(kVisHaze) && groupOf(kAzimuth) == gAz && fx.e->dispatcher(fx.e, effCanBeAutomated, kAzimuth, 0, nullptr, 0.0f) == 1,
               "number 64, after the meters: azimuth, \"Azimuth\", resting at 0, a setting, automatable");
     }
