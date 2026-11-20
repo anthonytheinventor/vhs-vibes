@@ -328,7 +328,7 @@ def load():
         c["default"] = p["display"]
         if p["kind"] == "bool":
             c["kind"], c["range"] = "switch", "Off / On"
-        elif p["kind"] == "choice":
+        elif p["kind"] == "choice" and name in mk.SEGMENTS:    # (Comp reads in whole dBFS steps: a knob)
             built = list(p["choices"])
             src = src_choices.get(name)
             if src and src != built:
