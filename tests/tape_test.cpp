@@ -274,7 +274,7 @@ int main()
             rd.set(kHiSat, 35); rd.set(kSplit, 8000); rd.set(kLoSat, 0);
             const std::string d2 = shown(kLoSat) + " | " + shown(kHiSat) + " | " + shown(kSplit);
             std::printf("   Lo Sat | Hi Sat | Split read: Simple \"%s\"; VHS \"%s\", \"%s\", \"%s\"\n", a.c_str(), b.c_str(), c.c_str(), d2.c_str());
-            check(a == "56 % | 0 % | 2.5 kHz", "Simple: per cent and Hz, as before");
+            check(a == "+11.5 dB | 0.0 dB | 2.5 kHz", "Simple: the gain into each band's clipper (1.8, see readout_test.cpp), and Hz");
             check(b == "0.0 dB | SP | right", "VHS at the deck's reference settings: 0.0 dB, SP, right");
             check(c == "+8.0 dB | EP | -100 %" && d2 == "-10.0 dB | 23 mm/s | +100 %", "VHS at the ends: record level in dB, speed in mm/s between the named ones, bias signed");
             rd.set(kHiSat, 63); const std::string lp = shown(kHiSat);

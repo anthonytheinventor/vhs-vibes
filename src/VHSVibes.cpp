@@ -361,6 +361,10 @@ inline float lfoSin(float turns)
 // is turned up; quieter material comes up, louder material is held down.
 constexpr float kRefLevel = 0.4f;   // -8 dBFS
 constexpr float kDriveExtraGain = 15.0f;   // Drive: gain into the preamp clipper 1 + 15 a^2 (setDrive; read out in dB)
+// The other knobs whose read-out (1.8) is worked out from the same figures the sound uses:
+constexpr float kSatExtraGain = 9.0f;      // Lo Sat, Hi Sat (Simple): gain into each band's clipper 1 + 9 a^2
+constexpr float kCompRangeDb = 36.0f;      // Comp: threshold 0 to -36 dBFS (10^(-1.8 a))
+constexpr float kNoiseMaster = 4.0f;       // Noise: every noise level times 4 n^2 (x1 at 50 %, +12 dB at 100 %)
 
 // ---------------------------------------------------------------------------
 // Stereo: left and right in one two-float vector. +, -, * work on both channels at once
@@ -3287,6 +3291,41 @@ public:
             out = buf;
             return true;
         }
+        // Lo Sat and Hi Sat with Sat Type on Simple (1.8, as Drive): the gain into the band's clipper,
+        // 1 + 9 a^2. 0.0 dB at 0 %, +20.0 dB at the top. (VHS and Hi-Fi have their own, above.)
+        if (index == kLoSat || index == kHiSat)
+        {
+            const float a = 0.01f * v;
+            const double dB = 20.0 * std::log10(1.0 + (double)(kSatExtraGain * a * a));
+            if (std::fabs(dB) < 0.05) std::snprintf(buf, sizeof(buf), "0.0 dB");
+            else std::snprintf(buf, sizeof(buf), "%+.1f dB", dB);
+            out = buf;
+            return true;
+        }
+        // Comp (1.8): its threshold, -36 a dBFS (ratio 4:1 throughout). At 0 % it is at full scale,
+        // where only overs are still compressed: "0 dBFS", not "off".
+        if (index == kComp)
+        {
+            const long dB = std::lround(-(double)kCompRangeDb * 0.01 * (double)v);
+            std::snprintf(buf, sizeof(buf), "%ld dBFS", dB);
+            out = buf;
+            return true;
+        }
+        // Noise (1.8): what every noise level gets, against the knob's 50 %: 20 log10(4 n^2).
+        // It reads the same with NOISE's power off, as every knob does.
+        if (index == kNoise)
+        {
+            const double g = (double)kNoiseMaster * sq(0.01 * (double)v);
+            if (g <= 0.0) std::snprintf(buf, sizeof(buf), "off");
+            else
+            {
+                const double dB = 20.0 * std::log10(g);
+                if (std::fabs(dB) < 0.05) std::snprintf(buf, sizeof(buf), "0.0 dB");
+                else std::snprintf(buf, sizeof(buf), dB > -99.95 ? "%+.1f dB" : "%.0f dB", dB);
+            }
+            out = buf;
+            return true;
+        }
         switch (units_[index])
         {
             case 1: std::snprintf(buf, sizeof(buf), "%.0f %%", (double)v); break;
@@ -3381,7 +3420,7 @@ private:
         {
             // threshold 0 .. -36 dB at 4:1; make-up undoes the gain reduction a reference-level
             // signal gets, so turning Comp up brings quiet material (and noise) up
-            const float thr = std::pow(10.0f, -1.8f * pct(kComp));
+            const float thr = std::pow(10.0f, -(kCompRangeDb / 20.0f) * pct(kComp));
             tgt_[cThresh] = thr;
             tgt_[cMakeup] = thr < kRefLevel ? std::pow(kRefLevel / thr, 0.75f) : 1.0f;
         }
@@ -3389,8 +3428,8 @@ private:
         {
             tgt_[cLowsG]  = dbToGain(get(kLows));
             tgt_[cHighsG] = dbToGain(get(kHighs));
-            setDrive(pct(kLoSat), 9.0f, cLoG, cLoMk, cLoMix);
-            setDrive(pct(kHiSat), 9.0f, cHiG, cHiMk, cHiMix);
+            setDrive(pct(kLoSat), kSatExtraGain, cLoG, cLoMk, cLoMix);
+            setDrive(pct(kHiSat), kSatExtraGain, cHiG, cHiMk, cHiMix);
             // The type itself only changes at a restart (a switch of it fades out first), or in
             // place while the stage is off (see process): until then the stage that is sounding
             // keeps its own settings.
@@ -3446,7 +3485,7 @@ private:
         if (groups & gNoise)
         {
             // master is nominal (x1) at 50 %, +12 dB at 100 %
-            const float master = getBool(kNoiseOn) ? 4.0f * sq(pct(kNoise)) : 0.0f;
+            const float master = getBool(kNoiseOn) ? kNoiseMaster * sq(pct(kNoise)) : 0.0f;
             tgt_[cHum]     = sq(pct(kHum))      * 0.12f * master;
             tgt_[cBuzz]    = sq(pct(kBuzz))     * 0.10f * master;
             // (Hi-Fi on: the FM path makes these three; their stages here rest, but for the hiss of the
@@ -3531,7 +3570,7 @@ private:
     {
         const auto pct = [this](int i) { return get(i) * 0.01f; };
         const bool noise = getBool(kNoiseOn), deck = getBool(kDeckOn);
-        const float master = noise ? 4.0f * sq(pct(kNoise)) : 0.0f;
+        const float master = noise ? kNoiseMaster * sq(pct(kNoise)) : 0.0f;
         const float gate = noise ? minf(2.0f * pct(kNoise), 1.0f) : 0.0f;
         HiFiPath::Settings s;
         s.recDb       = hifiRecDb(pct(kLoSat));

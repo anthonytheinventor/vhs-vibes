@@ -73,15 +73,15 @@ is one Q-Link group: touch a control and the four knobs follow that block.
 | Drive | Preamp soft clipping. Reads as the gain into the clipper, 0.0 dB (clean) to +24.1 dB. Below about +3.1 dB it also blends the clean signal with the clipped one. |
 | Tilt | Tilts lows against highs around 800 Hz: left is darker, right is brighter. Reads as what the highs get, -6.0 to +6.0 dB. |
 | Slew | A slew limiter: limits how fast the signal can move, which dulls and smears loud, bright sound like an old or copied tape. Reads as the shortest time left for a swing from silence to full level, from 12 to 1890 µs; off at the bottom. |
-| Comp | One-knob compressor. Past about a third it squashes and brings quiet sound (and noise) up. |
+| Comp | One-knob compressor, ratio 4:1. Reads as its threshold, 0 to -36 dBFS. Below about -12 dBFS it squashes and brings quiet sound (and noise) up. |
 | Dropouts | Short random dips, as when the tape lifts off the head: the highs go first and furthest, the lows only sag. 0 % is off. |
 | Mono | Sums left and right. |
 | Mix | Dry / wet. 100 % (the default) is all effect; lower lets the untouched input back in. |
 | Output | Output level. |
 | Power (VIBE) | Switches the VIBE stage, whichever Type is chosen. The MPC lists it as Saturator. |
 | Split | Where the signal is divided into lows and highs. |
-| Lows / Lo Sat | Level and clipping of the low band. |
-| Highs / Hi Sat | Level and clipping of the high band. Lower Highs and raise Hi Sat for "copied again". |
+| Lows / Lo Sat | Level and clipping of the low band. Lo Sat reads as the gain into the band's clipper, 0.0 dB (clean) to +20.0 dB. |
+| Highs / Hi Sat | Level and clipping of the high band. Hi Sat reads as the gain into the band's clipper, 0.0 dB (clean) to +20.0 dB. Lower Highs and raise Hi Sat for "copied again". |
 | Hi Cut | 4-pole lowpass after the VIBE stage. |
 | Sat Type | Three stacked buttons. **Simple**: the two-band saturator described above (called 2-Band up to 1.6). **VHS**: the tape of a VHS deck's linear track. **Hi-Fi**: the FM sound the video heads write under the picture. VHS and Hi-Fi give some knobs new jobs (below). |
 
@@ -185,7 +185,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 | Hiss | Tape hiss (different in left and right). |
 | Crackle | Random clicks; the knob sets both how many and how loud. |
 | Whistle | The line whistle of the TV set, 15.7 kHz, steady, never wobbling. About where a real deck has it at 50 %; above 60 % it climbs fast, to a set that screams. Not everyone can hear it. |
-| Master | Level of all noise together. 50 % is nominal, 0 % is silent. |
+| Master | Level of all noise together. Reads as the gain on every noise against nominal: 0.0 dB at the middle of the knob, +12.0 dB at the top, off at the bottom. |
 | Position | Post: noise is added after the first wobble (clean noise). Pre: noise goes in at the input and is compressed, clipped and wobbled with the music. |
 
 ### ＩＮＰＵＴ　インプット
@@ -374,7 +374,7 @@ automated and are best left alone. The Animation switch on the DECK page turns t
 
 - With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops.
   That is how a real recorder's level control behaves; turn Master down if it is too much.
-- The effect makes noise even with no input. Set Master to 0 %, or switch NOISE's power off, for a
+- The effect makes noise even with no input. Turn Master down to off, or switch NOISE's power off, for a
   silent background.
 - Turning a wobble depth or rate changes the plugin's own delay. A small move is followed at
   a limited pace, so the pitch bends by a couple of percent at most. After a big jump, once

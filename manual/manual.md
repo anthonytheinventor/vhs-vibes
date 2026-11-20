@@ -255,8 +255,8 @@ The **Type** switch in the VIBE block changes what the VIBE stage is, and with i
 | Knob | Type = Simple | Type = VHS | Type = Hi-Fi |
 |---|---|---|---|
 | ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. | **Cal.** Whether playback is set to the same level as the record side: right where the knob rests, -3 dB at the bottom, +3 dB at the top. The error comes out doubled and grows with the level, so loud and quiet parts move apart or together and the sound pumps. |
-| ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. | **Rec Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. | **Rec Level.** From -10 dB to +28 dB, 0 dB at 56 %. How hard the sound meets the Hi-Fi track's hard ceiling. Nothing bends below it; above it the peaks are cut flat. |
-| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. | **Tape Speed.** The tape speed, from SP (33.35 mm/s) through LP (16.67 mm/s, at 63 % of the knob) to EP (11.12 mm/s). The slower, the sooner the highs give way and the lower the top of the band. | **Carrier.** How strong the FM signal off the tape is, 0 to -20 dB. Every dB down is a dB more hiss; from about -14 dB the deck falls to the linear track now and then, and from about -19 dB it hardly comes back. |
+| ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. Reads as the gain into its clipper, 0.0 to +20.0 dB. | **Rec Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. | **Rec Level.** From -10 dB to +28 dB, 0 dB at 56 %. How hard the sound meets the Hi-Fi track's hard ceiling. Nothing bends below it; above it the peaks are cut flat. |
+| ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. Reads as the gain into its clipper, 0.0 to +20.0 dB. | **Tape Speed.** The tape speed, from SP (33.35 mm/s) through LP (16.67 mm/s, at 63 % of the knob) to EP (11.12 mm/s). The slower, the sooner the highs give way and the lower the top of the band. | **Carrier.** How strong the FM signal off the tape is, 0 to -20 dB. Every dB down is a dB more hiss; from about -14 dB the deck falls to the linear track now and then, and from about -19 dB it hardly comes back. |
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. | Trims the result below 1 kHz. |
 | ^HIGHS^ | Level of the high band into its clipper. | Trims the result above 1 kHz. | Trims the result above 1 kHz. |
 
@@ -270,7 +270,7 @@ With Type on Hi-Fi and VIBE's power on, seven controls on other pages stop drivi
 
 | Control | Page | In Hi-Fi |
 |---|---|---|
-| ^HISS^ | NOISE | The FM channel's noise. It rises and falls with the music by itself. 9 % at Master 50 % is a real deck's. |
+| ^HISS^ | NOISE | The FM channel's noise. It rises and falls with the music by itself. 9 % at Master 0.0 dB is a real deck's. |
 | ^CRACKLE^ | NOISE | How many clicks: how close the deck sits to the point where the FM signal breaks up. It does not move with Carrier. |
 | ^HEAD BUZZ^ | NOISE | How badly the switch from one head to the other is hidden. 0 % is hidden as a deck does it. |
 | ^BREATHING^ | DECK | The tape played on another deck, whose playback side follows the sound its own way: it pumps. |
@@ -310,7 +310,7 @@ epigraph: Everything the tape adds when nobody is talking.
 
 ## Noise and silence
 
-- The effect makes noise even with no input. Set Master to 0 %, or switch NOISE's power off, for a silent background.
+- The effect makes noise even with no input. Turn Master down to off, or switch NOISE's power off, for a silent background.
 - With Position on Pre and Comp or AGC turned up, the noise swells whenever the music stops. That is how a real recorder's level control behaves; turn Master down if it is too much.
 - While the Mic is on Modeled, the microphone adds its own noise: the capsule's hiss, or the phone line's. NOISE's power silences it; Master does not change it.
 
@@ -594,7 +594,7 @@ With every knob at rest the whole path is transparent, apart from the ceiling an
 | ^REC LEVEL^ | 0 dB at 56 % | +28 dB: well past the +16 dB the chips are tested to |
 | ^CARRIER^ | 0 dB | -20 dB; the scale of the knob is an estimate |
 | ^CAL^ | right | ±3 dB, with the expander's slope 2 ± 0.25: past real tolerances |
-| ^HISS^ | 9 % at Master 50 %: 55 dB under reference | 30 dB more than that scale |
+| ^HISS^ | 9 % at Master 0.0 dB: 55 dB under reference | 30 dB more than that scale |
 | ^CRACKLE^ | the first 7 %: no clicks, the margin a 1983 measurement implies | 150 clicks a second on each channel |
 | ^HEAD BUZZ^ | 0 %: hidden as the datasheets say | 20 dB past the largest spike a head switch can make |
 | ^BREATHING^ | 0 %: two matched decks | another deck: times 20 % off and an average detector |
@@ -1070,7 +1070,7 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | What happens | Why, and what to do |
 |---|---|
 | VHS Vibes is not in the plugin browser. | Check that the MPC runs MPC OS 3.10.1 or later; that **Enable Enhancements** and **External Plugin Support** are both on under Preferences > Enhancements (Beta); that the MPC was restarted afterward; and that the folder `{{vendor}} - VST - VHS Vibes` sits inside a folder named `VST2 Plugins` at the top of the drive. Look under **External Plugins**. |
-| It hisses and hums with nothing playing. | That is the tape noise. Switch **Power** off on the NOISE page, or set **Master** to 0 %. |
+| It hisses and hums with nothing playing. | That is the tape noise. Switch **Power** off on the NOISE page, or turn **Master** down to off. |
 | The noise swells when the music stops. | **Position** is on Pre and **Comp** or **AGC** is turned up. Turn **Master** down, or set Position to Post. Or the **Mic** is on Modeled with Type **Camcorder** or **Boombox**: its level control turns the gain up in every pause, as the real one did. |
 | The Mic sounds different in a new instance from an older project. | A new instance starts on **Mic Model** Modeled; a project saved before 1.6 opens on Simple. Set Mic Model to the one you want. |
 | The AGC sounds different from one program to another, or after turning it up on Init. | **AGC Model**: every program with the AGC up, and a project saved before 1.6, use Simple; Init and the programs with the AGC at 0 % are on Modeled. Set AGC Model to the one you want. |

@@ -45,9 +45,10 @@ note: Turned fully down the read-out says off and the stage is skipped. The MPC 
 range: off, then 12 to 1890 µs
 
 ## Comp
-what: A one-knob compressor with make-up gain. Turning it up lowers the threshold (down to -36 dB at 100 %, ratio 4:1) and raises the make-up. Past about a third it squashes and brings quiet sound, and noise, up.
+what: A one-knob compressor with make-up gain. The read-out is the threshold, from 0 dBFS down to -36 dBFS; the ratio is always 4:1. Turning it up lowers the threshold and raises the make-up. Below about -12 dBFS it squashes and brings quiet sound, and noise, up.
 listen: Quiet passages rise. With Position on Pre (NOISE page) the noise rises with them whenever the music stops.
-note: At 0 % the threshold is at full scale: only peaks above 0 dBFS are still compressed. Comp works in milliseconds. For a level control that works over seconds, use AGC on the DECK page.
+note: At 0 dBFS, the bottom of the knob, only peaks above full scale are still compressed. Comp works in milliseconds. For a level control that works over seconds, use AGC on the DECK page.
+range: 0 to -36 dBFS
 
 ## Dropouts
 what: Short random dips, as when the tape lifts off the head. The highs go first and furthest; the lows only sag. The knob sets both how often they come and how deep they go. 0 % is off.
@@ -85,24 +86,25 @@ what: In **Simple**: the level of the low band going into its clipper. In **VHS*
 
 ## Lo Sat
 what: Its job depends on **Type**.
-- **Simple**: how hard the low band is clipped.
+- **Simple**: how hard the low band is clipped. The read-out is the gain into the band's clipper, from 0.0 dB (clean) to +20.0 dB.
 - **VHS**, captioned REC LEVEL: the record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %. There a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends.
 - **Hi-Fi**, captioned REC LEVEL too: the record level, from -10 dB to +28 dB, 0 dB at the same 56 %. It decides how hard the sound meets the Hi-Fi track's hard ceiling, which a steady 1 kHz tone reaches 19 dB over reference level and a 10 kHz tone 11.5 dB over. Under the ceiling nothing distorts and the sound comes back at its own level. Turning it up also lowers the noise and the clicks against the sound.
 listen: In Hi-Fi, loud hits and held loud notes flatten against a ceiling, hard, with no softening on the way. The first milliseconds of a drum hit after silence reach it even low on the knob: the record side has turned its gain up in the silence and needs 5 ms to bring it down. That is part of the format.
-try: In VHS, SP Tape uses 45 % and EP Tape 50 %. In Hi-Fi, Hi-Fi - Clean Deck uses 56 % (0 dB) and Hi-Fi - Hot Signal 95 % (+24.9 dB).
+try: In Simple, 3rd Gen Copy uses +6.5 dB and Bootleg Concert +9.0 dB. In VHS, SP Tape uses 45 % and EP Tape 50 %. In Hi-Fi, Hi-Fi - Clean Deck uses 56 % (0 dB) and Hi-Fi - Hot Signal 95 % (+24.9 dB).
+note: In Simple, below about +1.9 dB (the first 17 % of the knob) the knob also blends the clean band with the clipped one, as Drive does.
 
 ## Highs
 what: In **Simple**: the level of the high band going into its clipper. In **VHS** and **Hi-Fi**: trims the result above 1 kHz.
-try: In Simple, lower Highs and raise Hi Sat for "copied again". 3rd Gen Copy has Highs at -8 dB and Hi Sat at 60 %.
+try: In Simple, lower Highs and raise Hi Sat for "copied again". 3rd Gen Copy has Highs at -8 dB and Hi Sat at +12.5 dB.
 
 ## Hi Sat
 what: Its job depends on **Type**.
-- **Simple**: how hard the high band is clipped.
+- **Simple**: how hard the high band is clipped. The read-out is the gain into the band's clipper, from 0.0 dB (clean) to +20.0 dB.
 - **VHS**, captioned TAPE SPEED: the tape speed, from SP (33.35 mm/s, at 0 %) through LP (16.67 mm/s, at 63 %) to EP (11.12 mm/s, at 100 %). The read-out names those three and the speeds of other formats inside the range (see the note), and gives the speed in mm/s between them. The slower the tape, the sooner the highs give way and the lower the top of the band: it reaches 10 kHz in SP, about 6 kHz in LP and about 4.5 kHz in EP.
 - **Hi-Fi**, captioned CARRIER: how strong the FM signal off the tape is, from 0 dB (a good tape on a good deck) down to -20 dB, 0.2 dB for every percent. Every dB lost is a dB more hiss. From about -14 dB the deck starts to fall to the dull mono linear track now and then, more often further down, and from about -19 dB it hardly ever comes back. Carrier does not change how many clicks there are: that is Crackle's job.
 listen: In Hi-Fi, the hiss comes up, and lower down the sound drops now and then to a duller, quieter, mono version of itself with its own hiss, for about a quarter of a second each time.
-try: In VHS, 0 % is the SP Tape program and 100 % the EP Tape program. In Hi-Fi, Hi-Fi - Worn Rental has the carrier at -12 dB.
-note: The other formats' names are on the read-out only: each position sounds as it did in 1.6, the VHS tape at that speed.
+try: In Simple, 3rd Gen Copy uses +12.5 dB and Bootleg Concert +10.2 dB. In VHS, 0 % is the SP Tape program and 100 % the EP Tape program. In Hi-Fi, Hi-Fi - Worn Rental has the carrier at -12 dB.
+note: In Simple, below about +1.9 dB (the first 17 % of the knob) the knob also blends the clean band with the clipped one, as Drive does. The other formats' names are on the VHS read-out only: each position sounds as it did in 1.6, the VHS tape at that speed.
 - PAL SP (23.39 mm/s) at 32 %
 - Beta II (20.00 mm/s) at 47 %
 - PAL Beta (18.73 mm/s) at 53 %
@@ -194,7 +196,7 @@ what: Tape hiss, different in left and right.
 try: 35 % is Home Recording. Hi-Fi Master uses 12 %, Six Hour Tape 65 %. For a slow-speed (EP) tape, raise it.
 note: With Type on **Hi-Fi** (the knob turns orange) it is the noise of the FM channel instead.
 - It goes in before the playback side, which pushes it down in quiet passages and lets it up under loud ones, so it rises and falls with the music on its own.
-- At Master 50 %, 9 % is a real deck's noise, 55 dB under reference level (the program Hi-Fi - Clean Deck); 50 % is 25 dB under.
+- At Master 0.0 dB, 9 % is a real deck's noise, 55 dB under reference level (the program Hi-Fi - Clean Deck); 50 % is 25 dB under.
 - Whenever the deck falls to the linear track, this knob also sets that track's hiss, twice as loud as the other Types' hiss.
 
 ## Crackle
@@ -205,8 +207,10 @@ note: With Type on **Hi-Fi** (the knob turns orange) it sets only how many: how 
 - Whatever weakens the signal for a moment (Drift, Tracking's dips, Dropouts) brings a burst of them. Before they could turn into a static louder than the music, the deck falls to the linear track.
 
 ## Noise
-what: Level of all noise together. 50 % is nominal, 0 % is silent, 100 % is 12 dB above nominal.
-note: The host lists this parameter as Noise; on the screen it is MASTER.
+what: Level of all noise together. The read-out is the gain on every noise against the nominal level, which sits at the middle of the knob: 0.0 dB is nominal, -12.0 dB is a quarter of the way up, +12.0 dB is the top. Fully down it reads off and the noise is silent.
+try: Most programs leave it at 0.0 dB. Wedding Video uses -3.9 dB, Bootleg Concert -6.2 dB.
+note: The host lists this parameter as Noise; on the screen it is MASTER. The read-out stays when NOISE's power is off, as every knob's does.
+range: off, then up to +12.0 dB
 
 ## Noise Pos
 what: Where the noise enters. **Post**: after the first wobble, so the noise is clean. **Pre**: at the input, so the noise is compressed, clipped and wobbled with the music.
@@ -214,7 +218,7 @@ listen: On Pre with Comp or AGC turned up, the noise swells whenever the music s
 
 ## Noise On
 what: The NOISE page's POWER switch. It turns all noise off or on: Hum, Buzz, Head Buzz, Hiss, Crackle and Whistle.
-note: The effect makes noise even with no input. Switch this off, or set Master to 0 %, for a silent background. In Hi-Fi it also silences the FM channel's noise, its clicks and the head switch, and the linear track's hiss; the deck still holds the sound and falls to the linear track when the signal is lost, as that is part of the machine.
+note: The effect makes noise even with no input. Switch this off, or turn Master down to off, for a silent background. In Hi-Fi it also silences the FM channel's noise, its clicks and the head switch, and the linear track's hiss; the deck still holds the sound and falls to the linear track when the signal is lost, as that is part of the machine.
 
 ## Whistle
 what: The line whistle of the TV set, 15.7 kHz, steady, never wobbling. At 50 % it is about where a real deck has it. Up to 60 % it is as it always was; above that it climbs faster, to 15 dB more at 100 % than before 1.7: a set that screams.
