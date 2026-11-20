@@ -554,7 +554,7 @@ int main(int argc, char** argv)
         bool none = true;
         for (int k = 0; k < 46; ++k) { fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f); none = none && (fx.get(kSatType) == 2.0f) == (k >= 39 && k < 44); }
         check(none, "the 39 older programs do not use Hi-Fi (they keep their sound); the five after them do, the two Azimuth ones after those do not");
-        check(fx.e->version == 1700 && fx.e->dispatcher(fx.e, effGetVendorVersion, 0, 0, nullptr, 0.0f) == 1700, "version 1.7.0");
+        check(fx.e->version == 1800 && fx.e->dispatcher(fx.e, effGetVendorVersion, 0, 0, nullptr, 0.0f) == 1800, "version 1.8.0");
 
         // a state saved by 1.6.0
         if (argc > 1)

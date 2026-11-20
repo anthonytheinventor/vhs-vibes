@@ -4,7 +4,8 @@
 // Checked here: the aliasing comes down, the level and response stay those of HQ off in the
 // linear range, the latency the plugin wants to report and the dry copy follow the extra delay
 // in every combination, and switching while a tone plays does not click. And (1.8) what the
-// clippers inside HQ and its half-band filters still let fold back. Ends with PASS or FAIL.
+// clippers inside HQ, the VHS tape curve, Slew, the NR decoder's clipper, the Phone and HQ's
+// half-band filters still let fold back. Ends with PASS or FAIL.
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -259,6 +260,18 @@ int main()
               { {kSatType, 2}, {kSatType, 1}, {kSatType, 0} } },
             { "Lo Sat, Hi Sat 0 -> 100 -> 0 (Simple)", { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 0}, {kHiSat, 0} },
               { {kHiSat, 100}, {kLoSat, 100}, {kHiSat, 0}, {kLoSat, 0} } },
+            // 1.8, second round: the VHS tape curve's mean, the slew limiter's, the NR decoder
+            // clipper's and the Phone's
+            { "Saturator on, off (VHS, Rec Level 100 %)", { {kSatType, 1}, {kLoSat, 100}, {kHiSat, 0}, {kSatOn, 0} }, { {kSatOn, 1}, {kSatOn, 0} } },
+            { "Rec Level 0 -> 100 -> 0 (VHS), Mix 50 %", { {kSatOn, 1}, {kSatType, 1}, {kLoSat, 0}, {kHiSat, 0}, {kMix, 50} }, { {kLoSat, 100}, {kLoSat, 0} } },
+            { "HQ off, on (VHS, Rec Level 100 %)", { {kSatOn, 1}, {kSatType, 1}, {kLoSat, 100}, {kHiSat, 0} }, { {kHq, 0}, {kHq, 1} } },
+            { "Slew 0, 100, 45, 0", { {kWear, 0} }, { {kWear, 100}, {kWear, 45}, {kWear, 0} } },
+            { "Slew 0, 100, 0 (VHS, Rec Level 70 %)", { {kWear, 0}, {kSatOn, 1}, {kSatType, 1}, {kLoSat, 70}, {kHiSat, 0} }, { {kWear, 100}, {kWear, 0} } },
+            { "Saturator on, off (Hi-Fi, Lo Sat 100, Slew 100)", { {kWear, 100}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSatOn, 0} }, { {kSatOn, 1}, {kSatOn, 0} } },
+            { "HQ off, on (Slew 100)", { {kWear, 100} }, { {kHq, 0}, {kHq, 1} } },
+            { "NR Off, Play, Off, On, Off (Comp 100)", { {kComp, 100} }, { {kNr, 2}, {kNr, 0}, {kNr, 3}, {kNr, 0} } },
+            { "Mic on, off (Modeled Phone, Mic Gain +12)", { {kMicModel, 1}, {kMicType, 2}, {kMicGain, 12}, {kMicOn, 0} }, { {kMicOn, 1}, {kMicOn, 0} } },
+            { "Saturator on, off (Hi-Fi, Lo Sat 100, Drive 100)", { {kDrive, 100}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSatOn, 0} }, { {kSatOn, 1}, {kSatOn, 0} } },
         };
         const float sr = 44100.0f;
         auto sig = [&](long i) { return 0.2 * std::sin(kTwoPiD * 300.0 * (double)i / sr); };
@@ -296,15 +309,32 @@ int main()
         // on, against a ceiling that 1.7.0 misses by 10 dB or more (1.7.0 / 1.8 when this was written):
         // Drive 100: 14 kHz -23.9 / -39.6, 1 + 15 kHz -30.4 / -46.9; Simple, Lo / Hi Sat 100, Lows /
         // Highs +12: 14 kHz -20.3 / -34.1; Hi-Fi, Lo Sat 100 (the limiter): 14 kHz -43.6 / -58.2,
-        // 1 + 15 kHz -36.1 / -54.2.
+        // 1 + 15 kHz -36.1 / -54.2 (-56.0 and -52.8 since the limiter's path changed, below).
+        // Second round (1.7.0 / 1.8 first round / now): the VHS tape curve (Rec Level 100 %): 10 kHz
+        // -35.4 / -35.4 / -61.8, 1 + 15 kHz -36.4 / -35.5 / -60.2; Slew 45: 10 kHz -19.6 / -19.6 /
+        // -47.8; Slew 100: 1 + 15 kHz -48.6 / -47.0 / -56.4; Drive 100 into the Hi-Fi limiter: 5 kHz
+        // -46.6 / -41.6 / -46.4, 1 + 15 kHz -36.9 / -33.2 / -41.8; NR Play (the decoder's clipper):
+        // 5 kHz -49.4 / -49.4 / -64.6, 10 kHz -36.3 / -36.3 / -47.3; Phone at Mic Gain +12: 7 kHz
+        // -27.2 / -27.2 / -52.4. Each ceiling is a few dB above the last figure.
         struct C { const char* name; Ch ch; double f1, f2, amp, ceil; };
         const Ch simpleHard = { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 100}, {kHiSat, 100}, {kLows, 12}, {kHighs, 12} };
         const Ch hifiLim = { {kSatOn, 1}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSplit, 2500} };
+        const Ch vhs100 = { {kSatOn, 1}, {kSatType, 1}, {kLoSat, 100}, {kHiSat, 0}, {kSplit, 2500} };
+        const Ch driveHifi = { {kDrive, 100}, {kSatOn, 1}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSplit, 2500} };
         const C cs[] = { { "Drive 100, 14 kHz at -1 dBFS", { {kDrive, 100} }, 14000.0, 0.0, 0.891, -36.0 },
                          { "Drive 100, 1 + 15 kHz at -7 dBFS each", { {kDrive, 100} }, 1000.0, 15000.0, 0.447, -43.0 },
                          { "Simple 2-band, hard, 14 kHz at -1 dBFS", simpleHard, 14000.0, 0.0, 0.891, -32.0 },
                          { "Hi-Fi limiter, 14 kHz at -1 dBFS", hifiLim, 14000.0, 0.0, 0.891, -53.0 },
-                         { "Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", hifiLim, 1000.0, 15000.0, 0.447, -50.0 } };
+                         { "Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", hifiLim, 1000.0, 15000.0, 0.447, -50.0 },
+                         { "VHS tape curve, Rec Level 100 %, 10 kHz at -1 dBFS", vhs100, 10000.0, 0.0, 0.891, -58.0 },
+                         { "VHS tape curve, Rec Level 100 %, 1 + 15 kHz at -7 dBFS each", vhs100, 1000.0, 15000.0, 0.447, -57.0 },
+                         { "Slew 45, 10 kHz at -1 dBFS", { {kWear, 45} }, 10000.0, 0.0, 0.891, -44.0 },
+                         { "Slew 100, 1 + 15 kHz at -7 dBFS each", { {kWear, 100} }, 1000.0, 15000.0, 0.447, -53.0 },
+                         { "Drive 100 into the Hi-Fi limiter, 5 kHz at -1 dBFS", driveHifi, 5000.0, 0.0, 0.891, -44.0 },
+                         { "Drive 100 into the Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", driveHifi, 1000.0, 15000.0, 0.447, -39.0 },
+                         { "NR Play (decoder clipper), 5 kHz at -1 dBFS", { {kNr, 2} }, 5000.0, 0.0, 0.891, -61.0 },
+                         { "NR Play (decoder clipper), 10 kHz at -1 dBFS", { {kNr, 2} }, 10000.0, 0.0, 0.891, -44.0 },
+                         { "Phone, Mic Gain +12, 7 kHz at -1 dBFS", { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 12} }, 7000.0, 0.0, 0.891, -49.0 } };
         for (const C& c : cs)
         {
             Fx fx(44100.0f, 1, c.ch);

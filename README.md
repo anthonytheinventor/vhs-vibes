@@ -25,7 +25,7 @@ let it, the machine loses the tape for a moment and finds it again.
 - three tape types: Simple, VHS (the linear track) and Hi-Fi (the FM track)
 - a hot pink cassette on the MPC's screen, with reels that turn when sound passes, and a picture that can show the sound
 - every noise is synthesized: no samples, nothing to load
-- version 1.7
+- version 1.8
 
 ## ⏏ ＩＮＳＥＲＴ　ＴＡＰＥ
 
@@ -255,7 +255,8 @@ other one once it has settled (Modeled: a second).
 - Off, the plugin sounds as it always has. On, the fold-back is gone for highs at ordinary levels.
 - Since 1.8 the clippers inside HQ also smooth each step they take. A full-level high tone that squares
   off in Drive, the Simple saturator or the Hi-Fi limiter folds back 17 to 36 dB quieter than with HQ off
-  (16 dB at 20 kHz). Slew and the VHS tape curve still fold such a tone back, 0 to 15 dB quieter.
+  (16 dB at 20 kHz). One that the VHS tape curve bends or that Slew turns into a triangle folds back 19 to
+  54 dB quieter. Where B-Type NR's playback side or the Phone microphone clips, the step is smoothed too.
 - Switching it fades the sound out and back in at the other rate.
 - Choosing a program does not change it.
 
@@ -396,9 +397,9 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   that uses them with HQ on keeps its level and tone and loses the fold-back tones it had. Whistle
   is louder than in 1.6 above 60 %.
 - Since 1.8 the clippers inside HQ smooth each step they take, and the filters around them are steeper.
-  A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter or B-Type NR's record
-  side hard loses fold-back tones, and the top octave of what those stages make changes slightly, by up
-  to 3 dB between 14 and 17 kHz. Sounds that stay below the clipping keep their level and tone. With HQ on
+  A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter, the VHS tape curve,
+  Slew, B-Type NR or the Phone microphone hard loses fold-back tones, and the top octave of what those
+  stages make changes slightly, by up to 3 dB between 14 and 17 kHz. Sounds that stay below the clipping keep their level and tone. With HQ on
   the sound is also 0.8 samples later, and the plugin tells the host. With HQ off nothing changes.
 - Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one
   saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did. The

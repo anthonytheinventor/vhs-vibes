@@ -1693,6 +1693,11 @@ def main():
     if not os.path.isfile(PARAMS):
         sys.exit("make_skin: %s not found. Run tools/build.py --target native first." % PARAMS)
     plist = G.load_params(PARAMS)
+    # A knob whose read-out comes in a few whole steps (Comp, in dBFS) is listed as a choice by the build's
+    # probe. Only the controls with buttons in SEGMENTS are button rows; the rest are knobs.
+    for p in plist:
+        if p.kind == "choice" and p.name not in SEGMENTS:
+            p.kind = "float"
     params = {p.name: p for p in plist}
     for page in PAGES:
         for _, _, _, name in iter_controls(page):
