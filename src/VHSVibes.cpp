@@ -115,10 +115,12 @@
 // Phone or Boombox, or NR Rec or On, with HQ on sounds cleaner than it did (no fold-back from those
 // stages), at the same level and tone. With HQ off, or without those, it is the same to the bit.
 // 1.8 made HQ itself cleaner (see HQ above): with HQ on, a clipper driven hard folds back less, and
-// the top octave of what it makes changes slightly (up to 2 dB at 14 kHz, 3 dB at 17 kHz); a sound
-// that stays below the clamps keeps its level and tone within 0.05 dB to 15 kHz. HQ is 0.79 samples
-// later than it was (its half-band filters and its two means, see kHqDelay); the reported latency
-// and the dry copy follow. With HQ off it is the same to the bit.
+// the tones it makes keep their level within 0.3 dB up to 20 kHz (Drive, Slew, the saturators; the
+// NR encoder 0.55 dB; the NR decoder, which runs at the session's rate, changes them more: see
+// NoiseRed::decode); a sound that stays below the clamps keeps its level and tone within 0.05 dB
+// to 20 kHz. HQ is 1.71 samples later than it was (its half-band filters and the clean parts of
+// its two places that may clip, see kHqDelay); the reported latency and the dry copy follow. With
+// HQ off it is the same to the bit.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -318,15 +320,16 @@ constexpr float kFbLevel            = 0.71f;  // the backup track plays 3 dB qui
 constexpr float kLineHz             = 15734.0f;   // NTSC line rate: the whistle of a TV set
 // HQ: the half-band filter that doubles and halves the sample rate (see HalfBand), and how
 // late the pair makes the sound, in samples (the sum of (1 - c) / (1 + c) over the five).
-// The main HQ section is later than its pair (1.8): its two places that may clip are half a
-// sample (at the doubled rate) late each, and kHqEq lifts back the top those two means take off
-// (1 / cos^2 of a quarter of the frequency, in radians at the session rate: within 0.045 dB up to
-// 0.907 of half the rate, 20 kHz at 44.1 kHz), 0.187 samples early in the lows.
+// The main HQ section is later than its pair (1.8): of its two places that may clip, the preamp's
+// is 1.5 samples (at the doubled rate) late and takes a little off the top of the clean sound
+// (see kHqD), the saturator's is 1 sample late and takes nothing off (see softClipMean), and kHqEq
+// lifts back what the preamp's place took (1 / kHqD's loss, at the session rate: within 0.015 dB
+// up to 0.907 of half the rate, 20 kHz at 44.1 kHz), 0.016 samples early in the lows.
 constexpr int   kHbN                = 5;
 constexpr float kHb[kHbN]           = { 0.0863437797f, 0.2952210021f, 0.5320824744f, 0.7393734977f, 0.9145070455f };
 constexpr float kHbDelay            = 1.8851f;                        // the pair (the model mics have only that)
-constexpr float kHqDelay            = kHbDelay + 0.5f - 0.18669f;     // the main section: 2.198
-constexpr float kHqEq[5]            = { 1.242828930f, 0.179412690f, -0.049576899f, 0.408806608f, -0.036141887f };  // b0 b1 b2 a1 a2
+constexpr float kHqDelay            = kHbDelay + 1.25f - 0.01592f;    // the main section: 3.119
+constexpr float kHqEq[5]            = { 1.024980868f, 0.712512201f, 0.129521390f, 0.732774751f, 0.134239709f };  // b0 b1 b2 a1 a2
 constexpr int   kFadeTicks          = 8;      // control ticks of fade-out before a reset while sound plays (3 ms)
 
 // Which values a parameter feeds. A knob move only recomputes its own group in readParams().
@@ -477,14 +480,40 @@ inline Quad driveSat4(Quad x, Quad g, Quad makeup, Quad mix)
 // wide, which holds most of those overtones back (13 to 19 dB more, on top of the doubled rate).
 //
 // That mean belongs half a sample earlier, and for a sound that does not clip it is the mean of
-// the two samples, which takes a little off the top. So with HQ each of the two places that may
-// clip (the preamp's, and the saturator's: see shape2 and shapeRest) gives the mean of the two
-// samples whether its clipper is on or not, the clean part of every blend included, and the
-// section's output goes through kHqEq, which lifts that top back. Its level and tone for a sound
-// that does not clip are those of HQ off within 0.05 dB to 20 kHz, and it is a constant
-// kHqDelay late, which the dry copy (hqDry) and the reported latency follow. (What the curve does
-// below the clamp is seen through the window too: a soft clip just short of the clamp gives a
-// 15 kHz tone about 0.1 dB less.)
+// the two samples, which takes a little off the top: as cos(w / 2), 1.9 dB at 18 kHz at twice
+// 44.1 kHz. The tones the curve makes from a lower one lose less through the window, as
+// sin(w / 2) / (w / 2) (0.6 dB at 18 kHz). In the first 1.8 builds each of the two places that
+// may clip gave the mean of the two samples, clean part included, and kHqEq lifted back the loss of
+// two such means: right for the clean sound, but the tones a clipper made came out up to 3 dB too
+// loud at 16 to 20 kHz (one mean's lift too many where the saturator made them, and a cos lift for
+// a sin(x) / x loss everywhere), and the saturator's place was fed a top octave up to 2.5 dB too
+// quiet (the preamp place's mean, lifted back only at the end), so a loud high tone came out up to
+// 3 dB louder than it should. So now each place moves its path, the whole of it, so that the
+// path's own mean is the clean sound that place should pass, and gives the curve's mean along it:
+//   - the preamp's (shape2): the straight path from the sample two back to the one before, moved by
+//     kHqD of the four samples around it less the mean of its ends: 1.5 samples late, and a sound
+//     that does not clip comes out as kHqD, the 4-point interpolation. Its loss (0.31 dB at 16 kHz,
+//     0.74 at 20) is close to what the window takes off the tones the clipper makes, and it is the
+//     loss kHqEq lifts back.
+//   - the saturator's (shapeSat, TapeSat::record): the path from half-way between the samples two
+//     back and one back, through the one back, to half-way between that one and this (two means,
+//     one per half), moved by (2 x1 - x - x2) / 8 so that its mean is the sample one back: 1 sample
+//     late, nothing taken off the clean sound, and what that place makes gets only kHqEq's lift
+//     for what the window took.
+// The path itself has to carry the clean sound: given as a clean part beside the curve's mean
+// less its path's mean, the two differ at the top, and where the curve is flat that difference
+// came through unclipped (times the blend's gain), so a full-level 14 kHz into Drive 100 came out
+// 8 dB too loud. The price of moving the paths is more fold-back where a loud high tone is
+// clipped hard (the VHS tape curve up to 9 dB, the 2-band saturator 4 dB, Drive into the Hi-Fi
+// limiter 6 dB against the first 1.8 builds, which clipped that tone 1 to 3 dB too softly).
+// Measured on a 313 Hz tone at -3 dBFS against a render at 16 times 44.1 kHz (VHS: at twice, Slew:
+// with its step scaled to the rate): Drive, Slew, the saturators and the Hi-Fi limiter within
+// 0.2 dB up to 20 kHz (the first 1.8 builds: up to +3 dB); a full-level 10 to 14 kHz through Drive
+// 100, the Simple saturator or the VHS tape within 1.1 dB of twice the rate. For a sound that
+// does not clip the section is HQ off within 0.015 dB to 20 kHz and a constant kHqDelay late,
+// which the dry copy (hqDry) and the reported latency follow. (What the curve does below the
+// clamp is seen through the window too: a soft clip just short of the clamp gives a 15 kHz tone
+// about 0.1 dB less.)
 //
 // The NR encoder's clipper sits in a side chain whose sound is only added, so it cannot be late:
 // where it clips, what it takes off is its mean along a path between two points of its input
@@ -525,6 +554,19 @@ inline bool anyPast(Quad a, Quad b, float lim)
     return vget_lane_u32(vpmax_u32(h, h), 0) != 0;
 #else
     const Quad m = __builtin_elementwise_max(__builtin_elementwise_abs(a), __builtin_elementwise_abs(b));
+    return __builtin_reduce_max(m) > lim;
+#endif
+}
+// Whether a, b or c is past +-lim in any lane (one test where two would be: see shapeSat, TapeSat::record2)
+inline bool anyPast3(Quad a, Quad b, Quad c, float lim)
+{
+#if defined(__ARM_NEON)
+    const float32x4_t l = vdupq_n_f32(lim);
+    const uint32x4_t o = vorrq_u32(vorrq_u32(vcagtq_f32((float32x4_t)a, l), vcagtq_f32((float32x4_t)b, l)), vcagtq_f32((float32x4_t)c, l));
+    const uint32x2_t h = vorr_u32(vget_low_u32(o), vget_high_u32(o));
+    return vget_lane_u32(vpmax_u32(h, h), 0) != 0;
+#else
+    const Quad m = __builtin_elementwise_max(__builtin_elementwise_max(__builtin_elementwise_abs(a), __builtin_elementwise_abs(b)), __builtin_elementwise_abs(c));
     return __builtin_reduce_max(m) > lim;
 #endif
 }
@@ -625,6 +667,12 @@ template <class T> inline T clampMean(T a, T b, float lim)
     if (__builtin_expect(anyPast(a, b, lim), 0)) return clampPast(a, b, lim);
     return 0.5f * (a + b);
 }
+// kHqD: the sound half-way between x1 and x2 from four samples in a row (x0 the latest), the
+// 4-point (cubic) interpolation (-1, 9, 9, -1) / 16. It takes (9 cos(w / 2) - cos(3 w / 2)) / 8 off
+// a tone (w in radians at the rate it runs at): at twice 44.1 kHz 0.05 dB at 10 kHz, 0.31 at
+// 16 kHz, 0.49 at 18 kHz, 0.74 at 20 kHz, close to the sin(w / 2) / (w / 2) that a clipper's mean
+// over a sample takes off the tones the clipper makes (0.47, 0.60 and 0.75 dB at 16, 18 and 20 kHz).
+template <class T> inline T hqD(T x0, T x1, T x2, T x3) { return (x1 + x2) * 0.5625f - (x0 + x3) * 0.0625f; }
 
 // ---------------------------------------------------------------------------
 // NR: B-type noise reduction, the kind early stereo VHS decks had on their linear
@@ -769,7 +817,12 @@ struct NoiseRed
     // decoder undoes the encoder as closely as before and nothing is late. (The mean of the clamp
     // itself would be half a sample late where it clips, which made a loud 5 to 7 kHz fold back up
     // to 10 dB more; a path centered on the sample, as the encoder's was at first, overshoots a high
-    // tone at this rate and clipped a 20 kHz that never reaches the clip.)
+    // tone at this rate and clipped a 20 kHz that never reaches the clip.) The price (measured): a
+    // steady loud tone that clips the side chain has its tones changed against 1.7.0's, by +0.5 to
+    // +2.7 dB at 2 to 10 kHz and -0.3 to -6 dB above (997 Hz at -3 dBFS), and with NR On (which
+    // undoes the encoder's clipper less closely) its tones up to 10 dB quieter. A path laid across
+    // the sample (h = (e - e1) / 2 either way) or one through (1 + r) / (1 + r z^-1) would follow
+    // 1.7.0 more closely, but gave back 4 to 12 dB of the fold-back.
     template <bool adaa = false> Stereo decode(Stereo y, Stereo* clipP = nullptr)
     {
         // y = x + gain * vB(x), and vB is a straight line in x: solved for x (rec = 1 / (D + off))
@@ -953,54 +1006,64 @@ struct TapeSat
     template <bool adaa = false> Stereo process(Stereo x) { return play(record<adaa>(x)); }
     // The two halves, for Azimuth to sit between them: what is on the tape (|v| <= s: the curve
     // clamps; a NaN from the host passes on the MPC, see vmin), and what the playback side makes of it.
-    // adaa (HQ, 1.8): the curve's mean from the last sample to this one (curveMean). Every stage
-    // around it is linear, so for a sound that the curve leaves alone that is the mean of the two
-    // samples, half a sample late, as the rest of the saturator's place is with HQ (see shapeRest).
+    // adaa (HQ, 1.8): the curve's mean (curveMean) along the path from half-way between the samples
+    // two back and one back, through the one back, to half-way between that one and this (one mean
+    // per half), the whole path moved by (2 w1 - w - w2) / 8 so that its own mean is the sample one
+    // back (*pp: two back, kept by the caller so that this struct keeps its size and the members
+    // after it their places): the curve seen through a window one sample wide around the sample
+    // before (see HQ's clippers, above adaaMean). Every stage around it is linear, so for a sound that the
+    // curve leaves alone that is the sound one sample late, as the rest of the saturator's place is
+    // with HQ (see shapeSat).
     // (Not NaN-proof: a NaN from the host passes, and process() silences that block.)
-    template <bool adaa = false> Stereo record(Stereo x)
+    template <bool adaa = false> Stereo record(Stereo x, Stereo* pp = nullptr)
     {
         const Stereo u = x * gRec;
         const Stereo w = b0 * u + b1 * uP - a1 * wP;            // pre-emphasis
         if constexpr (adaa)
         {
+            Stereo& wPP = *pp;
             // When Rec Level moves, the emphasis filters' memories are taken to the new level (as if
             // it had always been that): otherwise the mean would join the old level's last sample to
             // the new one, and played back at the new level that clicked.
             if (__builtin_expect(gRec != gLast, 0))
             {
                 const float k = gRec / gLast;
-                uP *= k; vP *= k; yP *= k;
+                uP *= k; vP *= k; yP *= k; wPP *= k;
                 gLast = gRec;
                 const Stereo w1 = b0 * u + b1 * uP - a1 * (wP * k);
-                const Stereo last = wP * k;
-                uP = u; wP = w1;
-                return curveMean(w1 * invS, last * invS) * s;
+                const Stereo last = wP * k, d = 0.125f * (2.0f * last - w1 - wPP), c = (last + d) * invS;
+                const Stereo m0 = (0.5f * (w1 + last) + d) * invS, m2 = (0.5f * (last + wPP) + d) * invS;
+                wPP = last; uP = u; wP = w1;
+                return 0.5f * (curveMean(c, m2) + curveMean(m0, c)) * s;
             }
-            const Stereo last = wP;
-            uP = u; wP = w;
-            return curveMean(w * invS, last * invS) * s;
+            const Stereo last = wP, d = 0.125f * (2.0f * last - w - wPP), c = (last + d) * invS;
+            const Stereo m0 = (0.5f * (w + last) + d) * invS, m2 = (0.5f * (last + wPP) + d) * invS;
+            wPP = last; uP = u; wP = w;
+            return 0.5f * (curveMean(c, m2) + curveMean(m0, c)) * s;
         }
         uP = u; wP = w;
         return curve(w * invS) * s;
     }
     // record<true> of two samples in a row (a the earlier one), the two means as one 4-lane
     // curvePoly: the emphasis is worked out for both first, as each lane needs only the samples
-    // before it. Every lane does what record<true> does, in the same order, so the results are the
+    // up to it. Every lane does what record<true> does, in the same order, so the results are the
     // same to the bit. (A Rec Level move, or either sample past the clamp: one after the other.)
-    void record2(Stereo xa, Stereo xb, Stereo& ra, Stereo& rb)
+    void record2(Stereo xa, Stereo xb, Stereo& ra, Stereo& rb, Stereo& wPP)
     {
-        if (__builtin_expect(gRec != gLast, 0)) { ra = record<true>(xa); rb = record<true>(xb); return; }
+        if (__builtin_expect(gRec != gLast, 0)) { ra = record<true>(xa, &wPP); rb = record<true>(xb, &wPP); return; }
         const Stereo ua = xa * gRec, wa = b0 * ua + b1 * uP - a1 * wP;
         const Stereo ub = xb * gRec, wb = b0 * ub + b1 * ua - a1 * wa;
-        const Quad A = quad(wa * invS, wb * invS), B = quad(wP * invS, wa * invS);
-        uP = ub; wP = wb;
-        if (__builtin_expect(anyPast(A, B, 3.0f), 0))
+        const Quad l = quad(wP, wa), n = quad(wa, wb), pp = quad(wPP, wP), d = 0.125f * (2.0f * l - n - pp);
+        const Quad C = (l + d) * invS, A = (0.5f * (n + l) + d) * invS, B = (0.5f * (l + pp) + d) * invS;
+        wPP = wa; uP = ub; wP = wb;
+        if (__builtin_expect(anyPast3(A, B, C, 3.0f), 0))
         {
-            // past the clamp: each sample's mean by itself, as record<true> (curveMean decides per sample)
-            ra = curveMean(lo2(A), lo2(B)) * s; rb = curveMean(hi2(A), hi2(B)) * s;
+            // past the clamp: each sample's means by themselves, as record<true> (curveMean decides per sample)
+            ra = 0.5f * (curveMean(lo2(C), lo2(B)) + curveMean(lo2(A), lo2(C))) * s;
+            rb = 0.5f * (curveMean(hi2(C), hi2(B)) + curveMean(hi2(A), hi2(C))) * s;
             return;
         }
-        const Quad m = curvePoly(A, B) * s;
+        const Quad m = 0.5f * (curvePoly(C, B) + curvePoly(A, C)) * s;
         ra = lo2(m); rb = hi2(m);
     }
     Stereo play(Stereo v)
@@ -2348,10 +2411,11 @@ struct HiFiPath
     bool  gainsMove = false;        // a ramp of rec, mk or cal has a step this tick (see tick; the gains are > 0, never -0)
     // With HQ (the path at twice the session's rate, up2): the channel noise is made at the session's
     // rate and doubled by a half-band filter (noiseUp; noiseOdd: the second of its pair, noiseB, is
-    // next), and goes through a mean of two samples (noiseP: the last one) that the expander's
-    // detector does not hear (detAdd: the difference, through fmDeDet; see channel)
-    bool  up2 = false, noiseOdd = false;
-    Stereo noiseB = {}, noiseP = {}, detAdd = {};
+    // next), and goes through kHqD (addP: its last three samples) while there is hiss (extras),
+    // which the expander's detector does not hear (detAdd: the difference, through
+    // fmDeDet; see channel)
+    bool  up2 = false, noiseOdd = false, extras = false;
+    Stereo noiseB = {}, addP[3] = {}, detAdd = {};
     HalfBand noiseUp;
     HfShelf fmDeDet;
 
@@ -2443,7 +2507,8 @@ struct HiFiPath
         trackP = kHfTrackRate * s.tracking * std::sqrt(s.tracking) / kHfFieldHz;
         st[0].c = st[1].c = 1.0e9f;                                    // work the channel out again
         st[0].rateOk = st[1].rateOk = false;
-        if (!(s.hiss > 0.0f)) fmDeDet.reset();                          // (it runs only while there is hiss)
+        extras = s.hiss > 0.0f;
+        if (!extras) { fmDeDet.reset(); detAdd = addP[0] = addP[1] = addP[2] = splat(0.0f); }   // (they run only while there is hiss)
     }
 
     void reset()
@@ -2453,7 +2518,7 @@ struct HiFiPath
         recDet.d = splat(kDRef); playDet.d = splat(pRef);               // at the unity point: no start-up overshoot
         rmsDet.d = splat(sq(pRef / rmsCal));
         noiseLp.reset(); tape.reset(); noiseUp.reset(); fmDeDet.reset();
-        noiseOdd = false; noiseB = noiseP = detAdd = splat(0.0f);
+        noiseOdd = false; noiseB = detAdd = addP[0] = addP[1] = addP[2] = splat(0.0f);
         rngLR.reseed(0x48f1a1u, 0x2c0ffeeu); rngC.reseed(0x1c11c4u);
         rngD.reseed(0xe7e47u); rngT.reseed(0x7a3c51u); rngO.reseed(0xd09b17u); rngW.reseed(0x3b1d5u);
         recS = recT; calS = calT;
@@ -2616,11 +2681,14 @@ struct HiFiPath
         // the dropout canceller holds (the sound after playback: see process); meanwhile the playback
         // side is given the modulation as it was, so that it comes back from the hold as it went in
         Stereo z = y;
+        // HQ: the channel noise, see below; without HQ z itself
+        Stereo u = splat(0.0f);
+        Stereo& t = up ? u : z;
         holding = k.doc || relLeft > 0;
         if (holding)
         {
             relLeft = k.doc ? nRelease : relLeft - 1;
-            if constexpr (up) detAdd = noiseP = splat(0.0f);   // (HQ: the noise's mean starts again after the hold, see below)
+            if constexpr (up) detAdd = addP[0] = addP[1] = addP[2] = splat(0.0f);   // (HQ: they start again after the hold, see below)
         }
         else
         {
@@ -2637,20 +2705,7 @@ struct HiFiPath
                     if constexpr (up) noiseUp.up(dn, dn, noiseB);
                 }
                 noiseOdd = up && !noiseOdd;
-                if constexpr (up)
-                {
-                    // HQ: the saturator's place gives the mean of two samples, which kHqEq lifts back as
-                    // it does the preamp's mean (see shapeSat). The noise comes in after the preamp: given
-                    // only the second mean, its top came out lifted (1.6 dB at 16.5 kHz). So it is given
-                    // the first one here, and the expander's detector, which comes before the second,
-                    // hears it without (detAdd: the difference, see playback), as it hears the noise
-                    // without HQ.
-                    const Stereo hn = dn * k.noise;
-                    z += 0.5f * (hn + noiseP);
-                    detAdd = 0.5f * (hn - noiseP);
-                    noiseP = hn;
-                }
-                else z += dn * k.noise;
+                t += dn * k.noise;
             }
             if (k.clickThr != 0)
             {
@@ -2673,6 +2728,28 @@ struct HiFiPath
                     z += stereo(nl, nr) * a;
                 }
             }
+            if constexpr (up)
+            {
+                // HQ: the saturator's place takes nothing off the top of the sound that goes through it,
+                // but kHqEq lifts back what the preamp's place took (see shapeSat). What the channel
+                // noise comes in after the preamp, so it is given that loss here (kHqD; it comes 1.5
+                // samples later, which nobody hears), and the expander's detector hears it without
+                // (detAdd: the difference, see playback), as it hears it without HQ. Given only the
+                // saturator place's mean of the first 1.8 builds, the hiss had its top lifted (1.6 dB
+                // at 16.5 kHz). The clicks and the head switch go in as they are: given kHqD too (and
+                // the detector the difference) they came out louder, not quieter (Head Buzz 100 with
+                // Hiss 35: +1.3 dB against HQ off, as they are +0.5). They are still 0.5 to 1 dB louder
+                // with HQ (the first 1.8 builds: 0.6 to 1.1), probably not for the top's lift: each is one
+                // sample at the rate the path runs at, and the expander's detector hears it so.
+                if (extras)
+                {
+                    const Stereo d = hqD(u, addP[0], addP[1], addP[2]);
+                    z += d;
+                    detAdd = u - d;
+                    addP[2] = addP[1]; addP[1] = addP[0]; addP[0] = u;
+                }
+                else z += u;
+            }
         }
         yPrev = y;
         return z;
@@ -2688,7 +2765,7 @@ struct HiFiPath
         Stereo e = vmin(vmax(dp * pRefInv, splat(1.0f / kHfGainRange)), splat(kHfGainRange));
         if (slopeOn) { slS += slInc; e *= slS; }
         Stereo wi = a;
-        if constexpr (up) if (s.hiss > 0.0f) wi = a + fmDeDet.inv(detAdd) * cal;   // (see channel)
+        if constexpr (up) if (extras) wi = a + fmDeDet.inv(detAdd) * cal;   // (see channel)
         const Stereo w = wPlay.fwd(wi);
         playDet.step(vabs(w));
         if (rmsOn) rmsDet.step(w * w);
@@ -2708,8 +2785,8 @@ struct HiFiPath
     // halves, which undo each other only while what lies between them changes nothing: a mean half
     // a sample late there, even with its top lifted back, left -80 dBFS of tones in a sound that
     // never reaches the limit. So it stays the plain clamp (the sound itself) while the path does
-    // not reach the limit, and gives the mean along a path centred on the sample where it does.
-    // Still a hard clip. The path (1.8) runs halfway between two centred ones: the chord through
+    // not reach the limit, and gives the mean along a path centered on the sample where it does.
+    // Still a hard clip. The path (1.8) runs halfway between two centered ones: the chord through
     // (1 + r) / (1 + r z^-1), r = kHfChordRho (see adaaMean), and the last step laid across the
     // sample (y -+ half of it). The chord alone overshoots a sound that is already full of
     // overtones above 22 kHz (Drive at 100 % into Rec Level 100 %), and its mean clipped peaks that
@@ -3004,6 +3081,10 @@ private:
         hqEq_.setCoeffs(eq); hqDryEq_.setCoeffs(eq);
     }
 
+    // The VHS tape from rest, and HQ's sample two back that goes with it (see TapeSat::record).
+    // Out of line: inline in readParams it cost the loop around the sample loop instructions.
+    __attribute__((noinline)) void resetTape() { tapeSat_.reset(); tapeWPP_ = splat(0.0f); }
+
     // Clears every memory and jumps all smoothed values to the current settings.
     void doReset()
     {
@@ -3022,6 +3103,7 @@ private:
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
         tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = drvX_ = satX_ = nrClipP_ = nrDecP_ = slewX_ = slewC_ = dryM_[0] = dryM_[1] = splat(0.0f);
         satQ_ = quad(drvX_, drvX_); satSeed_ = true; slewCOn_ = false;
+        drvX2_ = drvX3_ = dryM2_[0] = dryM2_[1] = slewCN_ = slewR1_ = slewR2_ = splat(0.0f); satQ2_ = satQ_; slewRAct_ = 0; slewG_ = 1.0f; slewCNOn_ = false;
         env_ = 0.0f; compGain_ = 1.0f; compTarget_ = 1.0f;
         humPh_ = buzzPh_ = headPh_ = 0.0f;
         buzzLp_ = headLp_ = headHp_ = 0.0f;
@@ -3040,7 +3122,7 @@ private:
         hsPhase_ = 0.0f; hsLeft_ = 0; hsFrac_ = 0.0f; hsOn_ = false;
         fbState_ = 0; fbTicks_ = 0; staticAmp_ = 0.0f; fbMono_ = 0.0f;
         nrEnc_.reset(); nrDec_.reset();
-        tapeSat_.reset();
+        resetTape();
 
         for (int i = 0; i < kNumParams; ++i) lastNorm_[i] = getNormalised(i);
         readParams(gAll);
@@ -3134,32 +3216,34 @@ private:
         return hqEq_.process(hbDown_.down(a, b));
     }
     // The dry copy with HQ: what the HQ section does to a sound that nothing clips, so that the two
-    // stay lined up at every frequency (Mix below 100 %): the pair, its two means and kHqEq.
+    // stay lined up at every frequency (Mix below 100 %): the pair, the preamp place's kHqD, the
+    // saturator place's sample of delay (both as one kHqD of the samples one to four back) and kHqEq.
     Stereo hqDry(Stereo x)
     {
         Stereo a, b;
         hbDryUp_.up(x, a, b);
-        const Stereo a1 = 0.5f * (a + dryM_[0]), b1 = 0.5f * (b + a);
-        const Stereo a2 = 0.5f * (a1 + dryM_[1]), b2 = 0.5f * (b1 + a1);
-        dryM_[0] = b; dryM_[1] = b1;
-        return hqDryEq_.process(hbDryDown_.down(a2, b2));
+        const Quad y = hqD(quad(dryM_[0], a), quad(dryM_[1], dryM_[0]), quad(dryM2_[0], dryM_[1]), quad(dryM2_[1], dryM2_[0]));
+        dryM2_[1] = dryM_[1]; dryM2_[0] = dryM_[0]; dryM_[1] = a; dryM_[0] = b;
+        return hqDryEq_.process(hbDryDown_.down(lo2(y), hi2(y)));
     }
     // HQ: both doubled samples (a is the earlier one). The preamp clipper's values do not change
-    // between the two, so both go through it at once, as one 4-lane mean (see softClipMean): from
-    // the sample before a to a, and from a to b. That mean belongs half a sample earlier, so the
-    // clean part of the blend is the mean of the same two samples, and with the clipper off the
-    // sound is that mean too: the stage is half a sample late always (see kHqDelay). Every stage
-    // after it keeps its order: all of a, then all of b.
+    // between the two, so both go through it at once, as one 4-lane mean (see softClipMean): for a
+    // along the straight path from the sample two back to the one before (drvX2_ to drvX_; drvX3_:
+    // three back), for b from the one before a to a, each moved by kHqD of the four samples around
+    // it less the mean of its ends, so that the path's mean is kHqD, the clean sound half-way
+    // between its ends. With the clipper off the sound is kHqD itself: the stage is 1.5 samples late
+    // always (see kHqDelay). Every stage after it keeps its order: all of a, then all of b.
     // (vhs: Sat Type = VHS, see tape2)
     template <bool vhs> __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
     {
-        const Quad x = quad(a, b), x0 = quad(drvX_, a), xm = 0.5f * (x + x0);
-        drvX_ = b;
-        Quad y = xm;
+        const Quad x = quad(a, b), x1 = quad(drvX_, a), x2 = quad(drvX2_, drvX_), x3 = quad(drvX3_, drvX2_);
+        drvX3_ = drvX_; drvX2_ = a; drvX_ = b;
+        Quad y = hqD(x, x1, x2, x3);
         if (driveOn_)
         {
             const float g = cur_[cDrvG], mk = cur_[cDrvMk], mx = cur_[cDrvMix];
-            y += (softClipMean(x * g, x0 * g) * mk - xm) * mx;
+            const Quad d = y - 0.5f * (x1 + x2);
+            y += (softClipMean((x1 + d) * g, (x2 + d) * g) * mk - y) * mx;
         }
         if constexpr (vhs) if (satMix > 0.0f) { tape2(a, b, y, satMix); return; }
         a = shapeRest<true>(lo2(y), satMix);
@@ -3180,7 +3264,7 @@ private:
         const bool hasB = __builtin_expect(slewCOn_, 0);
         if (hasB) tb = slewTake(satMix);
         Stereo ra, rb;
-        tapeSat_.record2(xa, xb, ra, rb);
+        tapeSat_.record2(xa, xb, ra, rb, tapeWPP_);
         a = tapeRest(xa, azRun_ ? tapeSat_.play(az_.process(ra)) : tapeSat_.play(ra), satMix);
         if (hasA) a += ta;
         b = tapeRest(xb, azRun_ ? tapeSat_.play(az_.process(rb)) : tapeSat_.play(rb), satMix);
@@ -3192,11 +3276,15 @@ private:
     // 5 dB below the tone itself, with HQ or without). This one works out where the limited line
     // meets the input, taken as straight from the last sample to this one, and if the input moves
     // the other way faster than the limit, turns back from there (16 to 33 dB less fold-back from a
-    // full-level tone at Slew 45 to 100 %). It also keeps what that path's mean over the sample adds
-    // to the mean of its two ends (slewC_: half the corner's distance from the straight line between
-    // them), which shape2 adds to the saturator place's result, itself the mean of the two ends (see
-    // shapeRest): there the stage gives the mean of the limited wave over the sample, the window that
-    // keeps the clippers' tones out (up to 13 dB less again). Where the limited line only catches up
+    // full-level tone at Slew 45 to 100 %). It also works out what shape2 adds to the saturator
+    // place's result, which is the sample before, so that the stage gives the mean of the limited
+    // wave over a window one sample wide around that sample, as the clippers there do (see shapeSat;
+    // up to 13 dB less fold-back again): slewC_, the corner's area over the straight line between
+    // the samples, its first half for this window and its second (slewCN_) for the next, and the
+    // window's mean of what the limiter took off (r) along the straight lines between the samples,
+    // (r2 + 6 r1 + r) / 8, less r1 itself (slewR). Against a render at 16 times 44.1 kHz with the
+    // step scaled to the rate, its tones are within 0.2 dB up to 20 kHz at Slew 100 % (the first 1.8 builds: up to
+    // 3 dB too loud at 16 to 20 kHz). Where the limited line only catches up
     // with a slower input, it does what the plain one does (that straight line is too rough a guess
     // for a high tone: the mean there added more than it took away). Only a lane whose input moved
     // by more than a step can turn back, so the plain result stands unless one did (one test a
@@ -3205,10 +3293,24 @@ private:
     {
         const Stereo s = splat(slewStep_), y0 = slew_, dx = x - slewX_;
         Stereo y = y0 + vmax(vmin(x - y0, s), -s);
-        if (__builtin_expect(anyPast(dx, dx, slewStep_), 0) && slewTurns(x, y0, dx)) y = slewTurn(x, y0, y);
+        const bool big = anyPast(dx, dx, slewStep_);
+        if (__builtin_expect(big, 0) && slewTurns(x, y0, dx)) y = slewTurn(x, y0, y);
         slewX_ = x;
         slew_ = y;
+        // what the limiter takes off (r), while it does and for two samples after: the window's
+        // mean of it from the straight lines between the samples, less the sample itself (see
+        // slewC_). It can only start to hold back where the input moved by more than a step.
+        if (__builtin_expect(big || slewRAct_ > 0, 0)) slewR(y - x);
         return y;
+    }
+    __attribute__((always_inline)) void slewR(Stereo r)
+    {
+        // (following the input, y0 + (x - y0) is x within a rounding error: that is no r)
+        if (allBelow(vabs(r), 1.0e-6f)) { r = splat(0.0f); --slewRAct_; }
+        else slewRAct_ = 2;
+        slewC_ += 0.125f * (slewR2_ + r - 2.0f * slewR1_);
+        slewR2_ = slewR1_; slewR1_ = r;
+        slewCOn_ = true;
     }
     // Whether slewTurn would turn either lane: its tests, on both lanes at once (each is exact:
     // a difference, a sign, and products by +-1). Driven hard, most samples move by more than a step
@@ -3233,18 +3335,27 @@ private:
             if (!(d0 != 0.0f && std::fabs(dx) > s && sg * (x[i] - y0[i]) <= s && sg * den > 0.0f)) continue;
             const float t = minf(d0 / den, 1.0f), ym = y0[i] + sg * s * t, y1 = ym - sg * s * (1.0f - t);
             y[i] = y1;
-            slewC_[i] += 0.5f * (ym - (y0[i] + t * (y1 - y0[i])));
-            slewCOn_ = true;
+            // the corner's height over the straight line between the ends, and the area it makes in
+            // the first and the second half of the step: the first goes to this sample's window, the
+            // second to the next one's (see slewC_)
+            const float dm = ym - (y0[i] + t * (y1 - y0[i]));
+            float a1, a2;
+            if (t >= 0.5f) { a1 = dm * 0.125f / t; a2 = 0.5f * dm - a1; }
+            else           { a2 = dm * 0.125f / (1.0f - t); a1 = 0.5f * dm - a2; }
+            slewC_[i] += a1; slewCN_[i] += a2;
+            slewCOn_ = slewCNOn_ = true;
         }
         return y;
     }
-    // slewC_ as the saturator's place adds it to its result (see shapeRest), then cleared
-    __attribute__((noinline)) Stereo slewTake(float satMix)
+    // slewC_ as the saturator's place adds it to its result (see shapeRest), then the next one's
+    __attribute__((always_inline)) Stereo slewTake(float satMix)
     {
-        const float k = compGain_ * cur_[cMakeup] * (satMix > 0.0f && (tape_ || hifiRun_) ? 1.0f - satMix : 1.0f);
+        const float k = slewG_ * (satMix > 0.0f && (tape_ || hifiRun_) ? 1.0f - satMix : 1.0f);
         const Stereo c = slewC_ * k;
-        slewC_ = splat(0.0f);
-        slewCOn_ = false;
+        slewC_ = slewCN_;
+        slewCN_ = splat(0.0f);
+        slewCOn_ = slewCNOn_;
+        slewCNOn_ = false;
         return c;
     }
     // shape() after the preamp clipper (hq: at the doubled rate, see shape2).
@@ -3256,10 +3367,10 @@ private:
     // HQ, VHS: what follows the tape curve (y: the tape's output for x, its input)
     __attribute__((always_inline)) Stereo tapeRest(Stereo x, Stereo y, float satMix)
     {
-        const Stereo xm = 0.5f * (x + satX_);
+        const Stereo x1 = satX_;
         satX_ = x;
         splitLp_ += splitCoeff_ * (y - splitLp_);
-        return xm + (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - xm) * satMix;
+        return x1 + (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - x1) * satMix;
     }
     // shapeRest's first part: Slew, the compressor and the clip on its boost
     template <bool hq> __attribute__((always_inline)) Stereo shapePre(Stereo x)
@@ -3283,6 +3394,7 @@ private:
         compGain_ += compSmooth_ * (compTarget_ - compGain_);
         const float cg = compGain_ * cur_[cMakeup];
         x *= cg;
+        if constexpr (hq) slewG_ = cg;   // (for slewTake)
         // The AGC and the make-up gain turn quiet sound up; a sudden loud hit gets that gain
         // for a few milliseconds before they react. It is clipped here, as the recorder's
         // own input would.
@@ -3295,44 +3407,50 @@ private:
         // ----- 2-band saturator ------------------------------------------
         if constexpr (hq)
         {
-            // HQ: the saturator's place is half a sample late, whatever is in it, as the preamp's is
-            // (see shape2): the clippers' means, the clean parts of their blends and the sound that
-            // goes round the stage are all means of this sample and the one before (satX_, satQ_).
-            // VHS's tape curve gives its own mean (TapeSat::record), and the sound that goes round it
-            // the same mean. Hi-Fi's limiter has its own (see HiFiPath::process): its result is put
-            // through the mean. Slew's share of the mean (slewC_, see slewHq) is added to the result
-            // (in shape2): all of it after the 2-band saturator and where none runs, and only with the
+            // HQ: the saturator's place is one sample late, whatever is in it (see HQ's clippers,
+            // above adaaMean): the sound that goes round the stage and the clean parts of the clippers'
+            // blends are the sample before (satX_, satQ_), and the clippers give their mean along the
+            // path from half-way between the samples two back (satQ2_) and one back, through it, to
+            // half-way between it and this one, moved so that its mean is the sample before. VHS's
+            // tape curve does the same (TapeSat::record). Hi-Fi's limiter has its own centered mean
+            // (see HiFiPath::process): its result is the sample before. Slew's share (slewC_, see
+            // slewHq) is added to the result (in shape2): all of it after the 2-band saturator and where none runs, and only with the
             // sound that goes round VHS or Hi-Fi (their emphasis and their curve or limiter would make
             // it wrong: added after them, it gave up to 18 dB more fold-back than without it).
             // (VHS heard: shape2's tape2, which does both samples at once; never here)
             if (satMix > 0.0f && hifiRun_)
             {
                 x = hifiShape<true>(x, satMix);
-                const Stereo m = 0.5f * (x + satX_);
+                const Stereo m = satX_;
                 satX_ = x;
                 return m;
             }
-            const Stereo xm = 0.5f * (x + satX_);
+            const Stereo x1 = satX_;
             satX_ = x;
             if (satMix > 0.0f && !hifiRun_)
             {
                 // both bands' clippers as one 4-lane mean; a band whose clipper is off has a blend of
-                // 0 there. Their last sample is taken from the sound when the stage comes back in.
+                // 0 there. Their last two samples are taken from the sound when the stage comes back in.
                 splitLp_ += splitCoeff_ * (x - splitLp_);
                 const Quad q = quad(splitLp_ * cur_[cLowsG], (x - splitLp_) * cur_[cHighsG]);
-                if (satSeed_) { satQ_ = q; satSeed_ = false; }
-                const Quad q0 = satQ_;
-                satQ_ = q;
-                Quad y = 0.5f * (q + q0);
+                if (satSeed_) { satQ_ = satQ2_ = q; satSeed_ = false; }
+                const Quad q1 = satQ_, q2 = satQ2_;
+                satQ2_ = q1; satQ_ = q;
+                Quad y = q1;
                 if (loSatOn_ || hiSatOn_)
                 {
+                    // the path through the sample before, moved by d so that its mean is that sample, in two halves
                     const Quad g = quad2(cur_[cLoG], cur_[cHiG]);
-                    y += (softClipMean(q * g, q0 * g) * quad2(cur_[cLoMk], cur_[cHiMk]) - y) * quad2(cur_[cLoMix], cur_[cHiMix]);
+                    const Quad d = 0.125f * (2.0f * q1 - q - q2), c = (q1 + d) * g;
+                    const Quad e2 = (0.5f * (q1 + q2) + d) * g, e0 = (0.5f * (q + q1) + d) * g;
+                    const Quad half = __builtin_expect(anyPast3(c, e2, e0, 1.5f), 0) ? softClipMean(c, e2) + softClipMean(e0, c)
+                                                                                     : softPoly(c, e2) + softPoly(e0, c);
+                    y += (0.5f * half * quad2(cur_[cLoMk], cur_[cHiMk]) - y) * quad2(cur_[cLoMix], cur_[cHiMix]);
                 }
-                return xm + (lo2(y) + hi2(y) - xm) * satMix;
+                return x1 + (lo2(y) + hi2(y) - x1) * satMix;
             }
             satSeed_ = true;
-            return xm;
+            return x1;
         }
         if (satMix > 0.0f && tape_)
         {
@@ -3774,7 +3892,7 @@ public:
                     tape_ = std::lround(plain(kSatType)) == 1;
                     hifiType_ = std::lround(plain(kSatType)) == 2;   // (not heard with the Saturator off: see readParams)
                     hifiRun_ = false;                                // (silent now; controlTick starts it from rest)
-                    tapeSat_.reset();
+                    resetTape();
                     splitLp_ = splat(0.0f);
                     dirty = (dirty & ~gQuality) | gSat;
                     redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
@@ -5286,8 +5404,8 @@ private:
     // its two places that may clip (1.8, see shape2 and shapeRest): the last sample into the
     // preamp's, into the saturator's, and the two bands' (low in lanes 0-1, high in 2-3); satSeed_:
     // take the bands' from the sound at the next sample; the NR encoder clipper's path end; the dry
-    // copy's two means and both copies of kHqEq. Last for the same reason (the filters grew from
-    // three sections to five in 1.8).
+    // copy's last two samples (see dryM2_) and both copies of kHqEq. Last for the same reason (the
+    // filters grew from three sections to five in 1.8).
     HalfBand hbUp_, hbDown_, hbDryUp_, hbDryDown_;
     Stereo drvX_ = {}, satX_ = {}, nrClipP_ = {}, dryM_[2] = {};
     Stereo slewX_ = {}, slewC_ = {};   // HQ slew limiter: its last input, and its share of the mean (see slewHq)
@@ -5296,6 +5414,16 @@ private:
     Quad  satQ_ = {};
     bool  satSeed_ = true;
     PairBiquad hqEq_, hqDryEq_;
+    // (1.8) the preamp's place: the samples two and three back (see shape2); the saturator's: the
+    // bands two back; the dry copy's samples three and four back; Slew's: the second half of
+    // the corner's area (slewCN_, for the next sample) and what it took off one and two samples back
+    // (slewR1_, slewR2_; slewRAct_: for how many samples more they count, see slewHq)
+    Stereo drvX2_ = {}, drvX3_ = {}, dryM2_[2] = {}, slewCN_ = {}, slewR1_ = {}, slewR2_ = {};
+    Quad  satQ2_ = {};
+    int   slewRAct_ = 0;
+    float slewG_ = 1.0f;     // the compressor's gain at the last sample (see slewTake)
+    bool  slewCNOn_ = false; // (slewCN_ is not 0)
+    Stereo tapeWPP_ = {};   // the VHS tape's pre-emphasis output two samples back (see TapeSat::record)
 };
 
 // The framework's dispatcher with five additions:

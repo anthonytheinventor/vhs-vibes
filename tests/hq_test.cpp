@@ -5,7 +5,8 @@
 // linear range, the latency the plugin wants to report and the dry copy follow the extra delay
 // in every combination, and switching while a tone plays does not click. And (1.8) what the
 // clippers inside HQ, the VHS tape curve, Slew, the NR decoder's clipper, the Phone and HQ's
-// half-band filters still let fold back, and that Hi-Fi's hiss is as loud with HQ on as off.
+// half-band filters still let fold back, that Hi-Fi's hiss is as loud with HQ on as off, and that
+// the tones the clippers make keep their level with HQ on.
 // Ends with PASS or FAIL.
 #include <atomic>
 #include <chrono>
@@ -316,7 +317,12 @@ int main()
         // -47.8; Slew 100: 1 + 15 kHz -48.6 / -47.0 / -56.4; Drive 100 into the Hi-Fi limiter: 5 kHz
         // -46.6 / -41.6 / -46.4, 1 + 15 kHz -36.9 / -33.2 / -41.8; NR Play (the decoder's clipper):
         // 5 kHz -49.4 / -49.4 / -64.6, 10 kHz -36.3 / -36.3 / -47.3; Phone at Mic Gain +12: 7 kHz
-        // -27.2 / -27.2 / -52.4. Each ceiling is a few dB above the last figure.
+        // -27.2 / -27.2 / -52.4. Each ceiling is a few dB above the last figure. Since the paths carry
+        // the clean sound (see HQ's clippers in the source), a loud high tone is clipped as hard as it
+        // should be (the first 1.8 builds clipped it 1 to 3 dB too softly), and three fold back more
+        // (first 1.8 builds / now): Simple hard 14 kHz -34.1 / -30.9, the VHS tape curve 1 + 15 kHz
+        // -60.2 / -51.8, Drive 100 into the Hi-Fi limiter 1 + 15 kHz -42.2 / -36.4 (VHS 10 kHz now
+        // -58.6, Drive 100 14 kHz -38.0, 1 + 15 kHz -45.5); those three ceilings are about 1 dB above.
         struct C { const char* name; Ch ch; double f1, f2, amp, ceil; };
         const Ch simpleHard = { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 100}, {kHiSat, 100}, {kLows, 12}, {kHighs, 12} };
         const Ch hifiLim = { {kSatOn, 1}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSplit, 2500} };
@@ -324,15 +330,15 @@ int main()
         const Ch driveHifi = { {kDrive, 100}, {kSatOn, 1}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSplit, 2500} };
         const C cs[] = { { "Drive 100, 14 kHz at -1 dBFS", { {kDrive, 100} }, 14000.0, 0.0, 0.891, -36.0 },
                          { "Drive 100, 1 + 15 kHz at -7 dBFS each", { {kDrive, 100} }, 1000.0, 15000.0, 0.447, -43.0 },
-                         { "Simple 2-band, hard, 14 kHz at -1 dBFS", simpleHard, 14000.0, 0.0, 0.891, -32.0 },
+                         { "Simple 2-band, hard, 14 kHz at -1 dBFS", simpleHard, 14000.0, 0.0, 0.891, -30.0 },
                          { "Hi-Fi limiter, 14 kHz at -1 dBFS", hifiLim, 14000.0, 0.0, 0.891, -53.0 },
                          { "Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", hifiLim, 1000.0, 15000.0, 0.447, -50.0 },
                          { "VHS tape curve, Rec Level 100 %, 10 kHz at -1 dBFS", vhs100, 10000.0, 0.0, 0.891, -58.0 },
-                         { "VHS tape curve, Rec Level 100 %, 1 + 15 kHz at -7 dBFS each", vhs100, 1000.0, 15000.0, 0.447, -57.0 },
+                         { "VHS tape curve, Rec Level 100 %, 1 + 15 kHz at -7 dBFS each", vhs100, 1000.0, 15000.0, 0.447, -51.0 },
                          { "Slew 45, 10 kHz at -1 dBFS", { {kWear, 45} }, 10000.0, 0.0, 0.891, -44.0 },
                          { "Slew 100, 1 + 15 kHz at -7 dBFS each", { {kWear, 100} }, 1000.0, 15000.0, 0.447, -53.0 },
                          { "Drive 100 into the Hi-Fi limiter, 5 kHz at -1 dBFS", driveHifi, 5000.0, 0.0, 0.891, -44.0 },
-                         { "Drive 100 into the Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", driveHifi, 1000.0, 15000.0, 0.447, -39.0 },
+                         { "Drive 100 into the Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", driveHifi, 1000.0, 15000.0, 0.447, -35.5 },
                          { "NR Play (decoder clipper), 5 kHz at -1 dBFS", { {kNr, 2} }, 5000.0, 0.0, 0.891, -61.0 },
                          { "NR Play (decoder clipper), 10 kHz at -1 dBFS", { {kNr, 2} }, 10000.0, 0.0, 0.891, -44.0 },
                          { "Phone, Mic Gain +12, 7 kHz at -1 dBFS", { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 12} }, 7000.0, 0.0, 0.891, -49.0 } };
@@ -400,6 +406,57 @@ int main()
             }
             std::snprintf(what, sizeof(what), "%s: HQ off %.2f dBFS, HQ on %.2f dBFS (%+.2f dB, within 0.2)", c.name, lvl[0], lvl[1], lvl[1] - lvl[0]);
             check(std::fabs(lvl[1] - lvl[0]) <= 0.2, what);
+        }
+    }
+
+    std::printf("7. The tones the clippers make (1.8): their levels with HQ on against a render 16 times as fast, 44.1 kHz\n");
+    {
+        // A 313 Hz tone at -3 dBFS, Hi Cut and Hi Cut 2 at 18 kHz. The stored levels (dBFS, each odd
+        // harmonic up to 20 kHz that is above -85 dBFS there) are v1.7.0 with HQ off at 16 times
+        // 44.1 kHz, where its plain clippers have nowhere to fold back to, less the difference the
+        // stages around them make at that rate (Slew: with its step scaled to the rate, as HQ does).
+        // Up to the first 1.8 builds the top octave came out up to 3 dB too loud (each place's mean
+        // lifted back as if it were the clean sound's); now within 0.2 dB. Each within 0.5 dB.
+        struct H { int k; float db; };
+        struct C { const char* name; Ch ch; std::vector<H> ref; };
+        const C cs[] = {
+            { "Simple, Lo / Hi Sat 100", { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 100}, {kHiSat, 100} },
+              { {3, -16.37f}, {5, -21.14f}, {7, -24.80f}, {9, -28.63f}, {11, -32.61f}, {13, -35.94f}, {15, -40.38f}, {17, -46.45f}, {19, -54.30f},
+                {23, -59.65f}, {25, -56.91f}, {27, -56.16f}, {29, -57.57f}, {31, -60.99f}, {33, -65.76f}, {35, -76.03f}, {37, -77.66f}, {39, -70.53f},
+                {41, -67.95f}, {43, -68.05f}, {45, -70.28f}, {47, -73.72f}, {49, -80.55f}, {53, -82.07f}, {55, -78.98f}, {57, -80.52f} } },
+            { "Drive 100", { {kDrive, 100} },
+              { {3, -16.16f}, {5, -20.51f}, {7, -23.53f}, {9, -26.48f}, {11, -29.24f}, {13, -30.93f}, {15, -33.11f}, {17, -35.85f}, {19, -37.88f},
+                {21, -40.03f}, {23, -42.95f}, {25, -46.36f}, {27, -49.27f}, {29, -53.51f}, {31, -59.91f}, {33, -71.09f}, {35, -71.18f}, {37, -63.89f},
+                {39, -61.78f}, {41, -60.24f}, {43, -60.14f}, {45, -61.23f}, {47, -62.26f}, {49, -63.75f}, {51, -66.54f}, {53, -70.80f}, {55, -76.09f} } },
+            { "Slew 100", { {kWear, 100} },
+              { {3, -29.00f}, {5, -37.55f}, {7, -43.12f}, {9, -47.74f}, {11, -51.60f}, {13, -53.95f}, {15, -56.42f}, {17, -59.11f}, {19, -60.76f},
+                {21, -62.21f}, {23, -64.03f}, {25, -65.90f}, {27, -66.66f}, {29, -67.87f}, {31, -69.53f}, {33, -70.39f}, {35, -71.11f}, {37, -72.31f},
+                {39, -73.71f}, {41, -74.02f}, {43, -74.84f}, {45, -76.17f}, {47, -76.85f}, {49, -77.42f}, {51, -78.62f}, {53, -80.37f}, {55, -81.57f},
+                {57, -84.61f} } } };
+        const int N = 65536;
+        for (const C& c : cs)
+        {
+            Fx fx(44100.0f, 1, c.ch);
+            fx.set(kHiCut, 18000); fx.set(kHiCut2, 18000);
+            std::vector<float> out;
+            fx.play(3.0, [&](long i) { return 0.708 * std::sin(kTwoPiD * 313.0 * (double)i / 44100.0); }, &out);
+            std::vector<std::complex<double>> a(N); double ws = 0; const size_t off = out.size() - N;
+            for (int i = 0; i < N; ++i)
+            {
+                const double t = kTwoPiD * i / N, w = 0.35875 - 0.48829 * std::cos(t) + 0.14128 * std::cos(2 * t) - 0.01168 * std::cos(3 * t);
+                a[(size_t)i] = out[off + (size_t)i] * w; ws += w;
+            }
+            fft(a);
+            double worst = 0; int worstK = 0;
+            for (const H& h : c.ref)
+            {
+                const long b = std::lround(h.k * 313.0 / (44100.0 / N)); double pk = 0;
+                for (long i = b - 4; i <= b + 4; ++i) pk = std::fmax(pk, std::abs(a[(size_t)i]) * 2.0 / ws);
+                const double d = dB(pk) - h.db;
+                if (std::fabs(d) > std::fabs(worst)) { worst = d; worstK = h.k; }
+            }
+            std::snprintf(what, sizeof(what), "%s: %zu harmonics, the furthest %+.2f dB (at %.0f Hz), within 0.5", c.name, c.ref.size(), worst, worstK * 313.0);
+            check(std::fabs(worst) <= 0.5, what);
         }
     }
 
