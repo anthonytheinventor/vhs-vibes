@@ -487,19 +487,26 @@ inline Quad driveSat4(Quad x, Quad g, Quad makeup, Quad mix)
 // 15 kHz tone about 0.1 dB less.)
 //
 // The NR encoder's clipper sits in a side chain whose sound is only added, so it cannot be late:
-// its path runs between two points of its input passed through (1 + r) / (1 + r z^-1),
-// r = kChordRho, whose middle is the sample itself (within 0.002 dB and 0.016 samples up to
-// 20 kHz at the doubled rate). Hi-Fi's limiter does much the same (see HiFiPath::process). That
-// would not do for the preamp and the saturator: after a clipper, the input's top octave makes
-// those points swing, and a clipper after a clipper folds back more than without the means.
+// where it clips, what it takes off is its mean along a path between two points of its input
+// passed through (1 + r) / (1 + r z^-1), r = kNrChordRho, whose middle is 0.17 samples late (at
+// the doubled rate); elsewhere the side signal goes through as it is. At first r was 0.95, whose
+// middle is the sample within 0.002 dB, but which lifts the top of the doubled band up to 39
+// times: the up-sampler's leftovers near 44 kHz (under -100 dB) then made the path's ends swing by
+// up to 0.4 of the clip level, so a loud steady tone (which clips the side chain: at -3 dBFS, 313
+// Hz, on about 40 % of the samples) was clipped too softly and its tones came out up to 17 dB too
+// quiet at 16 kHz. With 0.5 (a lift of 3 at most) they are those of 1.7.0 within 0.3 dB to
+// 16 kHz and 0.55 dB at 16 to 20 kHz, and what folds back is within 1.3 dB of what it was.
+// Hi-Fi's limiter does much the same (see HiFiPath::process). That would not do for the preamp and
+// the saturator: after a clipper, the input's top octave makes those points swing, and a clipper
+// after a clipper folds back more than without the means.
 //
 // Each mean is written per piece of the curve (inside the clamp the polynomial, past it the rail
 // times the distance), so nothing large is taken from anything large and float stays exact down to
 // a step of 1e-4, where the curve's own mean between the clamped ends takes over (the same value).
 // While both ends of every lane stay inside the clamp, that polynomial mean is the whole answer,
 // and the rest is skipped.
-constexpr float kChordRho = 0.95f;
-constexpr float kChordIn  = 1.0f + kChordRho;
+constexpr float kNrChordRho = 0.5f;  // the NR encoder's clipper (see NoiseRed::encode)
+constexpr float kNrChordIn  = 1.0f + kNrChordRho;
 constexpr float kHfChordRho = 0.7f;   // Hi-Fi's limiter: half of its path (see HiFiPath::process)
 constexpr float kHfChordIn  = 1.0f + kHfChordRho;
 template <class T> inline T vsplat(float v) { T t = {}; return t + v; }
@@ -737,8 +744,8 @@ struct NoiseRed
     }
 
     // mix: 1 = on; below that the added signal is faded (while NR is switched in or out).
-    // adaa (with HQ): the overshoot clipper gives the mean of its clamp along a path through the
-    // sample (see clampMean); clipP holds that path's last end.
+    // adaa (with HQ): where the overshoot clipper clips, what it takes off is the mean of that along
+    // a path through the sample (see kNrChordRho and clampPast); clipP holds that path's last end.
     template <bool adaa = false> Stereo encode(Stereo x, float mix = 1.0f, Stereo* clipP = nullptr)
     {
         const Stereo vB = (c1 * (sq + kap * x) - c2 * su) * rec;         // rec = 1 / D
@@ -747,10 +754,10 @@ struct NoiseRed
         control(e);
         if constexpr (adaa)
         {
-            const Stereo p = kChordIn * e - kChordRho * *clipP;
-            const Stereo c = clampMean(p, *clipP, kNrClip);
+            const Stereo q = *clipP, p = kNrChordIn * e - kNrChordRho * q;
             *clipP = p;
-            return x + c * mix;
+            if (__builtin_expect(anyPast(p, q, kNrClip), 0)) return x + (e + (clampPast(p, q, kNrClip) - 0.5f * (p + q))) * mix;
+            return x + e * mix;
         }
         return x + vclamp(e, kNrClip) * mix;
     }
@@ -761,8 +768,8 @@ struct NoiseRed
     // all it has against fold-back (6 to 16 dB less). Elsewhere it is exactly what it was, so the
     // decoder undoes the encoder as closely as before and nothing is late. (The mean of the clamp
     // itself would be half a sample late where it clips, which made a loud 5 to 7 kHz fold back up
-    // to 10 dB more; a path centred on the sample, as the encoder's, overshoots a high tone at this
-    // rate and clipped a 20 kHz that never reaches the clip.)
+    // to 10 dB more; a path centered on the sample, as the encoder's was at first, overshoots a high
+    // tone at this rate and clipped a 20 kHz that never reaches the clip.)
     template <bool adaa = false> Stereo decode(Stereo y, Stereo* clipP = nullptr)
     {
         // y = x + gain * vB(x), and vB is a straight line in x: solved for x (rec = 1 / (D + off))
@@ -1848,7 +1855,7 @@ struct MicModel
     // it, carbonPast), as the preamp's clipper gives its mean (softClipMean): the hard edge of a
     // loud sound folded back loudly into the phone's band before (8 to 27 dB less now). Elsewhere
     // it is the curve itself, as without HQ, so nothing is late. (The mean of the whole curve would
-    // be a quarter of a sample late; a path centred on the sample, as the NR encoder's, overshoots
+    // be a quarter of a sample late; a path centered on the sample, as the NR encoder's was at first, overshoots
     // a high tone by up to a quarter, so a loud 14 to 20 kHz met the clamp it never reaches.)
     // The integral, per piece: inside m^2 / 2 + h m^3 / 3, past the clamp the rail (+-L + h L^2)
     // times the distance.
