@@ -5,7 +5,8 @@
 // linear range, the latency the plugin wants to report and the dry copy follow the extra delay
 // in every combination, and switching while a tone plays does not click. And (1.8) what the
 // clippers inside HQ, the VHS tape curve, Slew, the NR decoder's clipper, the Phone and HQ's
-// half-band filters still let fold back. Ends with PASS or FAIL.
+// half-band filters still let fold back, and that Hi-Fi's hiss is as loud with HQ on as off.
+// Ends with PASS or FAIL.
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -358,6 +359,47 @@ int main()
             const double lvl = dB(std::abs(si) * 2.0 / (2 * N));
             std::snprintf(what, sizeof(what), "half-band, %.0f kHz: its doubled copy at %.1f kHz is %.1f dB down, at least 60", f / 1000.0, img / 1000.0, -lvl);
             check(lvl <= -60.0, what);
+        }
+    }
+
+    std::printf("6. Hi-Fi's channel noise (1.8): as loud with HQ on as with HQ off, input silent, 20 Hz to 20 kHz\n");
+    {
+        // With HQ the path runs at twice the rate; up to 1.8.0 its hiss came out 1.5 to 2 dB louder
+        // there. The carrier's own wander is held still for this (it moves the noise level at random,
+        // and its random course differs with the rate); the rest is as it plays.
+        auto power = [](const std::vector<float>& v, float sr)
+        {
+            const size_t N = 8192; std::vector<std::complex<double>> a(N); double ws = 0, acc = 0; long segs = 0;
+            for (size_t i = 0; i < N; ++i) { const double w = 0.5 - 0.5 * std::cos(kTwoPiD * (double)i / (double)N); ws += w * w; }
+            for (size_t s = 0; s + N <= v.size(); s += N / 2, ++segs)
+            {
+                for (size_t i = 0; i < N; ++i) a[i] = (double)v[s + i] * (0.5 - 0.5 * std::cos(kTwoPiD * (double)i / (double)N));
+                fft(a);
+                for (size_t k = 1; k < N / 2; ++k) { const double f = (double)k * sr / (double)N; if (f >= 20.0 && f <= 20000.0) acc += 2.0 * std::norm(a[k]) / (ws * (double)N); }
+            }
+            return 10.0 * std::log10(acc / (double)segs + 1e-30);
+        };
+        struct C { const char* name; float hiss, hicut; };
+        const C cs[] = { { "Hiss 35 %", 35.0f, 0.0f }, { "Hiss 100 %", 100.0f, 0.0f }, { "Hiss 35 %, Hi Cut and Hi Cut 2 at 9 kHz", 35.0f, 9000.0f } };
+        for (const C& c : cs)
+        {
+            double lvl[2];
+            for (int hq = 0; hq < 2; ++hq)
+            {
+                Ch ch = { {kNoiseOn, 1}, {kNoise, 50}, {kSatOn, 1}, {kSatType, 2}, {kMicOn, 0}, {kHiss, c.hiss}, {kCrackle, 0}, {kHeadBuzz, 0},
+                          {kHum, 0}, {kBuzz, 0}, {kWhistle, 0}, {kDrift, 0}, {kTracking, 0}, {kBreathing, 0}, {kDropouts, 0}, {kAgc, 0} };
+                if (c.hicut > 0.0f) { ch.push_back({kHiCut, c.hicut}); ch.push_back({kHiCut2, c.hicut}); }
+                Fx fx(44100.0f, hq, ch);
+                auto silent = [](long) { return 0.0; };
+                fx.play(0.1, silent);
+                fx.vv()->hifiPath_.s.wanderDb = 0.0f;
+                fx.play(1.0, silent);
+                std::vector<float> out;
+                fx.play(30.0, silent, &out);
+                lvl[hq] = power(out, 44100.0f);
+            }
+            std::snprintf(what, sizeof(what), "%s: HQ off %.2f dBFS, HQ on %.2f dBFS (%+.2f dB, within 0.2)", c.name, lvl[0], lvl[1], lvl[1] - lvl[0]);
+            check(std::fabs(lvl[1] - lvl[0]) <= 0.2, what);
         }
     }
 

@@ -402,14 +402,41 @@ typedef float Stereo __attribute__((vector_size(8)));
 
 inline Stereo stereo(float l, float r) { const Stereo v = {l, r}; return v; }
 inline Stereo splat(float x) { const Stereo v = {x, x}; return v; }
-// min / max as compare-and-select: one or two instructions, where fmin() / fmax() would be
-// library calls on the 32-bit MPCs (their NaN rules have no matching instruction there).
+// min / max: on the MPC one NEON instruction each, elsewhere a compare-and-select (fmin() / fmax()
+// would be library calls on the 32-bit MPCs: their NaN rules have no matching instruction there).
+// The two give the same for every number, and for 0 against -0 wherever it is used here (each
+// bound is not 0, or the other side is not negative); a NaN from the host passes through NEON's
+// instead of landing on a bound, and process() silences that block either way.
+#if defined(__ARM_NEON)
+inline Stereo vmin(Stereo a, Stereo b) { return (Stereo)vmin_f32((float32x2_t)a, (float32x2_t)b); }
+inline Stereo vmax(Stereo a, Stereo b) { return (Stereo)vmax_f32((float32x2_t)a, (float32x2_t)b); }
+#else
 inline Stereo vmin(Stereo a, Stereo b) { return a < b ? a : b; }
 inline Stereo vmax(Stereo a, Stereo b) { return a > b ? a : b; }
+#endif
 inline Stereo vabs(Stereo a) { return __builtin_elementwise_abs(a); }
 inline Stereo vclamp(Stereo x, float limit) { return vmax(vmin(x, splat(limit)), splat(-limit)); }   // to -limit .. limit
 inline float  maxf(float a, float b) { return a > b ? a : b; }
 inline float  minf(float a, float b) { return a < b ? a : b; }
+
+// Two Xorshift32 streams side by side (left, right), for noise that differs in the two channels:
+// each lane gives exactly what its own Xorshift32 would (the integer steps are the same, and
+// nextBipolar's conversion is exact: a 24-bit integer, a power-of-two scale, minus 1), for about
+// the price of one.
+struct XorPair
+{
+    typedef uint32_t U2 __attribute__((vector_size(8)));
+    U2 s;
+    XorPair(uint32_t l, uint32_t r) { reseed(l, r); }
+    void reseed(uint32_t l, uint32_t r) { const U2 v = { l != 0 ? l : 0x9E3779B9u, r != 0 ? r : 0x9E3779B9u }; s = v; }
+    Stereo nextBipolar()
+    {
+        U2 x = s;
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+        s = x;
+        return __builtin_convertvector(x >> 8, Stereo) * (2.0f / 16777216.0f) - 1.0f;
+    }
+};
 
 // The cubic soft clipper of dsp/math.h, for both channels.
 inline Stereo softClip(Stereo x)
@@ -478,7 +505,7 @@ constexpr float kHfChordIn  = 1.0f + kHfChordRho;
 template <class T> inline T vsplat(float v) { T t = {}; return t + v; }
 template <class T> inline T vclampT(T x, float lim)
 {
-    x = x < lim ? x : vsplat<T>(lim);   // vclamp's order: the top first (a NaN ends on the top)
+    x = x < lim ? x : vsplat<T>(lim);   // vclamp's order off the MPC: the top first (a NaN ends on the top)
     return x > -lim ? x : vsplat<T>(-lim);
 }
 // Whether a or b is past +-lim in any lane.
@@ -503,6 +530,17 @@ inline bool anyPast(Stereo a, Stereo b, float lim)
 #else
     const Stereo m = __builtin_elementwise_max(__builtin_elementwise_abs(a), __builtin_elementwise_abs(b));
     return __builtin_reduce_max(m) > lim;
+#endif
+}
+// Whether both lanes are below lim: maxf(v[0], v[1]) < lim for any value a NaN is not (a NaN lane
+// counts as not below; the NaN guards reset what it reaches). One NEON compare on the MPC.
+inline bool allBelow(Stereo v, float lim)
+{
+#if defined(__ARM_NEON)
+    const uint32x2_t m = vclt_f32((float32x2_t)v, vdup_n_f32(lim));
+    return vget_lane_u32(vpmin_u32(m, m), 0) != 0;
+#else
+    return v[0] < lim && v[1] < lim;
 #endif
 }
 // A clamp where a NaN does not matter: one NEON min and max on the MPC.
@@ -861,19 +899,20 @@ struct TapeSat
     // by: at a = b it is the curve itself. Inside the clamp |z| <= 0.6, where A is 1 + s times a
     // cubic (fitted: the mean comes out within 6e-6 of its value, under -100 dB, and exactly the
     // curve where a = b).
-    static Stereo curvePoly(Stereo a, Stereo b)
+    // (T: Stereo, or Quad for two samples at once: see record2)
+    template <class T> static T curvePoly(T a, T b)
     {
-        const Stereo p = a + b, iq = 1.0f / (a * a + b * b + 6.0f), z = (a - b) * p * iq, s = z * z;
-        const Stereo r = 1.0f + s * (0.3333040139f + s * (0.2023891238f + s * (0.1129172733f + s * 0.2231106509f)));
+        const T p = a + b, iq = 1.0f / (a * a + b * b + 6.0f), z = (a - b) * p * iq, s = z * z;
+        const T r = 1.0f + s * (0.3333040139f + s * (0.2023891238f + s * (0.1129172733f + s * 0.2231106509f)));
         return p * ((1.0f / 18.0f) + (8.0f / 3.0f) * r * iq);
     }
     // past the clamp at +-3 the curve is 1 (see adaaMean); out of line, as softClipPast
-    static __attribute__((noinline)) Stereo curvePast(Stereo a, Stereo b)
+    template <class T> static __attribute__((noinline)) T curvePast(T a, T b)
     {
-        const Stereo ac = fclamp(a, 3.0f), bc = fclamp(b, 3.0f);
+        const T ac = fclamp(a, 3.0f), bc = fclamp(b, 3.0f);
         return adaaMean(a, b, ac, bc, curvePoly(ac, bc), 1.0f);
     }
-    static Stereo curveMean(Stereo a, Stereo b)
+    template <class T> static T curveMean(T a, T b)
     {
         if (__builtin_expect(anyPast(a, b, 3.0f), 0)) return curvePast(a, b);
         return curvePoly(a, b);
@@ -905,8 +944,8 @@ struct TapeSat
     }
     void reset() { uP = wP = vP = yP = edge = biasLp = splat(0.0f); }
     template <bool adaa = false> Stereo process(Stereo x) { return play(record<adaa>(x)); }
-    // The two halves, for Azimuth to sit between them: what is on the tape (|v| <= s, never NaN:
-    // the curve clamps), and what the playback side makes of it.
+    // The two halves, for Azimuth to sit between them: what is on the tape (|v| <= s: the curve
+    // clamps; a NaN from the host passes on the MPC, see vmin), and what the playback side makes of it.
     // adaa (HQ, 1.8): the curve's mean from the last sample to this one (curveMean). Every stage
     // around it is linear, so for a sound that the curve leaves alone that is the mean of the two
     // samples, half a sample late, as the rest of the saturator's place is with HQ (see shapeRest).
@@ -936,6 +975,26 @@ struct TapeSat
         }
         uP = u; wP = w;
         return curve(w * invS) * s;
+    }
+    // record<true> of two samples in a row (a the earlier one), the two means as one 4-lane
+    // curvePoly: the emphasis is worked out for both first, as each lane needs only the samples
+    // before it. Every lane does what record<true> does, in the same order, so the results are the
+    // same to the bit. (A Rec Level move, or either sample past the clamp: one after the other.)
+    void record2(Stereo xa, Stereo xb, Stereo& ra, Stereo& rb)
+    {
+        if (__builtin_expect(gRec != gLast, 0)) { ra = record<true>(xa); rb = record<true>(xb); return; }
+        const Stereo ua = xa * gRec, wa = b0 * ua + b1 * uP - a1 * wP;
+        const Stereo ub = xb * gRec, wb = b0 * ub + b1 * ua - a1 * wa;
+        const Quad A = quad(wa * invS, wb * invS), B = quad(wP * invS, wa * invS);
+        uP = ub; wP = wb;
+        if (__builtin_expect(anyPast(A, B, 3.0f), 0))
+        {
+            // past the clamp: each sample's mean by itself, as record<true> (curveMean decides per sample)
+            ra = curveMean(lo2(A), lo2(B)) * s; rb = curveMean(hi2(A), hi2(B)) * s;
+            return;
+        }
+        const Quad m = curvePoly(A, B) * s;
+        ra = lo2(m); rb = hi2(m);
     }
     Stereo play(Stereo v)
     {
@@ -1645,6 +1704,7 @@ struct MicModel
     double vc = 0.0, alcAtk = 0.0, alcRel = 1.0;
     float u = 1.0f, alcG = 1.0f;
     float clipP = 0.0f;             // phone with HQ: the last sample into the clamp (see carbonPast)
+    bool  clipOver = false;         // ... and whether it was past the clamp
 
     static BiquadCoeffs design(const MicSec& s, float sr)
     {
@@ -1722,7 +1782,7 @@ struct MicModel
     {
         if (in <= 0.0f) in = sr;
         type = t;
-        clipP = 0.0f;
+        clipP = 0.0f; clipOver = false;
         const int band = in >= 130000.0f ? 3 : in >= 70000.0f ? 2 : in >= 46000.0f ? 1 : 0;   // the fits are per rate band
         n = 0;
         auto add = [&](const MicSec& s, float rate) { f[n++].setCoeffs(design(s, rate)); };
@@ -1780,7 +1840,7 @@ struct MicModel
         lineBp.reset();
         env = kRefLevel;
         vc = 0.0; u = 1.0f; alcG = 1.0f;
-        clipP = 0.0f;
+        clipP = 0.0f; clipOver = false;
     }
     // HQ (1.8): where the phone's clamp is reached at either end of the step from the last sample
     // to this one, what the clamp takes off the carbon's curve (m + kCarbonH2 m^2) is given as its
@@ -1892,8 +1952,9 @@ struct MicModel
                 if constexpr (hq)
                 {
                     const float p = m * g, q = clipP;
-                    clipP = p;
-                    if (__builtin_expect(std::fabs(p) > kCarbonClip || std::fabs(q) > kCarbonClip, 0))
+                    const bool over = std::fabs(p) > kCarbonClip, wasOver = clipOver;   // (wasOver: |q| was past it)
+                    clipP = p; clipOver = over;
+                    if (__builtin_expect(over || wasOver, 0))
                         return p + kCarbonH2 * p * p - (carbonPoly(p, q) - carbonPast(p, q));
                 }
                 m = clamp(m * g, -kCarbonClip, kCarbonClip);
@@ -2231,6 +2292,8 @@ struct HiFiPath
         float noise = 0.0f;         // noise amplitude
         uint32_t clickThr = 0;      // a click in a sample when a random 32-bit number is below this
         bool doc = false, low = false;   // held; below the hi-fi detector's threshold
+        bool rateOk = false;        // clickThr holds for m and h (set() clears it: the knobs move the rate)
+        float h = 0.0f;             // the weaker head's share it was worked out for
     };
 
     float sr = 0.0f;
@@ -2241,7 +2304,8 @@ struct HiFiPath
     TapeSat tape;                   // the linear track
     // noise left and right, clicks, and one stream each for Drift, Tracking, Dropouts and the carrier's
     // wander (so that one of those knobs does not move the others' events)
-    Xorshift32 rngL{0x48f1a1u}, rngR{0x2c0ffeeu}, rngC{0x1c11c4u}, rngD{0xe7e47u}, rngT{0x7a3c51u}, rngO{0xd09b17u}, rngW{0x3b1d5u};
+    XorPair rngLR{0x48f1a1u, 0x2c0ffeeu};
+    Xorshift32 rngC{0x1c11c4u}, rngD{0xe7e47u}, rngT{0x7a3c51u}, rngO{0xd09b17u}, rngW{0x3b1d5u};
 
     // per rate
     static constexpr float kDRef = kHfDetSine * kRefLevel;   // the compressor's unity point
@@ -2274,24 +2338,40 @@ struct HiFiPath
     uint32_t drops = 0;                         // dropouts so far, for the picture
     Stereo limP = {};               // with HQ, the limiter's last chord end and its last input (see
     Stereo limY = {};               // process; last, so the members before keep their places)
+    bool  gainsMove = false;        // a ramp of rec, mk or cal has a step this tick (see tick; the gains are > 0, never -0)
+    // With HQ (the path at twice the session's rate, up2): the channel noise is made at the session's
+    // rate and doubled by a half-band filter (noiseUp; noiseOdd: the second of its pair, noiseB, is
+    // next), and goes through a mean of two samples (noiseP: the last one) that the expander's
+    // detector does not hear (detAdd: the difference, through fmDeDet; see channel)
+    bool  up2 = false, noiseOdd = false;
+    Stereo noiseB = {}, noiseP = {}, detAdd = {};
+    HalfBand noiseUp;
+    HfShelf fmDeDet;
 
-    void prepare(float rate)
+    // doubled: the path runs at twice the session's rate (HQ)
+    void prepare(float rate, bool doubled = false)
     {
         sr = rate;
+        up2 = doubled;
         nrEmph.set(kHfNrZero, kHfNrPole, sr); nrDe.set(kHfNrZero, kHfNrPole, sr);
         wRec.set(kHfWZero, kHfWPole, sr);     wPlay.set(kHfWZero, kHfWPole, sr);
-        fmEmph.set(kHfFmZero, kHfFmPole, sr); fmDe.set(kHfFmZero, kHfFmPole, sr);
+        fmEmph.set(kHfFmZero, kHfFmPole, sr); fmDe.set(kHfFmZero, kHfFmPole, sr); fmDeDet.set(kHfFmZero, kHfFmPole, sr);
         recDet.set(kHfAttackSec, kHfRecoverySec, sr);
         // Channel noise: white noise, differenced (rising 6 dB per octave), at high rates cut above
         // 20 kHz (the deck's playback filter). Scaled so that its power from 20 Hz to 20 kHz lies
         // kHfSnrDb under a reference sine's: worked out by summing the filters' response.
-        lpOn = sr > 50000.0f;
-        if (lpOn) noiseLp.setCoeffs(BiquadCoeffs::lowpass(sr, kHfNoiseHz, 0.7071f));
+        // With HQ all of that is done at the session's rate (nsr) and the result doubled by a half-band
+        // filter, flat to 21 kHz with nothing above the session's band: made at the doubled rate, the
+        // noise had more of its power near 20 kHz and a whole band again above 22 kHz, which the
+        // expander's detector heard (see channel), and the hiss came out 1.5 to 2 dB louder than without.
+        const float nsr = up2 ? 0.5f * sr : sr;
+        lpOn = nsr > 50000.0f;
+        if (lpOn) noiseLp.setCoeffs(BiquadCoeffs::lowpass(nsr, kHfNoiseHz, 0.7071f));
         double pw = 0.0;
         const int steps = 400;
         for (int i = 0; i <= steps; ++i)
         {
-            const double f = 20.0 + (kHfNoiseHz - 20.0) * i / steps, w = 6.283185307179586 * f / sr;
+            const double f = 20.0 + (kHfNoiseHz - 20.0) * i / steps, w = 6.283185307179586 * f / nsr;
             double g = 4.0 * std::sin(0.5 * w) * std::sin(0.5 * w);
             if (lpOn)
             {
@@ -2302,7 +2382,7 @@ struct HiFiPath
             }
             pw += g * (i == 0 || i == steps ? 1.0 : (i & 1) ? 4.0 : 2.0);
         }
-        pw *= (kHfNoiseHz - 20.0) / steps / 3.0 * (2.0 / sr) / 3.0;   // Simpson; white of [-1, 1) has the power 1/3 over sr / 2
+        pw *= (kHfNoiseHz - 20.0) / steps / 3.0 * (2.0 / nsr) / 3.0;  // Simpson; white of [-1, 1) has the power 1/3 over sr / 2
         noiseUnit = (float)(kRefLevel * 0.70710678 * std::pow(10.0, -kHfSnrDb / 20.0) / std::sqrt(pw));
         clickUnit = kRefLevel * sr / kHfRefDevHz;                       // one cycle in one sample
         residK = -kHfResidual * 0.5f * sq(kHfHoldSec * sr);             // x' T^2 / 2 as one sample, from a sample's step
@@ -2355,6 +2435,8 @@ struct HiFiPath
         dropOct  = kHfDropOctaves + kHfDropOctavesUp * s.dropouts;
         trackP = kHfTrackRate * s.tracking * std::sqrt(s.tracking) / kHfFieldHz;
         st[0].c = st[1].c = 1.0e9f;                                    // work the channel out again
+        st[0].rateOk = st[1].rateOk = false;
+        if (!(s.hiss > 0.0f)) fmDeDet.reset();                          // (it runs only while there is hiss)
     }
 
     void reset()
@@ -2363,8 +2445,9 @@ struct HiFiPath
         nrEmph.reset(); wRec.reset(); fmEmph.reset(); fmDe.reset(); wPlay.reset(); nrDe.reset();
         recDet.d = splat(kDRef); playDet.d = splat(pRef);               // at the unity point: no start-up overshoot
         rmsDet.d = splat(sq(pRef / rmsCal));
-        noiseLp.reset(); tape.reset();
-        rngL.reseed(0x48f1a1u); rngR.reseed(0x2c0ffeeu); rngC.reseed(0x1c11c4u);
+        noiseLp.reset(); tape.reset(); noiseUp.reset(); fmDeDet.reset();
+        noiseOdd = false; noiseB = noiseP = detAdd = splat(0.0f);
+        rngLR.reseed(0x48f1a1u, 0x2c0ffeeu); rngC.reseed(0x1c11c4u);
         rngD.reseed(0xe7e47u); rngT.reseed(0x7a3c51u); rngO.reseed(0xd09b17u); rngW.reseed(0x3b1d5u);
         recS = recT; calS = calT;
         rec = recTo = recS; mk = mkTo = 1.0f / recS; cal = calTo = calS; recInc = mkInc = calInc = 0.0f;
@@ -2387,7 +2470,10 @@ struct HiFiPath
     void carrierAt(Carrier& k, float c, float m, float h) const
     {
         if (c == k.c && m == k.m) return;
-        k.c = c; k.m = m;
+        // The click rate and the noise detector depend on m and h only: the carrier's own wander moves
+        // c alone at almost every tick, and then the rate (erfc, a power, a root) stays as it was.
+        const bool sameM = k.rateOk && m == k.m && h == k.h;
+        k.c = c; k.m = m; k.h = h; k.rateOk = true;
         k.doc = c < kHfDocDb;
         // the linear track below the hi-fi detector's threshold, or when the noise detector trips (on
         // the clicks: with the Noise switch off there are none to trip it)
@@ -2396,6 +2482,7 @@ struct HiFiPath
         k.low = c < kHfNormalDb || (s.clicks > 0.0f && cnrDet < kHfNoiseDetDb);
         // noise: 1 dB more for every dB of carrier lost [R, FM theory]
         k.noise = s.hiss > 0.0f ? noiseUnit * minf(s.hiss * dbToGain(-c), s.noiseTop) : 0.0f;
+        if (sameM) return;
         // clicks: Rice's rate for an unmodulated carrier, (B / 2 sqrt 3) erfc(sqrt(CNR)) per channel
         // [D from Rice 1948]. The extra rate with modulation (report 1) is not verified and left out.
         k.clickThr = 0;
@@ -2413,7 +2500,7 @@ struct HiFiPath
         // never stuck on a NaN; no denormals in long silence
         const Stereo dd = recDet.d + playDet.d + rmsDet.d;
         if (!(maxf(dd[0], dd[1]) < 1.0e6f && minf(dd[0], dd[1]) >= 0.0f && std::fabs(held[0] + held[1]) < 1.0e6f)) reset();
-        nrEmph.flush(); wRec.flush(); fmEmph.flush(); fmDe.flush(); wPlay.flush(); nrDe.flush();
+        nrEmph.flush(); wRec.flush(); fmEmph.flush(); fmDe.flush(); wPlay.flush(); nrDe.flush(); if (up2) fmDeDet.flush();
         { const Stereo t = splat(1.0e-20f), z = splat(0.0f);
           recDet.d = recDet.d < t ? z : recDet.d; playDet.d = playDet.d < t ? z : playDet.d; rmsDet.d = rmsDet.d < t * t ? z : rmsDet.d;
           held = vabs(held) < t ? z : held; }
@@ -2425,6 +2512,7 @@ struct HiFiPath
         if (calS != calT) { calS += smooth * (calT - calS); if (std::fabs(calS - calT) < 1.0e-6f * calT) calS = calT; }
         recTo = recS; calTo = calS;
         recInc = (recTo - rec) * kCtrlInv; mkInc = (mkTo - mk) * kCtrlInv; calInc = (calTo - cal) * kCtrlInv;
+        gainsMove = recInc != 0.0f || mkInc != 0.0f || calInc != 0.0f;
 
         // Breathing: the RMS detector's reading (a square root, so per tick), ramped
         if (rmsOn)
@@ -2497,8 +2585,8 @@ struct HiFiPath
         if (linear && lowCount == 0 && !headB && ++back >= kHfBackEdges) linear = false;
     }
 
-    // The demodulator's output for the (limited) modulation y.
-    Stereo channel(Stereo y)
+    // The demodulator's output for the (limited) modulation y. (up: the path runs doubled, HQ: see prepare)
+    template <bool up = false> __attribute__((noinline)) Stereo channel(Stereo y)   // (inline, the path came out longer)
     {
         const bool dip = dropLeft > 0;
         if (dip) --dropLeft;
@@ -2522,16 +2610,40 @@ struct HiFiPath
         // side is given the modulation as it was, so that it comes back from the hold as it went in
         Stereo z = y;
         holding = k.doc || relLeft > 0;
-        if (holding) relLeft = k.doc ? nRelease : relLeft - 1;
+        if (holding)
+        {
+            relLeft = k.doc ? nRelease : relLeft - 1;
+            if constexpr (up) detAdd = noiseP = splat(0.0f);   // (HQ: the noise's mean starts again after the hold, see below)
+        }
         else
         {
             if (k.noise > 0.0f)
             {
-                const Stereo w = { rngL.nextBipolar(), rngR.nextBipolar() };
-                Stereo dn = w - wPrev;
-                wPrev = w;
-                if (lpOn) dn = noiseLp.process(dn);
-                z += dn * k.noise;
+                Stereo dn;
+                if (up && noiseOdd) dn = noiseB;   // HQ: the second of the pair (see prepare)
+                else
+                {
+                    const Stereo w = rngLR.nextBipolar();
+                    dn = w - wPrev;
+                    wPrev = w;
+                    if (lpOn) dn = noiseLp.process(dn);
+                    if constexpr (up) noiseUp.up(dn, dn, noiseB);
+                }
+                noiseOdd = up && !noiseOdd;
+                if constexpr (up)
+                {
+                    // HQ: the saturator's place gives the mean of two samples, which kHqEq lifts back as
+                    // it does the preamp's mean (see shapeSat). The noise comes in after the preamp: given
+                    // only the second mean, its top came out lifted (1.6 dB at 16.5 kHz). So it is given
+                    // the first one here, and the expander's detector, which comes before the second,
+                    // hears it without (detAdd: the difference, see playback), as it hears the noise
+                    // without HQ.
+                    const Stereo hn = dn * k.noise;
+                    z += 0.5f * (hn + noiseP);
+                    detAdd = 0.5f * (hn - noiseP);
+                    noiseP = hn;
+                }
+                else z += dn * k.noise;
             }
             if (k.clickThr != 0)
             {
@@ -2561,14 +2673,16 @@ struct HiFiPath
 
     // The playback side, from the demodulator's output z. The expander's gain d / Dref, d within
     // +-30 dB, from its detector before this sample (as the compressor's).
-    Stereo playback(Stereo z)
+    template <bool up = false> Stereo playback(Stereo z)
     {
         const Stereo a = fmDe.inv(z) * cal;
         Stereo dp = playDet.d;
         if (rmsOn) { rmsS += rmsInc; dp += (rmsS - dp) * blend; }
         Stereo e = vmin(vmax(dp * pRefInv, splat(1.0f / kHfGainRange)), splat(kHfGainRange));
         if (slopeOn) { slS += slInc; e *= slS; }
-        const Stereo w = wPlay.fwd(a);
+        Stereo wi = a;
+        if constexpr (up) if (s.hiss > 0.0f) wi = a + fmDeDet.inv(detAdd) * cal;   // (see channel)
+        const Stereo w = wPlay.fwd(wi);
         playDet.step(vabs(w));
         if (rmsOn) rmsDet.step(w * w);
         return nrDe.inv(a * e) * mk;
@@ -2599,14 +2713,14 @@ struct HiFiPath
     {
         if (n == 0) tick();
         n = (n + 1) & (kCtrl - 1);
-        rec += recInc; mk += mkInc; cal += calInc;
+        if (gainsMove) { rec += recInc; mk += mkInc; cal += calInc; }   // (still: + 0 would leave them as they are)
         // record. The compressor's gain Dref / d (d within +-30 dB): one Newton step from the last
         // sample's value while d moves by less than 2 % (the error is the square of the move: under
         // 0.004 dB), a division otherwise
         {
             const Stereo u = vmin(vmax(recDet.d * (1.0f / kDRef), splat(1.0f / kHfGainRange)), splat(kHfGainRange));
             const Stereo p = u * cg, far = vabs(p - 1.0f);
-            if (maxf(far[0], far[1]) < 0.02f) cg = cg * (2.0f - p);
+            if (allBelow(far, 0.02f)) cg = cg * (2.0f - p);
             else cg = 1.0f / u;
         }
         const Stereo v = nrEmph.fwd(x * rec) * cg;
@@ -2621,7 +2735,7 @@ struct HiFiPath
         }
         else y = vclamp(y, kHfClip);
         // the tape, then playback, and the dropout canceller's hold
-        Stereo out = playback(channel(y));
+        Stereo out = playback<adaa>(channel<adaa>(y));
         out = held = holding ? held * droop : out;
         // the linear track, while it is heard or about to be
         if (tapeRun)
@@ -2876,7 +2990,7 @@ private:
         envAttack_  = 1.0f - std::exp(-1.0f / (0.003f * nlSr_));   // the compressor detector
         envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * nlSr_));
         compSmooth_ = hq_ ? 0.01005f : 0.02f;                      // and its gain smoothing, per sample
-        if (hifiPath_.sr != nlSr_) hifiPath_.prepare(nlSr_);       // Sat Type = Hi-Fi runs in the saturator's place
+        if (hifiPath_.sr != nlSr_ || hifiPath_.up2 != hq_) hifiPath_.prepare(nlSr_, hq_);   // Sat Type = Hi-Fi runs in the saturator's place
         nrEnc_.prepare(nlSr_, false);                              // the NR encoder runs inside too (see process)
         BiquadCoeffs eq;                                           // the same at every rate (see kHqEq)
         eq.b0 = kHqEq[0]; eq.b1 = kHqEq[1]; eq.b2 = kHqEq[2]; eq.a1 = kHqEq[3]; eq.a2 = kHqEq[4];
@@ -2998,7 +3112,8 @@ private:
     // HQ: the stages run at twice the sample rate, so what they add above 22 kHz is filtered off
     // instead of folding back down into the sound. The NR encoder comes first, in its place in the
     // chain: its overshoot clipper distorts too (it is prepared for this rate in setQuality).
-    __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
+    // (vhs: Sat Type = VHS, its own copy of the sample loop: see runFrames and tape2)
+    template <bool vhs> __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
     {
         Stereo a, b;
         hbUp_.up(x, a, b);
@@ -3008,7 +3123,7 @@ private:
             a = nrEnc_.encode<true>(a, nrEncMix_, &nrClipP_);
             b = nrEnc_.encode<true>(b, nrEncMix_, &nrClipP_);
         }
-        shape2(a, b, satMix);
+        shape2<vhs>(a, b, satMix);
         return hqEq_.process(hbDown_.down(a, b));
     }
     // The dry copy with HQ: what the HQ section does to a sound that nothing clips, so that the two
@@ -3028,7 +3143,8 @@ private:
     // clean part of the blend is the mean of the same two samples, and with the clipper off the
     // sound is that mean too: the stage is half a sample late always (see kHqDelay). Every stage
     // after it keeps its order: all of a, then all of b.
-    __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
+    // (vhs: Sat Type = VHS, see tape2)
+    template <bool vhs> __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
     {
         const Quad x = quad(a, b), x0 = quad(drvX_, a), xm = 0.5f * (x + x0);
         drvX_ = b;
@@ -3038,10 +3154,30 @@ private:
             const float g = cur_[cDrvG], mk = cur_[cDrvMk], mx = cur_[cDrvMix];
             y += (softClipMean(x * g, x0 * g) * mk - xm) * mx;
         }
+        if constexpr (vhs) if (satMix > 0.0f) { tape2(a, b, y, satMix); return; }
         a = shapeRest<true>(lo2(y), satMix);
         if (__builtin_expect(slewCOn_, 0)) a += slewTake(satMix);
         b = shapeRest<true>(hi2(y), satMix);
         if (__builtin_expect(slewCOn_, 0)) b += slewTake(satMix);
+    }
+    // shape2 with Sat Type = VHS: the stages before the tape for a, then for b, then the tape
+    // curve's two means at once (TapeSat::record2), then the rest for a and for b. Nothing before the
+    // tape depends on what the tape made of a, so every value is what the order a, then b gives.
+    __attribute__((always_inline)) void tape2(Stereo& a, Stereo& b, Quad y, float satMix)
+    {
+        const Stereo xa = shapePre<true>(lo2(y));
+        Stereo ta = splat(0.0f), tb = splat(0.0f);
+        const bool hasA = __builtin_expect(slewCOn_, 0);   // (Slew's share of a's mean: see slewTake)
+        if (hasA) ta = slewTake(satMix);
+        const Stereo xb = shapePre<true>(hi2(y));
+        const bool hasB = __builtin_expect(slewCOn_, 0);
+        if (hasB) tb = slewTake(satMix);
+        Stereo ra, rb;
+        tapeSat_.record2(xa, xb, ra, rb);
+        a = tapeRest(xa, azRun_ ? tapeSat_.play(az_.process(ra)) : tapeSat_.play(ra), satMix);
+        if (hasA) a += ta;
+        b = tapeRest(xb, azRun_ ? tapeSat_.play(az_.process(rb)) : tapeSat_.play(rb), satMix);
+        if (hasB) b += tb;
     }
     // HQ's slew limiter (1.8). The plain one (in shapeRest) turns direction only on a sample: driven
     // hard, its triangle's corners land on the sample grid, each up to a whole step from where they
@@ -3062,10 +3198,20 @@ private:
     {
         const Stereo s = splat(slewStep_), y0 = slew_, dx = x - slewX_;
         Stereo y = y0 + vmax(vmin(x - y0, s), -s);
-        if (__builtin_expect(anyPast(dx, dx, slewStep_), 0)) y = slewTurn(x, y0, y);
+        if (__builtin_expect(anyPast(dx, dx, slewStep_), 0) && slewTurns(x, y0, dx)) y = slewTurn(x, y0, y);
         slewX_ = x;
         slew_ = y;
         return y;
+    }
+    // Whether slewTurn would turn either lane: its tests, on both lanes at once (each is exact:
+    // a difference, a sign, and products by +-1). Driven hard, most samples move by more than a step
+    // without turning back, and slewTurn was called only to find that out.
+    __attribute__((always_inline)) bool slewTurns(Stereo x, Stereo y0, Stereo dx) const
+    {
+        const Stereo s = splat(slewStep_), d0 = slewX_ - y0;
+        const Stereo sg = d0 > 0.0f ? splat(1.0f) : splat(-1.0f);
+        const auto m = (d0 != 0.0f) & (vabs(dx) > s) & (sg * (x - y0) <= s) & (sg * (sg * s - dx) > 0.0f);
+        return (m[0] | m[1]) != 0;
     }
     __attribute__((noinline)) Stereo slewTurn(Stereo x, Stereo y0, Stereo y)
     {
@@ -3097,6 +3243,20 @@ private:
     // shape() after the preamp clipper (hq: at the doubled rate, see shape2).
     template <bool hq> __attribute__((always_inline)) Stereo shapeRest(Stereo x, float satMix)
     {
+        x = shapePre<hq>(x);
+        return shapeSat<hq>(x, satMix);
+    }
+    // HQ, VHS: what follows the tape curve (y: the tape's output for x, its input)
+    __attribute__((always_inline)) Stereo tapeRest(Stereo x, Stereo y, float satMix)
+    {
+        const Stereo xm = 0.5f * (x + satX_);
+        satX_ = x;
+        splitLp_ += splitCoeff_ * (y - splitLp_);
+        return xm + (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - xm) * satMix;
+    }
+    // shapeRest's first part: Slew, the compressor and the clip on its boost
+    template <bool hq> __attribute__((always_inline)) Stereo shapePre(Stereo x)
+    {
         // ----- wear: slew limiter ----------------------------------------
         if (slewOn_)
         {
@@ -3120,7 +3280,11 @@ private:
         // for a few milliseconds before they react. It is clipped here, as the recorder's
         // own input would.
         if (boost_) x = vclamp(x, kBoostCeil);
-
+        return x;
+    }
+    // ... and its second: the saturator's place
+    template <bool hq> __attribute__((always_inline)) Stereo shapeSat(Stereo x, float satMix)
+    {
         // ----- 2-band saturator ------------------------------------------
         if constexpr (hq)
         {
@@ -3133,14 +3297,7 @@ private:
             // (in shape2): all of it after the 2-band saturator and where none runs, and only with the
             // sound that goes round VHS or Hi-Fi (their emphasis and their curve or limiter would make
             // it wrong: added after them, it gave up to 18 dB more fold-back than without it).
-            if (satMix > 0.0f && tape_)
-            {
-                const Stereo y = azRun_ ? tapeSat_.play(az_.process(tapeSat_.record<true>(x))) : tapeSat_.process<true>(x);
-                const Stereo xm = 0.5f * (x + satX_);
-                satX_ = x;
-                splitLp_ += splitCoeff_ * (y - splitLp_);
-                return xm + (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - xm) * satMix;
-            }
+            // (VHS heard: shape2's tape2, which does both samples at once; never here)
             if (satMix > 0.0f && hifiRun_)
             {
                 x = hifiShape<true>(x, satMix);
@@ -3234,12 +3391,14 @@ private:
     }
 
 public:
-    // The sample loop, compiled twice: with HQ and without (hq_ changes only in a reset, between
+    // The sample loop, compiled with HQ and without (hq_ changes only in a reset, between
     // blocks). Each copy has the registers to itself: in one loop the 1.8 HQ code made the loop
     // without it about 25 instructions a sample longer than 1.7; apart, about 15, most of that the
-    // control tick, which is a call now (32-bit ARM build, counted).
+    // control tick, which is a call now (32-bit ARM build, counted). With HQ, Sat Type = VHS has a
+    // copy of its own (vhs; tape_ too changes only between blocks), for the tape curve's paired
+    // means (see tape2), which in the shared copy cost every other mode about 20 a sample.
     // Returns the sum of the input (see the end of process()).
-    template <bool hq> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
+    template <bool hq, bool vhs = false> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
     {
         Stereo inSum = splat(0.0f);
         for (int i = 0; i < frames; ++i)
@@ -3307,7 +3466,7 @@ public:
                 if (hissOn_)
                 {
                     // hiss: different in left and right
-                    const Stereo white = stereo(hissRng_[0].nextBipolar(), hissRng_[1].nextBipolar());
+                    const Stereo white = hissRng_.nextBipolar();
                     hissLp_ += 0.1f * (white - hissLp_);
                     noise += (white - hissLp_) * (cur_[cHiss] * hissDyn_);
                 }
@@ -3403,7 +3562,7 @@ public:
                 }
             }
             // ----- drive, wear, compressor, saturator: the stages that distort ----
-            if constexpr (hq) x = hqShape(x, nrEnc, satMix);
+            if constexpr (hq) x = hqShape<vhs>(x, nrEnc, satMix);
             else x = shape(x, satMix);
 
             // ----- 4-pole high cut -------------------------------------------
@@ -3575,14 +3734,24 @@ public:
         if (fadeOut_ == 0 && !resetNextTick_ && (load & (kLoadEvent - 1u)) == 0)
         {
             float seen[kNumParams];
-            uint32_t dirty = 0;
+            uint32_t dirty = 0, moved = 0;
+            // Most blocks nothing was written: the values are read and compared as bits first
+            // (one pass, no branches), and looked at one by one only when one of them differs.
             for (int i = 0; i < kNumParams; ++i)
             {
-                const float v = seen[i] = getNormalised(i);
-                // A Q-Link turned across a switch sends every value on the way: only a change
-                // of the position counts (or Type and HQ would restart the sound at each one).
-                if (v != lastNorm_[i] && param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
+                seen[i] = getNormalised(i);
+                uint32_t a, b;
+                std::memcpy(&a, &seen[i], 4); std::memcpy(&b, &lastNorm_[i], 4);
+                moved |= a ^ b;
             }
+            if (moved != 0)
+                for (int i = 0; i < kNumParams; ++i)
+                {
+                    const float v = seen[i];
+                    // A Q-Link turned across a switch sends every value on the way: only a change
+                    // of the position counts (or Type and HQ would restart the sound at each one).
+                    if (v != lastNorm_[i] && param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
+                }
             // If any value read above was written after a load began, this fence makes that
             // load's start visible below (it pairs with the fence in beginLoad).
             std::atomic_thread_fence(std::memory_order_acquire);
@@ -3615,8 +3784,9 @@ public:
         float* outL = ctx.outputs[0];
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
 
-        const Stereo inSum = hq_ ? runFrames<true>(ctx.numFrames, inL, inR, outL, outR)
-                                 : runFrames<false>(ctx.numFrames, inL, inR, outL, outR);
+        const Stereo inSum = !hq_ ? runFrames<false>(ctx.numFrames, inL, inR, outL, outR)
+                           : tape_ ? runFrames<true, true>(ctx.numFrames, inL, inR, outL, outR)
+                                   : runFrames<true>(ctx.numFrames, inL, inR, outL, outR);
 
         // A NaN or an infinity from the host would go round in the filters for ever (and Slew
         // can turn one into a stuck silence that looks healthy). The sum of the input shows
@@ -5035,7 +5205,7 @@ private:
     float headAmp_ = 0;                                       // head buzz level after Breathing
     float whistleS_ = 0, whistleC_ = 1.0f, whistleE_ = 0, whistleNorm_ = 1.0f;   // line whistle oscillator
     Stereo hissLp_ = {0.0f, 0.0f}, click_ = {0.0f, 0.0f};
-    Xorshift32 hissRng_[2] = { Xorshift32(0x51f15eedu), Xorshift32(0x0c0ffee1u) };
+    XorPair hissRng_{0x51f15eedu, 0x0c0ffee1u};
     Xorshift32 crackleRng_{0x7a9e5eedu};
     uint32_t crackleThresh_ = 0;
 
