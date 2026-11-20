@@ -97,6 +97,24 @@ elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE170 "-DSRC=\"$OUT/
 else
   "$OUT/readout_test" "$OUT/readout170.bin" "$OUT/readout170.txt" || status=1
 fi
-# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, hq_test, ab14_test, hifi_test, visual_test, azimuth_test and readout_test end with PASS or FAIL;
+# The B-Type NR clip level of 1.8, carried by the state (see nrclip_test.cpp): this source saves a
+# state, the same test program built against the 1.7.0 source (taken from git above) loads it, then
+# writes a state and three renders of its own, which this source must load and match.
+echo "===== nrclip_test ====="
+if [ ! -s "$OUT/VHSVibes_v170.cpp" ]; then
+  echo "no 1.7.0 source (see readout_test above)"
+  echo "FAIL"
+  status=1
+elif ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" "$HERE/nrclip_test.cpp" -o "$OUT/nrclip_test" 2> "$OUT/nrclip_test.log" \
+  || ! zig c++ -O2 -std=c++17 -pthread -I "$FRAMEWORK" -DWRITE170 "-DSRC=\"$OUT/VHSVibes_v170.cpp\"" "$HERE/nrclip_test.cpp" -o "$OUT/nrclip_write170" 2>> "$OUT/nrclip_test.log" \
+  || ! "$OUT/nrclip_test" save "$OUT/nrclip18.bin" \
+  || ! "$OUT/nrclip_write170" "$OUT/nrclip18.bin" "$OUT/nrclip170.bin" "$OUT/nrclip170.hash"; then
+  grep -E "error" -A6 "$OUT/nrclip_test.log" | head -30
+  echo "FAIL"
+  status=1
+else
+  "$OUT/nrclip_test" "$OUT/nrclip170.bin" "$OUT/nrclip170.hash" || status=1
+fi
+# host_test, mix_test, v14_test, nr_test, tape_test, v152_test, mic_test, agc_test, hq_test, ab14_test, hifi_test, visual_test, azimuth_test, readout_test and nrclip_test end with PASS or FAIL;
 # deck_test and levels_test print measurements to read.
 exit $status

@@ -20,6 +20,19 @@
 #include <vector>
 
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float) { return opcode == audioMasterVersion ? 2400 : 0; }
+#ifndef WRITE170
+// 1.8 saves one thing more after the parameters (the B-Type NR clip level, see nrclip_test.cpp): eight
+// bytes of extra state, which 1.7.0 passes over. They are checked and taken off before the comparison.
+static int g_extraWrong = 0;
+static std::vector<uint8_t> withoutExtra(std::vector<uint8_t> s)
+{
+    static const uint8_t tail[12] = { 8, 0, 0, 0, 'V', 'V', 'X', 1, 1, 0, 0, 0 };   // extraLen 8, a new instance's flag
+    if (s.size() < 12 || std::memcmp(s.data() + s.size() - 12, tail, 12) != 0) { ++g_extraWrong; return s; }
+    s.resize(s.size() - 8);
+    std::memset(s.data() + s.size() - 4, 0, 4);
+    return s;
+}
+#endif
 
 struct Fx
 {
@@ -38,7 +51,11 @@ struct Fx
         void* data = nullptr;
         const VstIntPtr size = e->dispatcher(e, effGetChunk, 0, 0, &data, 0.0f);
         const uint8_t* d = static_cast<const uint8_t*>(data);
+#ifndef WRITE170
+        return withoutExtra(std::vector<uint8_t>(d, d + size));
+#else
         return std::vector<uint8_t>(d, d + size);
+#endif
     }
     std::string text(int i) { char b[64] = {0}; e->dispatcher(e, effGetParamDisplay, i, 0, b, 0.0f); return b; }
 };
@@ -158,6 +175,7 @@ int main(int argc, char** argv)
     std::printf("1.7.0 wrote %zu bytes, this source %zu (%zu saved states); read-outs %zu and %zu bytes\n",
                 old.size(), now.size(), chunks.size(), oldTexts.size(), nowTexts.size());
     check(!old.empty() && old == now, "Drive, Lo Sat, Hi Sat, Comp, Noise and Whistle: id, name, range, default and mapping, getParameter, every program and the saved states are as in 1.7.0");
+    check(g_extraWrong == 0, "(each saved state ends with 1.8's eight bytes of extra state, a new instance's NR clip level; without them it is 1.7.0's)");
     check(!oldTexts.empty() && std::string(oldTexts.begin(), oldTexts.end()) == nowTexts,
           "every other read-out in every program, Whistle, and Lo Sat and Hi Sat in VHS and Hi-Fi, read as in 1.7.0");
 

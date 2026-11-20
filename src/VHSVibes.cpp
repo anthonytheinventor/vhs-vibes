@@ -120,7 +120,11 @@
 // NoiseRed::decode); a sound that stays below the clamps keeps its level and tone within 0.05 dB
 // to 20 kHz. HQ is 1.71 samples later than it was (its half-band filters and the clean parts of
 // its two places that may clip, see kHqDelay); the reported latency and the dry copy follow. With
-// HQ off it is the same to the bit.
+// HQ off it is the same to the bit. 1.8 also raised the B-Type NR overshoot clipper's level, which
+// clipped loud steady tones (see kNrClip18). That is not a parameter and has no control: it is saved
+// with the state, a new instance has the new level, a project saved before 1.8 loads with the old
+// one and keeps it when saved again, and choosing a program leaves it as it is. With the old level
+// everything above holds.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -521,10 +525,11 @@ inline Quad driveSat4(Quad x, Quad g, Quad makeup, Quad mix)
 // the doubled rate); elsewhere the side signal goes through as it is. At first r was 0.95, whose
 // middle is the sample within 0.002 dB, but which lifts the top of the doubled band up to 39
 // times: the up-sampler's leftovers near 44 kHz (under -100 dB) then made the path's ends swing by
-// up to 0.4 of the clip level, so a loud steady tone (which clips the side chain: at -3 dBFS, 313
-// Hz, on about 40 % of the samples) was clipped too softly and its tones came out up to 17 dB too
-// quiet at 16 kHz. With 0.5 (a lift of 3 at most) they are those of 1.7.0 within 0.3 dB to
-// 16 kHz and 0.55 dB at 16 to 20 kHz, and what folds back is within 1.3 dB of what it was.
+// up to 0.4 of the clip level, so a loud steady tone (which clips the side chain at the old clip
+// level, kNrClip: at -3 dBFS, 313 Hz, on about 40 % of the samples) was clipped too softly and
+// its tones came out up to 17 dB too quiet at 16 kHz. With 0.5 (a lift of 3 at most) they are
+// those of 1.7.0 within 0.3 dB to 16 kHz and 0.55 dB at 16 to 20 kHz, and what folds back is
+// within 1.3 dB of what it was.
 // Hi-Fi's limiter does much the same (see HiFiPath::process). That would not do for the preamp and
 // the saturator: after a clipper, the input's top octave makes those points swing, and a clipper
 // after a clipper folds back more than without the means.
@@ -724,7 +729,18 @@ constexpr float kNrDzero  = 2232.0f;           // amplifier D: gain 1, rising ab
 constexpr float kNrSlope  = 0.005994f;         // F's conductance per unit of control voltage above...
 constexpr float kNrThresh = 0.07719f;          // ...this threshold (both fitted; NR reference level = 1)
 constexpr float kNrDiode  = 0.05f;             // a rise larger than this skips the slow smoothing (estimate)
-constexpr float kNrClip   = 0.12f * kRefLevel; // overshoot suppressor: just above the largest steady side-chain signal
+// The overshoot suppressor's clip level. The chips' clipper works only during a sudden jump in level
+// and is idle on a steady tone. Up to 1.7 the level was an estimate that came out too low: a loud
+// steady tone was clipped from about 11 dB below NR reference level (1.5 to 2.6 % distortion at and
+// above reference level, where the encoders are specified at 0.08 % typical and 0.15 % at most at
+// 1 kHz, 0.3 % at most at 10 kHz 10 dB above reference). 1.8 sets it at kNrClip18, above the steady
+// side signal of any tone up to 10 kHz and 10 dB over reference (8 % below it at 10 kHz at 44.1 kHz;
+// the encoder's distortion there is under 0.01 %), which still holds a jump from -60 dB to
+// reference level to about 3 dB of overshoot (without the clipper: 5 to 9 dB). Which one an
+// instance uses is saved with its state (see saveExtraState): a new instance has 1.8's, a project
+// saved before 1.8 keeps the old one, and encoder and decoder always share it.
+constexpr float kNrClip   = 0.12f * kRefLevel; // up to 1.7 (and a state saved before 1.8)
+constexpr float kNrClip18 = 0.40f * kRefLevel; // from 1.8
 
 struct NoiseRed
 {
@@ -794,8 +810,11 @@ struct NoiseRed
     // mix: 1 = on; below that the added signal is faded (while NR is switched in or out).
     // adaa (with HQ): where the overshoot clipper clips, what it takes off is the mean of that along
     // a path through the sample (see kNrChordRho and clampPast); clipP holds that path's last end.
-    template <bool adaa = false> Stereo encode(Stereo x, float mix = 1.0f, Stereo* clipP = nullptr)
+    // c18: the clip level of 1.8 (kNrClip18), otherwise the old one (kNrClip). A constant, so that
+    // the sample loop with the old level is the one it was (see runFrames).
+    template <bool adaa = false, bool c18 = false> Stereo encode(Stereo x, float mix = 1.0f, Stereo* clipP = nullptr)
     {
+        constexpr float clip = c18 ? kNrClip18 : kNrClip;
         const Stereo vB = (c1 * (sq + kap * x) - c2 * su) * rec;         // rec = 1 / D
         step(x, vB);
         const Stereo e = kNrGain * vB;
@@ -804,10 +823,10 @@ struct NoiseRed
         {
             const Stereo q = *clipP, p = kNrChordIn * e - kNrChordRho * q;
             *clipP = p;
-            if (__builtin_expect(anyPast(p, q, kNrClip), 0)) return x + (e + (clampPast(p, q, kNrClip) - 0.5f * (p + q))) * mix;
+            if (__builtin_expect(anyPast(p, q, clip), 0)) return x + (e + (clampPast(p, q, clip) - 0.5f * (p + q))) * mix;
             return x + e * mix;
         }
-        return x + vclamp(e, kNrClip) * mix;
+        return x + vclamp(e, clip) * mix;
     }
     // adaa (with HQ, 1.8): where the side signal reaches the clip at either end of the step from the
     // last sample to this one (clipP: the last one), what the clipper takes off is given as its mean
@@ -822,9 +841,11 @@ struct NoiseRed
     // +2.7 dB at 2 to 10 kHz and -0.3 to -6 dB above (997 Hz at -3 dBFS), and with NR On (which
     // undoes the encoder's clipper less closely) its tones up to 10 dB quieter. A path laid across
     // the sample (h = (e - e1) / 2 either way) or one through (1 + r) / (1 + r z^-1) would follow
-    // 1.7.0 more closely, but gave back 4 to 12 dB of the fold-back.
-    template <bool adaa = false> Stereo decode(Stereo y, Stereo* clipP = nullptr)
+    // 1.7.0 more closely, but gave back 4 to 12 dB of the fold-back. (All of this with the old clip
+    // level, kNrClip; at 1.8's a steady tone up to 10 kHz and 10 dB over reference level does not reach it.)
+    template <bool adaa = false, bool c18 = false> Stereo decode(Stereo y, Stereo* clipP = nullptr)
     {
+        constexpr float clip = c18 ? kNrClip18 : kNrClip;
         // y = x + gain * vB(x), and vB is a straight line in x: solved for x (rec = 1 / (D + off))
         Stereo x = (y * D - (gc1 * sq - gc2 * su)) * rec;
         Stereo e = y - x;
@@ -832,11 +853,11 @@ struct NoiseRed
         {
             const Stereo p = e, q = *clipP;
             *clipP = p;
-            if (__builtin_expect(anyPast(p, q, kNrClip), 0))
+            if (__builtin_expect(anyPast(p, q, clip), 0))
             {
-                const Stereo r = 0.5f * (p + q) - clampPast(p, q, kNrClip);
+                const Stereo r = 0.5f * (p + q) - clampPast(p, q, clip);
                 for (int i = 0; i < 2; ++i)
-                    if (std::fabs(p[i]) > kNrClip || std::fabs(q[i]) > kNrClip)
+                    if (std::fabs(p[i]) > clip || std::fabs(q[i]) > clip)
                     {
                         x[i] += r[i];
                         e[i] = kNrGain * (c1 * (sq[i] + kap * x[i]) - c2 * su[i]) / D[i];
@@ -847,11 +868,11 @@ struct NoiseRed
             return x;
         }
         const Stereo over = vabs(e);
-        if (over[0] > kNrClip || over[1] > kNrClip)                       // the clipper is working: rare
+        if (over[0] > clip || over[1] > clip)                             // the clipper is working: rare
             for (int i = 0; i < 2; ++i)
-                if (over[i] > kNrClip)
+                if (over[i] > clip)
                 {
-                    x[i] = y[i] - (e[i] > 0.0f ? kNrClip : -kNrClip);
+                    x[i] = y[i] - (e[i] > 0.0f ? clip : -clip);
                     e[i] = kNrGain * (c1 * (sq[i] + kap * x[i]) - c2 * su[i]) / D[i];
                 }
         step(x, e * (1.0f / kNrGain));
@@ -1048,7 +1069,9 @@ struct TapeSat
     // curvePoly: the emphasis is worked out for both first, as each lane needs only the samples
     // up to it. Every lane does what record<true> does, in the same order, so the results are the
     // same to the bit. (A Rec Level move, or either sample past the clamp: one after the other.)
-    void record2(Stereo xa, Stereo xb, Stereo& ra, Stereo& rb, Stereo& wPP)
+    // Always inline (1.8): with two copies of the VHS sample loop (see runFrames) the compiler
+    // made it a call, about 7 instructions a sample more.
+    __attribute__((always_inline)) void record2(Stereo xa, Stereo xb, Stereo& ra, Stereo& rb, Stereo& wPP)
     {
         if (__builtin_expect(gRec != gLast, 0)) { ra = record<true>(xa, &wPP); rb = record<true>(xb, &wPP); return; }
         const Stereo ua = xa * gRec, wa = b0 * ua + b1 * uP - a1 * wP;
@@ -3012,6 +3035,27 @@ public:
         for (int i = kVisSnow; i <= kVisHaze; ++i) v[(size_t)i] = get(i);
     }
 
+    // What a saved state holds besides the parameters (1.8). The framework writes it after them; a
+    // state saved before 1.8 has none, and 1.7.0 and older pass over it (they keep the clip level
+    // they always had). Eight bytes:
+    //   'V' 'V' 'X' version (1) | u32 flags, little-endian   bit 0: the B-Type NR clip level of 1.8
+    // A later version may add flags; one that is not set here reads as "as before".
+    void saveExtraState(std::vector<uint8_t>& out) override
+    {
+        const uint32_t flags = nrClip18_.load(std::memory_order_relaxed) ? 1u : 0u;
+        out.assign({ 'V', 'V', 'X', 1, (uint8_t)flags, (uint8_t)(flags >> 8), (uint8_t)(flags >> 16), (uint8_t)(flags >> 24) });
+    }
+    void loadExtraState(const uint8_t* data, size_t size) override
+    {
+        if (data == nullptr || size < 8 || std::memcmp(data, "VVX", 3) != 0 || data[3] < 1) return;
+        const uint32_t flags = (uint32_t)data[4] | (uint32_t)data[5] << 8 | (uint32_t)data[6] << 16 | (uint32_t)data[7] << 24;
+        nrClip18_.store((flags & 1u) != 0, std::memory_order_relaxed);
+    }
+    // Before a state is loaded: a state without the flag (from before 1.8) means the old clip level.
+    // After one that could not be loaded: back to what it was. (The host's thread.)
+    bool nrClip18() const { return nrClip18_.load(std::memory_order_relaxed); }
+    void setNrClip18(bool on) { nrClip18_.store(on, std::memory_order_relaxed); }
+
     // The host announces the sample rate here, on its own thread and possibly while audio is
     // running. Nothing is worked out here: the audio thread picks the rate up at its next reset.
     void prepare(double sampleRate, int /*maxBlockSize*/) override
@@ -3121,6 +3165,7 @@ private:
         edgeN1_ = edgeN2_ = edgeMuffle_ = 0.0f; edgeGain_ = 1.0f; edgeActive_ = false;
         hsPhase_ = 0.0f; hsLeft_ = 0; hsFrac_ = 0.0f; hsOn_ = false;
         fbState_ = 0; fbTicks_ = 0; staticAmp_ = 0.0f; fbMono_ = 0.0f;
+        nrClip18On_ = nrClip18_.load(std::memory_order_relaxed);   // the B-Type NR clip level (see kNrClip18)
         nrEnc_.reset(); nrDec_.reset();
         resetTape();
 
@@ -3202,15 +3247,15 @@ private:
     // instead of folding back down into the sound. The NR encoder comes first, in its place in the
     // chain: its overshoot clipper distorts too (it is prepared for this rate in setQuality).
     // (vhs: Sat Type = VHS, its own copy of the sample loop: see runFrames and tape2)
-    template <bool vhs> __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
+    template <bool vhs, bool c18> __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
     {
         Stereo a, b;
         hbUp_.up(x, a, b);
         if (nrEnc)
         {
             if (nrEncSeed_) { nrEnc_.seed(a); nrEncSeed_ = false; nrClipP_ = splat(0.0f); }
-            a = nrEnc_.encode<true>(a, nrEncMix_, &nrClipP_);
-            b = nrEnc_.encode<true>(b, nrEncMix_, &nrClipP_);
+            a = nrEnc_.encode<true, c18>(a, nrEncMix_, &nrClipP_);
+            b = nrEnc_.encode<true, c18>(b, nrEncMix_, &nrClipP_);
         }
         shape2<vhs>(a, b, satMix);
         return hqEq_.process(hbDown_.down(a, b));
@@ -3522,8 +3567,10 @@ public:
     // control tick, which is a call now (32-bit ARM build, counted). With HQ, Sat Type = VHS has a
     // copy of its own (vhs; tape_ too changes only between blocks), for the tape curve's paired
     // means (see tape2), which in the shared copy cost every other mode about 20 a sample.
+    // (1.8) c18: the B-Type NR clip level of 1.8 (see kNrClip18), a copy of each: read from memory
+    // in one loop, the level cost 1 to 19 instructions a sample, also where NR is off.
     // Returns the sum of the input (see the end of process()).
-    template <bool hq, bool vhs = false> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
+    template <bool hq, bool vhs = false, bool c18 = false> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
     {
         Stereo inSum = splat(0.0f);
         for (int i = 0; i < frames; ++i)
@@ -3683,11 +3730,11 @@ public:
                 if constexpr (!hq)
                 {
                     if (nrEncSeed_) { nrEnc_.seed(x); nrEncSeed_ = false; }
-                    x = nrEnc_.encode(x, nrEncMix_);
+                    x = nrEnc_.encode<false, c18>(x, nrEncMix_);
                 }
             }
             // ----- drive, wear, compressor, saturator: the stages that distort ----
-            if constexpr (hq) x = hqShape<vhs>(x, nrEnc, satMix);
+            if constexpr (hq) x = hqShape<vhs, c18>(x, nrEnc, satMix);
             else x = shape(x, satMix);
 
             // ----- 4-pole high cut -------------------------------------------
@@ -3795,8 +3842,8 @@ public:
             {
                 if (nrDecSeed_) { nrDec_.seed(x); nrDecSeed_ = false; nrDecP_ = splat(0.0f); }
                 Stereo plain;
-                if constexpr (hq) plain = nrDec_.decode<true>(x, &nrDecP_);
-                else plain = nrDec_.decode(x);
+                if constexpr (hq) plain = nrDec_.decode<true, c18>(x, &nrDecP_);
+                else plain = nrDec_.decode<false, c18>(x);
                 if (nrDecMix_ == 1.0f && nrDecOn_) x = plain;
                 else
                 {
@@ -3909,7 +3956,13 @@ public:
         float* outL = ctx.outputs[0];
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
 
-        const Stereo inSum = !hq_ ? runFrames<false>(ctx.numFrames, inL, inR, outL, outR)
+        // (1.8) The B-Type NR clip level picks its own copy of the sample loop (see kNrClip18): with the
+        // old one the loop is the one it was, to the instruction; 1.8's costs the same or less.
+        const Stereo inSum = nrClip18On_
+                           ? (!hq_ ? runFrames<false, false, true>(ctx.numFrames, inL, inR, outL, outR)
+                              : tape_ ? runFrames<true, true, true>(ctx.numFrames, inL, inR, outL, outR)
+                                      : runFrames<true, false, true>(ctx.numFrames, inL, inR, outL, outR))
+                           : !hq_ ? runFrames<false>(ctx.numFrames, inL, inR, outL, outR)
                            : tape_ ? runFrames<true, true>(ctx.numFrames, inL, inR, outL, outR)
                                    : runFrames<true>(ctx.numFrames, inL, inR, outL, outR);
 
@@ -5424,17 +5477,49 @@ private:
     float slewG_ = 1.0f;     // the compressor's gain at the last sample (see slewTake)
     bool  slewCNOn_ = false; // (slewCN_ is not 0)
     Stereo tapeWPP_ = {};   // the VHS tape's pre-emphasis output two samples back (see TapeSat::record)
+
+    // (1.8) The B-Type NR clip level this instance uses (see kNrClip18): 1.8's in a new instance; a
+    // state sets it (see vhsDispatcher and loadExtraState), a program does not. The audio thread
+    // takes it in at its next reset (doReset), which every state load asks for, as nrClip18On_
+    // (which copy of the sample loop runs, see process). Last for the same reason.
+    std::atomic<bool> nrClip18_{true};
+    bool nrClip18On_ = true;
 };
+
+// (1.8) Whether a saved state was cut short inside the part after the parameters (see
+// saveExtraState): the framework would load every parameter and pass over the rest, so the state
+// would load with the B-Type NR clip level lost. Such a state is turned down as one cut short
+// anywhere else is. (A state that ends right after the parameters, with no length for that part,
+// loads as it always did.) Anything else the framework checks itself.
+static bool cutInExtra(const uint8_t* d, size_t size)
+{
+    if (d == nullptr || size < 12 || std::memcmp(d, "MPCP", 4) != 0) return false;
+    auto u32 = [d](size_t at) { uint32_t x = 0; for (int i = 0; i < 4; ++i) x |= (uint32_t)d[at + (size_t)i] << (8 * i); return x; };
+    const uint32_t version = u32(4), n = u32(8);
+    size_t pos = 12;
+    for (uint32_t k = 0; k < n; ++k)
+    {
+        if (pos >= size) return false;
+        pos += 1 + (size_t)d[pos] + (version >= 2 ? 8 : 4);
+        if (pos > size) return false;
+    }
+    if (pos == size) return false;
+    return pos + 4 > size || u32(pos) > size - pos - 4;
+}
 
 // The framework's dispatcher with five additions:
 //  - Choosing a program leaves the Animation, HQ and Visual Vibes switches as they were. The
 //    framework sets every value a program lists, and the parameters added after Animation have to
 //    be in that list, so the program is first told the present position of the three switches.
+//    The B-Type NR clip level (1.8, not a parameter: see kNrClip18) stays as it was too.
 //  - A saved state from before 1.4 does not mention the parameters added since. They go to
 //    their resting values before any state is loaded (HQ off, Mic Model and AGC Model Simple: a new instance
 //    has them otherwise; Visual Vibes off, as in a new instance), so such a state sounds as it was
-//    saved whatever this instance was doing before; a newer state then sets them.
-//  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was.
+//    saved whatever this instance was doing before; a newer state then sets them. Likewise the
+//    B-Type NR clip level goes to the old one, and a state saved by 1.8 or later sets it (see
+//    loadExtraState).
+//  - A state that cannot be loaded (cut short, damaged) leaves every setting as it was, the clip
+//    level too. (1.8: that includes one cut short after its parameters, see cutInExtra.)
 //  - While a program or a state is being written, the audio thread takes in none of the new
 //    values: they arrive with the reset, after the old sound has faded out.
 //  - When the host suspends the plugin, the notifier thread stops calling the host.
@@ -5455,13 +5540,21 @@ static VstIntPtr vhsDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstI
     // it was, before the load counts as finished: the audio thread sees none of it.
     float before[kNumParams];
     for (int i = 0; i < kNumParams; ++i) before[i] = p->getNormalised(i);
+    const bool clipBefore = p->nrClip18();
     if (opcode == effSetProgram) p->holdSwitches((int)value);
     else if (ptr != nullptr && value >= 12 && std::memcmp(ptr, "MPCP", 4) == 0)
+    {
         for (int i = kScrape; i < kNumParams; ++i)   // a state from before HQ existed: off; from before Mic Model or AGC Model: Simple
             p->set(i, i == kHq || i == kMicModel || i == kAgcModel ? 0.0f : p->param(i).def);
-    const VstIntPtr result = mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
+        p->setNrClip18(false);   // a state without the flag (from before 1.8): the old clip level
+    }
+    const VstIntPtr result = opcode == effSetChunk && value >= 0 && cutInExtra(static_cast<const uint8_t*>(ptr), (size_t)value)
+                           ? 0 : mpc::detail::dispatcher(e, opcode, index, value, ptr, opt);
     if (opcode == effSetChunk && result == 0)
+    {
         for (int i = 0; i < kNumParams; ++i) if (isSetting(i)) p->setNormalised(i, before[i]);
+        p->setNrClip18(clipBefore);
+    }
     p->endLoad(opcode == effSetProgram ? value >= 0 && value < e->numPrograms : result != 0);
     return result;
 }

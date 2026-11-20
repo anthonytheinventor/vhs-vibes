@@ -31,6 +31,10 @@ static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, f
 static double dB(double x) { return 20.0 * std::log10(x > 1e-30 ? x : 1e-30); }
 static const double kTwoPiD = 6.283185307179586;
 static const int kInit = 20;
+// In a list of changes for Fx: the B-Type NR clip level before 1.8 (kNrClip), as a project saved
+// before 1.8 has it. 1.8's level (a new instance's) does not clip the tones the NR cases below use,
+// so the cases about the NR clippers' fold-back run on the old one, which old projects keep.
+static const int kOldNrLevel = -1;
 
 struct Fx
 {
@@ -44,7 +48,9 @@ struct Fx
         e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
         e->dispatcher(e, effSetProgram, 0, kInit, nullptr, 0.0f);
         set(kNoiseOn, 0);
-        for (const auto& c : ch) set(c.first, c.second);
+        for (const auto& c : ch)
+            if (c.first == kOldNrLevel) vv()->setNrClip18(false);   // (taken in at the first block's reset)
+            else set(c.first, c.second);
     }
     ~Fx() { e->dispatcher(e, effMainsChanged, 0, 0, nullptr, 0.0f); e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f); }
     VHSVibes* vv() { return static_cast<VHSVibes*>(static_cast<mpc::Plugin*>(e->object)); }
@@ -135,7 +141,7 @@ int main()
     const Ch cam0 = { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 0}, {kMicGain, 0} };
     const Ch phone12 = { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 12} };
     const Ch boom0 = { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 3}, {kMicGain, 0} };
-    const Ch nrRec = { {kNr, 1} };
+    const Ch nrRec = { {kNr, 1}, {kOldNrLevel, 0} };
 
     std::printf("1. Aliasing, 44.1 kHz: the largest component off the tone's harmonics, HQ off -> on\n");
     {
@@ -144,7 +150,7 @@ int main()
         const C cs[] = { { "Camcorder, Mic Gain 0, 14 kHz at -8 dBFS", cam0, 0.4, 30.0 },
                          { "Phone, Mic Gain +12, 14 kHz at -1 dBFS", phone12, 0.89, 25.0 },
                          { "Boombox, Mic Gain 0, 14 kHz at -8 dBFS", boom0, 0.4, 30.0 },
-                         { "NR Rec, 14 kHz at -1 dBFS", nrRec, 0.89, 12.0 } };
+                         { "NR Rec (the old clip level), 14 kHz at -1 dBFS", nrRec, 0.89, 12.0 } };
         for (const C& c : cs)
         {
             double a[2];
@@ -339,8 +345,8 @@ int main()
                          { "Slew 100, 1 + 15 kHz at -7 dBFS each", { {kWear, 100} }, 1000.0, 15000.0, 0.447, -53.0 },
                          { "Drive 100 into the Hi-Fi limiter, 5 kHz at -1 dBFS", driveHifi, 5000.0, 0.0, 0.891, -44.0 },
                          { "Drive 100 into the Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", driveHifi, 1000.0, 15000.0, 0.447, -35.5 },
-                         { "NR Play (decoder clipper), 5 kHz at -1 dBFS", { {kNr, 2} }, 5000.0, 0.0, 0.891, -61.0 },
-                         { "NR Play (decoder clipper), 10 kHz at -1 dBFS", { {kNr, 2} }, 10000.0, 0.0, 0.891, -44.0 },
+                         { "NR Play (decoder clipper, the old clip level), 5 kHz at -1 dBFS", { {kNr, 2}, {kOldNrLevel, 0} }, 5000.0, 0.0, 0.891, -61.0 },
+                         { "NR Play (decoder clipper, the old clip level), 10 kHz at -1 dBFS", { {kNr, 2}, {kOldNrLevel, 0} }, 10000.0, 0.0, 0.891, -44.0 },
                          { "Phone, Mic Gain +12, 7 kHz at -1 dBFS", { {kMicOn, 1}, {kMicModel, 1}, {kMicType, 2}, {kMicGain, 12} }, 7000.0, 0.0, 0.891, -49.0 } };
         for (const C& c : cs)
         {
