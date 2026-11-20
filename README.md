@@ -224,7 +224,7 @@ button turn sunset orange. With VIBE's power off, all seven are their own again.
 | Azimuth | The head out of line, 0' to 60'. Only with Sat Type on VHS (below). |
 | Animation | The moving reels, grid and sun on or off. Off saves the work of updating the screen. Choosing a program does not change it. |
 | Visual Vibes | The picture shows the sound (below). Off in a new instance. |
-| HQ | Runs the stages that distort (Drive, Slew, Comp, the VIBE stage, the modeled mics, B-Type NR's record side) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a quarter more CPU when on. |
+| HQ | Runs the stages that distort (Drive, Slew, Comp, the VIBE stage, the modeled mics, B-Type NR's record side) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played. About a third more CPU when on, and over half more with Sat Type Hi-Fi. |
 | B-Type NR | The noise reduction of early stereo decks' linear tracks. On the record side it lifts quiet highs by up to 10 dB; on the playback side it cuts them again, and the hiss with them. Loud sounds pass untouched. Four positions (below). |
 
 **The two AGCs**
@@ -252,8 +252,10 @@ other one once it has settled (Modeled: a second).
 
 **HQ**
 
-- Off, the plugin sounds as it always has. On, the fold-back is gone for highs at ordinary levels; a
-  full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter.
+- Off, the plugin sounds as it always has. On, the fold-back is gone for highs at ordinary levels.
+- Since 1.8 the clippers inside HQ also smooth each step they take. A full-level high tone that squares
+  off in Drive, the Simple saturator or the Hi-Fi limiter folds back 17 to 36 dB quieter than with HQ off
+  (16 dB at 20 kHz). Slew and the VHS tape curve still fold such a tone back, 0 to 15 dB quieter.
 - Switching it fades the sound out and back in at the other rate.
 - Choosing a program does not change it.
 
@@ -381,8 +383,8 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend
   is over.
 - Choosing a program fades the sound out, starts the new tape and fades it in.
-- Projects made with an older version load with every setting in place; those from 1.3 to 1.6 sound as they
-  did, apart from the two changes to HQ and Whistle below. Scrape, Whistle, B-Type NR, Sat Type, Azimuth and
+- Projects made with an older version load with every setting in place; those from 1.3 to 1.7 sound as they
+  did, apart from the changes to HQ and Whistle below. Scrape, Whistle, B-Type NR, Sat Type, Azimuth and
   Visual Vibes rest at 0, off or Simple, a project saved before 1.6 opens with Mic Model and AGC Model on
   Simple, the 39 programs from before 1.7 are unchanged and
   use none of the newer controls, and the newer programs come after Init so every older one keeps its number.
@@ -393,6 +395,11 @@ automated and are best left alone. The Animation switch on the DECK page turns t
 - Since 1.7 HQ also covers the modeled microphones and the recording side of B-Type NR. A project
   that uses them with HQ on keeps its level and tone and loses the fold-back tones it had. Whistle
   is louder than in 1.6 above 60 %.
+- Since 1.8 the clippers inside HQ smooth each step they take, and the filters around them are steeper.
+  A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter or B-Type NR's record
+  side hard loses fold-back tones, and the top octave of what those stages make changes slightly, by up
+  to 3 dB between 14 and 17 kHz. Sounds that stay below the clipping keep their level and tone. With HQ on
+  the sound is also 0.8 samples later, and the plugin tells the host. With HQ off nothing changes.
 - Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one
   saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did. The
   five older programs with the Mic on keep Simple; the five programs named Mic - ... are the same
@@ -486,7 +493,7 @@ Left and right run through the effect chain together as one two-float vector, wh
 compiler turns into NEON instructions on the MPC. A stage whose amount is zero is skipped,
 and maths that would be a library call on the 32-bit MPCs (fmax, tanh, sin per sample) is
 kept out of the per-sample code. HQ doubles the sample rate around the distorting stages
-with a pair of small half-band filters (three allpass sections each way).
+with a pair of small half-band filters (five allpass sections each way).
 
 **Skin.** The interface is a hand-made skin: a hot pink cassette with the reel window and two
 stickers along the top and the controls on a dark face label, in two rows of eight. The

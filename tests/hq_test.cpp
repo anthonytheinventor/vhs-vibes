@@ -3,7 +3,8 @@
 // and the NR encoder runs inside the oversampled section, so their clippers no longer fold back.
 // Checked here: the aliasing comes down, the level and response stay those of HQ off in the
 // linear range, the latency the plugin wants to report and the dry copy follow the extra delay
-// in every combination, and switching while a tone plays does not click. Ends with PASS or FAIL.
+// in every combination, and switching while a tone plays does not click. And (1.8) what the
+// clippers inside HQ and its half-band filters still let fold back. Ends with PASS or FAIL.
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -193,8 +194,8 @@ int main()
 
     std::printf("3. Latency and the dry copy, every combination (Init, 44.1 kHz; a 1 kHz tone at -20 dBFS)\n");
     {
-        // The plugin wants to report the wobble delays' resting length, + kHqDelay with HQ, + kHqDelay
-        // more while a Camcorder, Phone or Boombox model runs under HQ (rounded). The wet path's delay
+        // The plugin wants to report the wobble delays' resting length, + kHqDelay with HQ, + kHbDelay
+        // (its half-band pair) more while a Camcorder, Phone or Boombox model runs under HQ (rounded). The wet path's delay
         // at 1 kHz must move by those amounts against HQ off (the mic's own filters at twice the rate
         // have a slightly different phase: within 0.2 samples), and the dry copy (Mix 0 %) by exactly
         // those amounts (within 0.02).
@@ -218,10 +219,10 @@ int main()
                         fx.play(1.5, [&](long i) { return 0.1 * std::sin(kTwoPiD * 1000.0 * (double)i / sr); }, &out);
                         delay[hq][dry] = -std::arg(toneAt(out, sr, 1000.0, 0, (size_t)(0.5 * sr))) / (kTwoPiD * 1000.0) * sr;
                         VHSVibes* v = fx.vv();
-                        const float want = v->wf1_.base + v->wf2_.base + (hq ? kHqDelay : 0.0f) + (hq && m.hqMic ? kHqDelay : 0.0f);
+                        const float want = v->wf1_.base + v->wf2_.base + (hq ? kHqDelay : 0.0f) + (hq && m.hqMic ? kHbDelay : 0.0f);
                         if (dry == 0) { lat[hq] = v->wantLatency_.load(); okLat = okLat && lat[hq] == (int)(want + 0.5f); }
                     }
-                const double extra = m.hqMic ? 2.0 * kHqDelay : kHqDelay;
+                const double extra = m.hqMic ? kHqDelay + kHbDelay : kHqDelay;
                 auto wrap = [](double d) { const double p = 44.1; while (d > p / 2) d -= p; while (d < -p / 2) d += p; return d; };
                 const double dw = wrap(delay[1][0] - delay[0][0]) - extra, dd = wrap(delay[1][1] - delay[0][1]) - extra;
                 worstWet = std::fmax(worstWet, std::fabs(dw)); worstDry = std::fmax(worstDry, std::fabs(dd));
@@ -229,7 +230,7 @@ int main()
                 if (nr == 0 || nr == 1) { char c[80]; std::snprintf(c, sizeof(c), " %s%s %d/%d;", m.name, nr ? " + NR Rec" : "", lat[0], lat[1]); lats += c; }
             }
         std::printf("   wanted latency, HQ off / on:%s\n", lats.c_str());
-        check(okLat, "the latency it wants to report is the resting delay + kHqDelay with HQ + kHqDelay more with a model mic under HQ, in all 48");
+        check(okLat, "the latency it wants to report is the resting delay + kHqDelay with HQ + kHbDelay more with a model mic under HQ, in all 48");
         std::snprintf(what, sizeof(what), "the tape path's delay moves by that (within %.3f samples of it; NR adds none)", worstWet);
         check(okWet, what);
         std::snprintf(what, sizeof(what), "the dry copy (Mix 0 %%) moves by the same (within %.4f samples)", worstDry);
@@ -250,6 +251,14 @@ int main()
               { {kMicType, 2}, {kMicType, 3}, {kMicType, 1}, {kMicType, 0} } },
             { "HQ off, on (Modeled Camcorder)", { {kMicModel, 1}, {kMicType, 0}, {kMicOn, 1} }, { {kHq, 0}, {kHq, 1} } },
             { "NR Off, Rec, On, Play, Off", { }, { {kNr, 1}, {kNr, 3}, {kNr, 2}, {kNr, 0} } },
+            // 1.8: the clippers' means (section 5) start from the sound when a clipper comes in
+            { "Drive 0, 100, 40, 0", { }, { {kDrive, 100}, {kDrive, 40}, {kDrive, 0} } },
+            { "HQ off, on (Drive 100)", { {kDrive, 100} }, { {kHq, 0}, {kHq, 1} } },
+            { "Saturator on, off (Simple, Lo / Hi Sat 100)", { {kSatType, 0}, {kLoSat, 100}, {kHiSat, 100}, {kSatOn, 0} }, { {kSatOn, 1}, {kSatOn, 0} } },
+            { "Sat Type Simple, Hi-Fi, VHS, Simple (Lo Sat 100)", { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 100}, {kHiSat, 60} },
+              { {kSatType, 2}, {kSatType, 1}, {kSatType, 0} } },
+            { "Lo Sat, Hi Sat 0 -> 100 -> 0 (Simple)", { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 0}, {kHiSat, 0} },
+              { {kHiSat, 100}, {kLoSat, 100}, {kHiSat, 0}, {kLoSat, 0} } },
         };
         const float sr = 44100.0f;
         auto sig = [&](long i) { return 0.2 * std::sin(kTwoPiD * 300.0 * (double)i / sr); };
@@ -277,6 +286,48 @@ int main()
             at = at > cyc ? at - cyc : 0;
             std::snprintf(what, sizeof(what), "%s: step ratio %.3f (%.0f ms after the first change), steady %.3f", s.name, r, 1000.0 * (double)at / sr, base);
             check(r <= 1.1 * base, what);
+        }
+    }
+
+    std::printf("5. HQ's clippers and half-band filters (1.8): what still folds back with HQ on, 44.1 kHz\n");
+    {
+        // The clippers with HQ give the mean of their curve over a short path (first-order ADAA), and
+        // the half-band filters have five sections. Largest component off the tone's harmonics with HQ
+        // on, against a ceiling that 1.7.0 misses by 10 dB or more (1.7.0 / 1.8 when this was written):
+        // Drive 100: 14 kHz -23.9 / -39.6, 1 + 15 kHz -30.4 / -46.9; Simple, Lo / Hi Sat 100, Lows /
+        // Highs +12: 14 kHz -20.3 / -34.1; Hi-Fi, Lo Sat 100 (the limiter): 14 kHz -43.6 / -58.2,
+        // 1 + 15 kHz -36.1 / -54.2.
+        struct C { const char* name; Ch ch; double f1, f2, amp, ceil; };
+        const Ch simpleHard = { {kSatOn, 1}, {kSatType, 0}, {kLoSat, 100}, {kHiSat, 100}, {kLows, 12}, {kHighs, 12} };
+        const Ch hifiLim = { {kSatOn, 1}, {kSatType, 2}, {kLoSat, 100}, {kHiSat, 0}, {kSplit, 2500} };
+        const C cs[] = { { "Drive 100, 14 kHz at -1 dBFS", { {kDrive, 100} }, 14000.0, 0.0, 0.891, -36.0 },
+                         { "Drive 100, 1 + 15 kHz at -7 dBFS each", { {kDrive, 100} }, 1000.0, 15000.0, 0.447, -43.0 },
+                         { "Simple 2-band, hard, 14 kHz at -1 dBFS", simpleHard, 14000.0, 0.0, 0.891, -32.0 },
+                         { "Hi-Fi limiter, 14 kHz at -1 dBFS", hifiLim, 14000.0, 0.0, 0.891, -53.0 },
+                         { "Hi-Fi limiter, 1 + 15 kHz at -7 dBFS each", hifiLim, 1000.0, 15000.0, 0.447, -50.0 } };
+        for (const C& c : cs)
+        {
+            Fx fx(44100.0f, 1, c.ch);
+            fx.set(kHiCut, 18000); fx.set(kHiCut2, 18000);
+            std::vector<float> out;
+            fx.play(2.0, [&](long i) { const double t = (double)i / 44100.0; return c.amp * (std::sin(kTwoPiD * c.f1 * t) + (c.f2 > 0 ? std::sin(kTwoPiD * c.f2 * t) : 0.0)); }, &out);
+            const double a = aliasDb(out, 44100.0f, c.f1);
+            std::snprintf(what, sizeof(what), "%s: %.1f dBFS, at most %.0f", c.name, a, c.ceil);
+            check(a <= c.ceil, what);
+        }
+        // the up-sampler alone: the doubled copy of a tone (at 44.1 kHz - f, at the doubled rate)
+        // 1.7.0: 18 kHz -31 dB, 20 kHz -15 dB; 1.8: -67 and -65
+        for (double f : { 18000.0, 20000.0 })
+        {
+            HalfBand u; std::complex<double> si = 0; const int N = 1 << 15; const double img = 44100.0 - f;
+            for (int i = 0; i < 2 * N; ++i)
+            {
+                Stereo a, b; u.up(splat((float)std::sin(kTwoPiD * f * i / 44100.0)), a, b);
+                if (i >= N) si += (double)a[0] * std::polar(1.0, -kTwoPiD * img * (2 * i) / 88200.0) + (double)b[0] * std::polar(1.0, -kTwoPiD * img * (2 * i + 1) / 88200.0);
+            }
+            const double lvl = dB(std::abs(si) * 2.0 / (2 * N));
+            std::snprintf(what, sizeof(what), "half-band, %.0f kHz: its doubled copy at %.1f kHz is %.1f dB down, at least 60", f / 1000.0, img / 1000.0, -lvl);
+            check(lvl <= -60.0, what);
         }
     }
 

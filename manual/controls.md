@@ -339,7 +339,7 @@ note: Off in a new instance and in a project from an older version. It needs Ani
 ## HQ
 what: Runs the stages that distort (Drive, Slew, Comp, the VIBE stage, the modeled microphones and the recording side of B-Type NR) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played.
 listen: With HQ off, loud bright sounds grow extra, unrelated tones underneath. With it on, they are gone for highs at ordinary levels.
-note: On takes about a quarter more CPU. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
+note: On takes about a third more CPU, and over half more with Type Hi-Fi. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
 
 ## B-Type NR
 what: B-type noise reduction, as on the linear tracks of early stereo decks. **Off**: none. **Rec**: recorded with it, played without. **Play**: recorded without, played with. **On**: both.

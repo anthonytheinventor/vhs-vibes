@@ -417,8 +417,8 @@ The treble cancels across the tilted head: first a dulling of the very top, then
 HQ runs the stages that distort (Drive, Slew, Comp, the VIBE stage) at twice the sample rate. Since 1.7 that includes the modeled microphones (Camcorder, Phone, Boombox) and the recording side of B-Type NR.
 
 - **Off:** bright sounds that hit those stages fold back into the midrange as tones that were never played. The plugin sounds as it did before HQ existed.
-- **On:** that is gone for highs at ordinary levels. A full-level high tone that squares off in the clippers still folds back, 6 to 20 dB quieter.
-- On takes about a quarter more CPU.
+- **On:** that is gone for highs at ordinary levels. Since 1.8 the clippers inside HQ also smooth each step they take. A full-level high tone that squares off in Drive, the Simple saturator or the Hi-Fi limiter folds back 17 to 36 dB quieter than with HQ off, and 16 dB quieter at 20 kHz. Slew and the VHS tape curve still fold such a tone back, 0 to 15 dB quieter.
+- On takes about a third more CPU, and over half more with Type Hi-Fi.
 - Switching it fades the sound out and back in at the other rate.
 - HQ is on in a new instance. Choosing a program does not change it.
 
@@ -1034,7 +1034,7 @@ toc: Projects made with older versions
 epigraph: Nothing you recorded is lost. It only waits.
 :::
 
-**Projects made with an older version load with every setting in place, and projects saved with 1.3 to 1.6 sound as they did, with two changes made on purpose: HQ now reaches further, and Whistle is louder above 60 %.**
+**Projects made with an older version load with every setting in place, and projects saved with 1.3 to 1.7 sound as they did, with three changes made on purpose: HQ now reaches further, HQ is cleaner where it is driven hard, and Whistle is louder above 60 %.**
 
 - New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Type at Simple, Azimuth at 0', Visual Vibes off. Mic Model and AGC Model rest at Modeled in a new instance; a project saved before they existed opens with both at Simple.
 - No older program uses the newer controls: the five with the Mic on keep the Simple microphones, every program with the AGC up keeps the Simple AGC, and none of the 39 programs from before 1.7 uses Hi-Fi or Azimuth. They are unchanged.
@@ -1042,6 +1042,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 - **Type** gained a third position in 1.7. A project stores the choice itself, so VHS stays VHS. The one exception: automation of Type recorded in 1.5 or 1.6, which stores only a knob position, now reads the old VHS position as Hi-Fi, because the same travel is now shared by three positions. Set it again to VHS where that happens.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
 - **HQ reaches further in 1.7.** It now also covers the modeled microphones and the recording side of B-Type NR, which used to fold bright, loud sounds back into the midrange even with HQ on. A project that uses them with HQ on keeps its level and tone and loses those tones; the programs that use them stay within a third of a dB of 1.6 below 10 kHz. With HQ off, and wherever neither is in use, nothing changes.
+- **HQ is cleaner in 1.8.** With HQ on, the clippers smooth each step they take, and the filters around them are steeper. A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter or B-Type NR's record side hard loses fold-back tones, and the top octave of what those stages make changes slightly, by up to 3 dB between 14 and 17 kHz. Sounds that stay below the clipping keep their level and tone. With HQ on the sound is also 0.8 samples later, and the plugin tells the host. With HQ off nothing changes.
 - **Whistle** is as it was up to 60 %. Above that it is louder than in 1.6, by 15 dB at 100 %.
 - **Mic Model** is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did.
 - **AGC Model** rests on Modeled, but every program with the AGC up uses Simple, Home Recording included. A project saved before 1.6 opens on Simple, so it sounds as it did.
@@ -1088,7 +1089,7 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | Head Buzz, Whistle or Breathing cannot be heard. | Head Buzz and Whistle follow **Master** and the **Noise** switch. The Whistle is at 15.7 kHz; not everyone can hear it. Breathing shapes Hiss and Head Buzz, so it needs one of them turned up (in Hi-Fi it works on the music, best heard on drums). |
 | A new program did not change HQ, Animation or Visual Vibes. | Those three switches are not part of the programs. |
 | The reels stand still. | They turn only while sound comes in or the song is playing. Or **Animation** is off. |
-| The MPC is short of CPU. | Switch **HQ** off: on, it takes about a quarter more. **Animation** off saves the work of updating the screen. |
+| The MPC is short of CPU. | Switch **HQ** off: on, it takes about a third more, and over half more with Type Hi-Fi. **Animation** off saves the work of updating the screen. |
 
 ::: chapter
 id: rewind

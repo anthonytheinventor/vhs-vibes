@@ -74,13 +74,20 @@
 // saturator, at twice the sample rate between two half-band filters. Without it, what those
 // stages add above 22 kHz folds back down as tones that were never in the sound (a loud
 // 14 kHz comes back at 2.1 kHz). With it, what the soft part of the distortion adds is
-// filtered off almost entirely; what hard clipping and Slew add when a full-level high tone
-// drives them goes further up than twice the rate can hold, and that part comes down by
-// 6 to 20 dB only. It costs about a quarter more CPU. Since 1.7 it also covers the two stages
-// that distort before the preamp: the modelled Camcorder, Phone and Boombox microphones (they run
-// at twice the rate between their own pair of half-band filters, which holds the sound back by
-// as much again; the Dynamic one and the Simple ones are linear and stay as they were) and the
-// B-type NR encoder, which now runs inside the doubled section for the sake of its overshoot clipper.
+// filtered off almost entirely. Hard clipping makes overtones that go further up than twice the
+// rate can hold. So since 1.8 each clipper inside HQ (the preamp's, the 2-band saturator's, the
+// Hi-Fi limiter and the NR encoder's) gives the mean of its curve over a window one sample wide
+// (see softClipMean), and the half-band filters are steeper (see HalfBand). When a full-level high
+// tone drives the preamp or the 2-band saturator all the way, what still folds back is 21 to 27 dB
+// below where it is with HQ off, up to 18 kHz (16 dB at 20 kHz): 13 to 19 dB less than with the HQ
+// of 1.7. For the Hi-Fi limiter it is 17 to 36 dB below HQ off, 4 to 21 dB below 1.7. Slew and the
+// VHS tape curve have no such window: what they add to a loud high tone comes down by 0 to 15 dB
+// only. HQ costs about a third more CPU (with Sat Type Hi-Fi, over half more). Since 1.7 it also
+// covers the two stages that distort before the preamp: the modelled Camcorder, Phone and Boombox
+// microphones (they run at twice the rate between their own pair of half-band filters, which holds
+// the sound back by 1.9 samples more; the Dynamic one and the Simple ones are linear and stay as
+// they were) and the B-type NR encoder, which now runs inside the doubled section for the sake of
+// its overshoot clipper.
 //
 // Compatibility: parameters are only ever appended, and a new one rests where the plugin
 // sounds as it did without it (Scrape and Whistle at 0, NR Off, Sat Type Simple, the 2-band
@@ -103,6 +110,11 @@
 // microphones and the NR encoder's clipper (see HQ above): a project that uses a Modeled Camcorder,
 // Phone or Boombox, or NR Rec or On, with HQ on sounds cleaner than it did (no fold-back from those
 // stages), at the same level and tone. With HQ off, or without those, it is the same to the bit.
+// 1.8 made HQ itself cleaner (see HQ above): with HQ on, a clipper driven hard folds back less, and
+// the top octave of what it makes changes slightly (up to 2 dB at 14 kHz, 3 dB at 17 kHz); a sound
+// that stays below the clamps keeps its level and tone within 0.05 dB to 15 kHz. HQ is 0.79 samples
+// later than it was (its half-band filters and its two means, see kHqDelay); the reported latency
+// and the dry copy follow. With HQ off it is the same to the bit.
 //
 // Timing: the wobble delays hold the sound back by their resting length (a few ms on most
 // presets). That length is reported to the host as the plugin's latency, half a second after
@@ -122,6 +134,9 @@
 #include "dsp/biquad.h"
 #include "dsp/noise.h"
 
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -298,9 +313,16 @@ constexpr float kBoostCeil          = 1.5f;   // the AGC and the compressor's ma
 constexpr float kFbLevel            = 0.71f;  // the backup track plays 3 dB quieter than the Hi-Fi track
 constexpr float kLineHz             = 15734.0f;   // NTSC line rate: the whistle of a TV set
 // HQ: the half-band filter that doubles and halves the sample rate (see HalfBand), and how
-// late the pair makes the sound, in samples
-constexpr float kHb[3]              = { 0.1035037879f, 0.3717428742f, 0.7519142908f };
-constexpr float kHqDelay            = 1.412f;
+// late the pair makes the sound, in samples (the sum of (1 - c) / (1 + c) over the five).
+// The main HQ section is later than its pair (1.8): its two places that may clip are half a
+// sample (at the doubled rate) late each, and kHqEq lifts back the top those two means take off
+// (1 / cos^2 of a quarter of the frequency, in radians at the session rate: within 0.045 dB up to
+// 0.907 of half the rate, 20 kHz at 44.1 kHz), 0.187 samples early in the lows.
+constexpr int   kHbN                = 5;
+constexpr float kHb[kHbN]           = { 0.0863437797f, 0.2952210021f, 0.5320824744f, 0.7393734977f, 0.9145070455f };
+constexpr float kHbDelay            = 1.8851f;                        // the pair (the model mics have only that)
+constexpr float kHqDelay            = kHbDelay + 0.5f - 0.18669f;     // the main section: 2.198
+constexpr float kHqEq[5]            = { 1.242828930f, 0.179412690f, -0.049576899f, 0.408806608f, -0.036141887f };  // b0 b1 b2 a1 a2
 constexpr int   kFadeTicks          = 8;      // control ticks of fade-out before a reset while sound plays (3 ms)
 
 // Which values a parameter feeds. A knob move only recomputes its own group in readParams().
@@ -413,6 +435,147 @@ inline Quad driveSat4(Quad x, Quad g, Quad makeup, Quad mix)
     t = t > -1.5f ? t : (Quad){-1.5f, -1.5f, -1.5f, -1.5f};
     t = t - (4.0f / 27.0f) * t * t * t;
     return x + (t * makeup - x) * mix;
+}
+
+// ---------------------------------------------------------------------------
+// HQ's clippers (1.8): first-order antiderivative anti-aliasing (ADAA). A clipper driven hard by
+// a high tone turns it into a near square, whose overtones go on far past twice the rate; what
+// lies past it still folds back. So with HQ each clipper gives, instead of its curve f at the
+// sample, the mean of f along the straight path from the last sample to this one: F(a) - F(b)
+// over a - b, with F the integral of f. That is the clipped wave seen through a window one sample
+// wide, which holds most of those overtones back (13 to 19 dB more, on top of the doubled rate).
+//
+// That mean belongs half a sample earlier, and for a sound that does not clip it is the mean of
+// the two samples, which takes a little off the top. So with HQ each of the two places that may
+// clip (the preamp's, and the saturator's: see shape2 and shapeRest) gives the mean of the two
+// samples whether its clipper is on or not, the clean part of every blend included, and the
+// section's output goes through kHqEq, which lifts that top back. Its level and tone for a sound
+// that does not clip are those of HQ off within 0.05 dB to 20 kHz, and it is a constant
+// kHqDelay late, which the dry copy (hqDry) and the reported latency follow. (What the curve does
+// below the clamp is seen through the window too: a soft clip just short of the clamp gives a
+// 15 kHz tone about 0.1 dB less.)
+//
+// The NR encoder's clipper sits in a side chain whose sound is only added, so it cannot be late:
+// its path runs between two points of its input passed through (1 + r) / (1 + r z^-1),
+// r = kChordRho, whose middle is the sample itself (within 0.002 dB and 0.016 samples up to
+// 20 kHz at the doubled rate). Hi-Fi's limiter does the same, with a smaller r (see
+// HiFiPath::process). That would not do for the preamp and the saturator: after a clipper, the
+// input's top octave makes those points swing, and with r near 1 a clipper after a clipper folds
+// back more than without the means (r = 0.7 keeps that within 5 dB of 1.7 at the worst).
+//
+// Each mean is written per piece of the curve (inside the clamp the polynomial, past it the rail
+// times the distance), so nothing large is taken from anything large and float stays exact down to
+// a step of 1e-4, where the curve's own mean between the clamped ends takes over (the same value).
+// While both ends of every lane stay inside the clamp, that polynomial mean is the whole answer,
+// and the rest is skipped.
+constexpr float kChordRho = 0.95f;
+constexpr float kChordIn  = 1.0f + kChordRho;
+constexpr float kHfChordRho = 0.7f;   // Hi-Fi's limiter (see HiFiPath::process)
+constexpr float kHfChordIn  = 1.0f + kHfChordRho;
+template <class T> inline T vsplat(float v) { T t = {}; return t + v; }
+template <class T> inline T vclampT(T x, float lim)
+{
+    x = x < lim ? x : vsplat<T>(lim);   // vclamp's order: the top first (a NaN ends on the top)
+    return x > -lim ? x : vsplat<T>(-lim);
+}
+// Whether a or b is past +-lim in any lane.
+inline bool anyPast(Quad a, Quad b, float lim)
+{
+#if defined(__ARM_NEON)
+    const float32x4_t l = vdupq_n_f32(lim);
+    const uint32x4_t o = vorrq_u32(vcagtq_f32((float32x4_t)a, l), vcagtq_f32((float32x4_t)b, l));
+    const uint32x2_t h = vorr_u32(vget_low_u32(o), vget_high_u32(o));
+    return vget_lane_u32(vpmax_u32(h, h), 0) != 0;
+#else
+    const Quad m = __builtin_elementwise_max(__builtin_elementwise_abs(a), __builtin_elementwise_abs(b));
+    return __builtin_reduce_max(m) > lim;
+#endif
+}
+inline bool anyPast(Stereo a, Stereo b, float lim)
+{
+#if defined(__ARM_NEON)
+    const float32x2_t l = vdup_n_f32(lim);
+    const uint32x2_t o = vorr_u32(vcagt_f32((float32x2_t)a, l), vcagt_f32((float32x2_t)b, l));
+    return vget_lane_u32(vpmax_u32(o, o), 0) != 0;
+#else
+    const Stereo m = __builtin_elementwise_max(__builtin_elementwise_abs(a), __builtin_elementwise_abs(b));
+    return __builtin_reduce_max(m) > lim;
+#endif
+}
+// A clamp where a NaN does not matter: one NEON min and max on the MPC.
+inline Quad fclamp(Quad x, float lim)
+{
+#if defined(__ARM_NEON)
+    return (Quad)vminq_f32(vmaxq_f32((float32x4_t)x, vdupq_n_f32(-lim)), vdupq_n_f32(lim));
+#else
+    return vclampT(x, lim);
+#endif
+}
+inline Stereo fclamp(Stereo x, float lim)
+{
+#if defined(__ARM_NEON)
+    return (Stereo)vmin_f32(vmax_f32((float32x2_t)x, vdup_n_f32(-lim)), vdup_n_f32(lim));
+#else
+    return vclampT(x, lim);
+#endif
+}
+// 1 / d where d is not near 0: on the MPC the NEON estimate and one Newton step (16 bits: the mean
+// comes out within 2e-5 of its value, under -90 dB), where a division would be one scalar divide
+// per lane.
+inline Quad vrecip(Quad d)
+{
+#if defined(__ARM_NEON)
+    const float32x4_t v = (float32x4_t)d, r = vrecpeq_f32(v);
+    return (Quad)vmulq_f32(r, vrecpsq_f32(v, r));
+#else
+    return 1.0f / d;
+#endif
+}
+inline Stereo vrecip(Stereo d)
+{
+#if defined(__ARM_NEON)
+    const float32x2_t v = (float32x2_t)d, r = vrecpe_f32(v);
+    return (Stereo)vmul_f32(r, vrecps_f32(v, r));
+#else
+    return 1.0f / d;
+#endif
+}
+// The mean of a clipper's curve from b to a. ac, bc: the ends clamped to +-lim; dd: the mean of the
+// curve's polynomial part from bc to ac; rail: the curve's value past the clamp. (It stays inside
+// the curve's range by itself. A NaN from the host passes through: process() silences such a block.)
+template <class T> inline T adaaMean(T a, T b, T ac, T bc, T dd, float rail)
+{
+    const T d = a - b;
+    const T num = (ac - bc) * dd + rail * (__builtin_elementwise_abs(a - ac) - __builtin_elementwise_abs(b - bc));
+    const auto small = __builtin_elementwise_abs(d) < 1.0e-4f;
+    const T q = num * vrecip(small ? vsplat<T>(1.0f) : d);
+    return small ? dd : q;
+}
+// softClip's curve (clamp at 1.5, then x - 4/27 x^3, rail 1): its polynomial's mean from b to a is
+// (a + b) (1/2 - (a^2 + b^2) / 27).
+// The part past the clamp is out of line: inline in the sample loop it took registers the rest of
+// the loop needs (HQ off too); called, it costs a few instructions only while a clipper clips.
+template <class T> inline T softPoly(T p, T q) { return (p + q) * (0.5f - (p * p + q * q) * (1.0f / 27.0f)); }
+template <class T> __attribute__((noinline)) T softClipPast(T a, T b)
+{
+    const T ac = fclamp(a, 1.5f), bc = fclamp(b, 1.5f);
+    return adaaMean(a, b, ac, bc, softPoly(ac, bc), 1.0f);
+}
+template <class T> inline T softClipMean(T a, T b)
+{
+    if (__builtin_expect(anyPast(a, b, 1.5f), 0)) return softClipPast(a, b);
+    return softPoly(a, b);
+}
+// A hard clip at +-lim: inside, the mean is (a + b) / 2.
+template <class T> __attribute__((noinline)) T clampPast(T a, T b, float lim)
+{
+    const T ac = fclamp(a, lim), bc = fclamp(b, lim);
+    return adaaMean(a, b, ac, bc, 0.5f * (ac + bc), lim);
+}
+template <class T> inline T clampMean(T a, T b, float lim)
+{
+    if (__builtin_expect(anyPast(a, b, lim), 0)) return clampPast(a, b, lim);
+    return 0.5f * (a + b);
 }
 
 // ---------------------------------------------------------------------------
@@ -532,13 +695,22 @@ struct NoiseRed
         else rec = 1.0f / den;
     }
 
-    // mix: 1 = on; below that the added signal is faded (while NR is switched in or out)
-    Stereo encode(Stereo x, float mix = 1.0f)
+    // mix: 1 = on; below that the added signal is faded (while NR is switched in or out).
+    // adaa (with HQ): the overshoot clipper gives the mean of its clamp along a path through the
+    // sample (see clampMean); clipP holds that path's last end.
+    template <bool adaa = false> Stereo encode(Stereo x, float mix = 1.0f, Stereo* clipP = nullptr)
     {
         const Stereo vB = (c1 * (sq + kap * x) - c2 * su) * rec;         // rec = 1 / D
         step(x, vB);
         const Stereo e = kNrGain * vB;
         control(e);
+        if constexpr (adaa)
+        {
+            const Stereo p = kChordIn * e - kChordRho * *clipP;
+            const Stereo c = clampMean(p, *clipP, kNrClip);
+            *clipP = p;
+            return x + c * mix;
+        }
         return x + vclamp(e, kNrClip) * mix;
     }
     Stereo decode(Stereo y)
@@ -897,21 +1069,37 @@ private:
 
 // Half-band lowpass for 2x oversampling: two chains of first-order allpass sections that add
 // up to a lowpass at a quarter of the doubled rate (the elliptic design of Valenzuela and
-// Constantinides; at 88.2 kHz it is 0.1 dB down at 19.8 kHz and 62 dB down from 28.2 kHz).
-// One of these doubles the rate, a second one halves it again; the two together are a pure
-// allpass: flat at every frequency, kHqDelay samples late in the lows and up to 2 in the highs.
+// Constantinides). One of these doubles the rate, a second one halves it again; the two
+// together are a pure allpass: flat at every frequency, kHbDelay samples late in the lows and
+// more in the highs. Five sections since 1.8 (three before): at 88.2 kHz it is flat to 21 kHz
+// and 65 dB down from 24.1 kHz, where three gave 62 dB only from 28.2 kHz. So the doubled copy
+// of an 18 or 20 kHz tone (at 26.1 or 24.1 kHz) is gone before the clippers see it, and what
+// they make between 24 and 26 kHz no longer comes back at 18 to 20 kHz.
 struct HalfBand
 {
-    Stereo s[3][2] = {};   // per section: its last input and last output
-    void reset() { for (auto& v : s) v[0] = v[1] = splat(0.0f); }
-    Stereo ap(int i, Stereo x) { const Stereo y = kHb[i] * (x - s[i][1]) + s[i][0]; s[i][0] = x; s[i][1] = y; return y; }
+    // The two chains are independent in up() and down(), so they run side by side in 4 lanes:
+    // lanes 0-1 the chain of sections 0, 2 and 4, lanes 2-3 the chain of 1 and 3 (section 4 alone).
+    static constexpr Quad kK01 = { kHb[0], kHb[0], kHb[1], kHb[1] }, kK23 = { kHb[2], kHb[2], kHb[3], kHb[3] };
+    Quad q[2][2] = {};        // the paired sections: last input and last output
+    Stereo s4[2] = {};        // section 4
+    Stereo t[kHbN][2] = {};   // trip()'s own sections, one after the other
+    void reset() { for (auto& v : q) v[0] = v[1] = Quad{}; s4[0] = s4[1] = splat(0.0f); for (auto& v : t) v[0] = v[1] = splat(0.0f); }
+    static Quad apq(Quad k, Quad (&m)[2], Quad x) { const Quad y = k * (x - m[1]) + m[0]; m[0] = x; m[1] = y; return y; }
+    static Stereo ap(float k, Stereo (&m)[2], Stereo x) { const Stereo y = k * (x - m[1]) + m[0]; m[0] = x; m[1] = y; return y; }
+    // the even chain on e and the odd chain on o; out: lanes 0-1 the even one's result, 2-3 the odd one's
+    Quad chains(Stereo e, Stereo o) { const Quad v = apq(kK23, q[1], apq(kK01, q[0], quad(e, o))); return quad(ap(kHb[4], s4, lo2(v)), hi2(v)); }
     // one sample in, two out (a is the earlier one)
-    void up(Stereo x, Stereo& a, Stereo& b) { a = ap(2, ap(0, x)); b = ap(1, x); }
+    void up(Stereo x, Stereo& a, Stereo& b) { const Quad v = chains(x, x); a = lo2(v); b = hi2(v); }
     // two samples in (a the earlier one), one out
-    Stereo down(Stereo a, Stereo b) { return 0.5f * (ap(2, ap(0, b)) + ap(1, a)); }
+    Stereo down(Stereo a, Stereo b) { const Quad v = chains(b, a); return 0.5f * (lo2(v) + hi2(v)); }
     // What up() followed by down() does to a sound, without the doubling in between: for a
     // copy that has to stay lined up with the doubled path at every frequency (the dry signal).
-    Stereo trip(Stereo x) { return ap(1, ap(2, ap(0, x))); }
+    Stereo trip(Stereo x)
+    {
+        for (int i = 0; i < kHbN; i += 2) x = ap(kHb[i], t[i], x);   // the even chain, then the odd one
+        for (int i = 1; i < kHbN; i += 2) x = ap(kHb[i], t[i], x);
+        return x;
+    }
 };
 
 // The tape transport: turns "how wrong is the tape speed right now" into a delay time.
@@ -1975,6 +2163,8 @@ struct HiFiPath
     float linMix = 0.0f;
     uint32_t clickCount = 0, switchCount = 0;   // for the tests
     uint32_t drops = 0;                         // dropouts so far, for the picture
+    Stereo limP = {};               // with HQ, the limiter's last path end (see process; last, so the
+                                    // members before keep their places)
 
     void prepare(float rate)
     {
@@ -2060,6 +2250,7 @@ struct HiFiPath
 
     void reset()
     {
+        limP = splat(0.0f);
         nrEmph.reset(); wRec.reset(); fmEmph.reset(); fmDe.reset(); wPlay.reset(); nrDe.reset();
         recDet.d = splat(kDRef); playDet.d = splat(pRef);               // at the unity point: no start-up overshoot
         rmsDet.d = splat(sq(pRef / rmsCal));
@@ -2283,7 +2474,13 @@ struct HiFiPath
         return playback(z);
     }
 
-    Stereo process(Stereo x)
+    // adaa: the path runs in HQ's doubled section. The limiter sits between the compander's two
+    // halves, which undo each other only while what lies between them changes nothing: a mean half
+    // a sample late there, even with its top lifted back, left -80 dBFS of tones in a sound that
+    // never reaches the limit. So it stays the plain clamp (the sound itself) while the path does
+    // not reach the limit, and gives the mean along a path centred on the sample (kHfChordRho, see
+    // adaaMean) where it does. Still a hard clip.
+    template <bool adaa = false> Stereo process(Stereo x)
     {
         if (n == 0) tick();
         n = (n + 1) & (kCtrl - 1);
@@ -2299,7 +2496,14 @@ struct HiFiPath
         }
         const Stereo v = nrEmph.fwd(x * rec) * cg;
         recDet.step(vabs(wRec.fwd(v)));
-        const Stereo y = vclamp(fmEmph.fwd(v), kHfClip);
+        Stereo y = fmEmph.fwd(v);
+        if constexpr (adaa)
+        {
+            const Stereo p = kHfChordIn * y - kHfChordRho * limP;
+            if (__builtin_expect(anyPast(p, limP, kHfClip), 0)) y = clampPast(p, limP, kHfClip);
+            limP = p;
+        }
+        else y = vclamp(y, kHfClip);
         // the tape, then playback, and the dropout canceller's hold
         Stereo out = playback(channel(y));
         out = held = holding ? held * droop : out;
@@ -2558,6 +2762,9 @@ private:
         compSmooth_ = hq_ ? 0.01005f : 0.02f;                      // and its gain smoothing, per sample
         if (hifiPath_.sr != nlSr_) hifiPath_.prepare(nlSr_);       // Sat Type = Hi-Fi runs in the saturator's place
         nrEnc_.prepare(nlSr_, false);                              // the NR encoder runs inside too (see process)
+        BiquadCoeffs eq;                                           // the same at every rate (see kHqEq)
+        eq.b0 = kHqEq[0]; eq.b1 = kHqEq[1]; eq.b2 = kHqEq[2]; eq.a1 = kHqEq[3]; eq.a2 = kHqEq[4];
+        hqEq_.setCoeffs(eq); hqDryEq_.setCoeffs(eq);
     }
 
     // Clears every memory and jumps all smoothed values to the current settings.
@@ -2567,7 +2774,7 @@ private:
         if (sr <= 0.0f) return;
         if (sr != sr_) { sr_ = sr; setRate(); }
         setQuality();
-        hbUp_.reset(); hbDown_.reset(); hbDry_.reset();
+        hbUp_.reset(); hbDown_.reset(); hbDryUp_.reset(); hbDryDown_.reset(); hqEq_.reset(); hqDryEq_.reset();
         fadeOut_ = 0; resetNextTick_ = false;
         // All four lines are emptied, not only rewound: in the first moments after a reset the
         // readers reach back past what has been written since (the resting length, the swing,
@@ -2576,7 +2783,8 @@ private:
         wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
         simple_.reset(); resetMic();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
-        tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = splat(0.0f);
+        tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = drvX_ = satX_ = nrClipP_ = dryM_[0] = dryM_[1] = splat(0.0f);
+        satQ_ = quad(drvX_, drvX_); satSeed_ = true;
         env_ = 0.0f; compGain_ = 1.0f; compTarget_ = 1.0f;
         humPh_ = buzzPh_ = headPh_ = 0.0f;
         buzzLp_ = headLp_ = headHp_ = 0.0f;
@@ -2669,24 +2877,56 @@ private:
     __attribute__((always_inline)) Stereo shape(Stereo x, float satMix)
     {
         if (driveOn_) x = driveSat(x, cur_[cDrvG], cur_[cDrvMk], cur_[cDrvMix]);
-        return shapeRest(x, satMix);
+        return shapeRest<false>(x, satMix);
     }
-    // HQ: both doubled samples (a is the earlier one). The preamp clipper has no memory and its
-    // values do not change between the two, so both go through it at once (driveSat4). Every
-    // stage after it has memory and keeps its order: all of a, then all of b.
+    // HQ: the stages run at twice the sample rate, so what they add above 22 kHz is filtered off
+    // instead of folding back down into the sound. The NR encoder comes first, in its place in the
+    // chain: its overshoot clipper distorts too (it is prepared for this rate in setQuality).
+    __attribute__((always_inline)) Stereo hqShape(Stereo x, bool nrEnc, float satMix)
+    {
+        Stereo a, b;
+        hbUp_.up(x, a, b);
+        if (nrEnc)
+        {
+            if (nrEncSeed_) { nrEnc_.seed(a); nrEncSeed_ = false; nrClipP_ = splat(0.0f); }
+            a = nrEnc_.encode<true>(a, nrEncMix_, &nrClipP_);
+            b = nrEnc_.encode<true>(b, nrEncMix_, &nrClipP_);
+        }
+        shape2(a, b, satMix);
+        return hqEq_.process(hbDown_.down(a, b));
+    }
+    // The dry copy with HQ: what the HQ section does to a sound that nothing clips, so that the two
+    // stay lined up at every frequency (Mix below 100 %): the pair, its two means and kHqEq.
+    Stereo hqDry(Stereo x)
+    {
+        Stereo a, b;
+        hbDryUp_.up(x, a, b);
+        const Stereo a1 = 0.5f * (a + dryM_[0]), b1 = 0.5f * (b + a);
+        const Stereo a2 = 0.5f * (a1 + dryM_[1]), b2 = 0.5f * (b1 + a1);
+        dryM_[0] = b; dryM_[1] = b1;
+        return hqDryEq_.process(hbDryDown_.down(a2, b2));
+    }
+    // HQ: both doubled samples (a is the earlier one). The preamp clipper's values do not change
+    // between the two, so both go through it at once, as one 4-lane mean (see softClipMean): from
+    // the sample before a to a, and from a to b. That mean belongs half a sample earlier, so the
+    // clean part of the blend is the mean of the same two samples, and with the clipper off the
+    // sound is that mean too: the stage is half a sample late always (see kHqDelay). Every stage
+    // after it keeps its order: all of a, then all of b.
     __attribute__((always_inline)) void shape2(Stereo& a, Stereo& b, float satMix)
     {
+        const Quad x = quad(a, b), x0 = quad(drvX_, a), xm = 0.5f * (x + x0);
+        drvX_ = b;
+        Quad y = xm;
         if (driveOn_)
         {
             const float g = cur_[cDrvG], mk = cur_[cDrvMk], mx = cur_[cDrvMix];
-            const Quad q = driveSat4(quad(a, b), quad2(g, g), quad2(mk, mk), quad2(mx, mx));
-            a = lo2(q); b = hi2(q);
+            y += (softClipMean(x * g, x0 * g) * mk - xm) * mx;
         }
-        a = shapeRest(a, satMix);
-        b = shapeRest(b, satMix);
+        a = shapeRest<true>(lo2(y), satMix);
+        b = shapeRest<true>(hi2(y), satMix);
     }
-    // shape() after the preamp clipper.
-    __attribute__((always_inline)) Stereo shapeRest(Stereo x, float satMix)
+    // shape() after the preamp clipper (hq: at the doubled rate, see shape2).
+    template <bool hq> __attribute__((always_inline)) Stereo shapeRest(Stereo x, float satMix)
     {
         // ----- wear: slew limiter ----------------------------------------
         if (slewOn_)
@@ -2708,6 +2948,48 @@ private:
         if (boost_) x = vclamp(x, kBoostCeil);
 
         // ----- 2-band saturator ------------------------------------------
+        if constexpr (hq)
+        {
+            // HQ: the saturator's place is half a sample late, whatever is in it, as the preamp's is
+            // (see shape2): the clippers' means, the clean parts of their blends and the sound that
+            // goes round the stage are all means of this sample and the one before (satX_, satQ_).
+            // VHS has no clipper of that kind, and Hi-Fi's limiter has its own (see kHfLimEq): their
+            // result is put through the same mean.
+            if (satMix > 0.0f && (tape_ || hifiRun_))
+            {
+                if (tape_)
+                {
+                    const Stereo y = azRun_ ? tapeSat_.play(az_.process(tapeSat_.record(x))) : tapeSat_.process(x);
+                    splitLp_ += splitCoeff_ * (y - splitLp_);
+                    x += (splitLp_ * cur_[cLowsG] + (y - splitLp_) * cur_[cHighsG] - x) * satMix;
+                }
+                else x = hifiShape<true>(x, satMix);
+                const Stereo m = 0.5f * (x + satX_);
+                satX_ = x;
+                return m;
+            }
+            const Stereo xm = 0.5f * (x + satX_);
+            satX_ = x;
+            if (satMix > 0.0f && !hifiRun_)
+            {
+                // both bands' clippers as one 4-lane mean; a band whose clipper is off has a blend of
+                // 0 there. Their last sample is taken from the sound when the stage comes back in.
+                splitLp_ += splitCoeff_ * (x - splitLp_);
+                const Quad q = quad(splitLp_ * cur_[cLowsG], (x - splitLp_) * cur_[cHighsG]);
+                if (satSeed_) { satQ_ = q; satSeed_ = false; }
+                const Quad q0 = satQ_;
+                satQ_ = q;
+                Quad y = 0.5f * (q + q0);
+                if (loSatOn_ || hiSatOn_)
+                {
+                    const Quad g = quad2(cur_[cLoG], cur_[cHiG]);
+                    y += (softClipMean(q * g, q0 * g) * quad2(cur_[cLoMk], cur_[cHiMk]) - y) * quad2(cur_[cLoMix], cur_[cHiMix]);
+                }
+                return xm + (lo2(y) + hi2(y) - xm) * satMix;
+            }
+            satSeed_ = true;
+            return xm;
+        }
         if (satMix > 0.0f && tape_)
         {
             // (Azimuth: between the tape and the playback side, see Azimuth)
@@ -2732,18 +3014,18 @@ private:
             }
             x += (lo + hi - x) * satMix;
         }
-        else if (satMix > 0.0f) x = hifiShape(x, satMix);
+        else if (satMix > 0.0f) x = hifiShape<false>(x, satMix);
         return x;
     }
 
     // Sat Type = Hi-Fi for one sample (at the rate the stage runs at): Lows and Highs trim the two
     // halves around 1 kHz before the deck (EQ in front of the recorder), then the FM path. Out of
     // line, like agcModeled below.
-    __attribute__((noinline)) Stereo hifiShape(Stereo x, float satMix)
+    template <bool hq> __attribute__((noinline)) Stereo hifiShape(Stereo x, float satMix)
     {
         splitLp_ += splitCoeff_ * (x - splitLp_);
         const Stereo e = splitLp_ * cur_[cLowsG] + (x - splitLp_) * cur_[cHighsG];
-        return x + (hifiPath_.process(e) - x) * satMix;
+        return x + (hifiPath_.process<hq>(e) - x) * satMix;
     }
 
     // The Modeled AGC for one sample, with the Simple one beside it while AGC Model is switched
@@ -2772,77 +3054,15 @@ private:
     }
 
 public:
-    void process(mpc::ProcessContext& ctx) override
+    // The sample loop, compiled twice: with HQ and without (hq_ changes only in a reset, between
+    // blocks). Each copy has the registers to itself: in one loop the 1.8 HQ code made the loop
+    // without it about 25 instructions a sample longer than 1.7; apart, about 15, most of that the
+    // control tick, which is a call now (32-bit ARM build, counted).
+    // Returns the sum of the input (see the end of process()).
+    template <bool hq> __attribute__((noinline)) Stereo runFrames(int frames, const float* inL, const float* inR, float* outL, float* outR)
     {
-        // Read first: a load that has finished by now has also asked for its reset (endLoad),
-        // and the acquire makes that request visible to the check just below.
-        const uint32_t load = loadState_.load(std::memory_order_acquire);
-
-        if (resetPending_.load(std::memory_order_relaxed) && resetPending_.exchange(false))
-        {
-            resetWanted_.store(false);   // this one serves a waiting request too
-            doReset();
-        }
-        else if (resetWanted_.load(std::memory_order_relaxed) && resetWanted_.exchange(false))
-            fadeOut_ = kFadeTicks;       // a program change or state load: fade out, then reset
-
-        // Once per block: recompute the values of whichever groups had a parameter move. Not
-        // while the host is writing a program or a state, nor while the output fades out for
-        // the reset that follows: the old sound keeps its old settings until then, and the
-        // reset reads every parameter.
-        //
-        // The host's thread may begin or finish writing a program or a state at any moment,
-        // also while this loop reads the values. So what the loop saw counts only if no load
-        // was under way when it began and none began or ended while it ran (loadState_ is the
-        // same after it: see beginLoad / endLoad). Otherwise nothing is taken in and the values
-        // stay "unseen", for the next block or for the reset that follows every load. Without
-        // that, a block could apply half a program, or a whole one, to the old sound before its
-        // fade-out had begun.
-        if (fadeOut_ == 0 && !resetNextTick_ && (load & (kLoadEvent - 1u)) == 0)
-        {
-            float seen[kNumParams];
-            uint32_t dirty = 0;
-            for (int i = 0; i < kNumParams; ++i)
-            {
-                const float v = seen[i] = getNormalised(i);
-                // A Q-Link turned across a switch sends every value on the way: only a change
-                // of the position counts (or Type and HQ would restart the sound at each one).
-                if (v != lastNorm_[i] && param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
-            }
-            // If any value read above was written after a load began, this fence makes that
-            // load's start visible below (it pairs with the fence in beginLoad).
-            std::atomic_thread_fence(std::memory_order_acquire);
-            if (loadState_.load(std::memory_order_relaxed) == load)
-            {
-                const auto plain = [&](int i) { return param(i).toPlain(seen[i]); };
-                // Sat Type alone, while the Saturator is off and has faded out completely: none
-                // of the stage is heard, so the type changes in place (the stage starts from rest
-                // when it comes back in) and the sound plays on.
-                if ((dirty & gQuality) && plain(kHq) == param(kHq).toPlain(lastNorm_[kHq])
-                    && plain(kSatOn) < 0.5f && rampT_[rSat] == 0.0f && ramp_[rSat].v == 0.0f)
-                {
-                    tape_ = std::lround(plain(kSatType)) == 1;
-                    hifiType_ = std::lround(plain(kSatType)) == 2;   // (not heard with the Saturator off: see readParams)
-                    hifiRun_ = false;                                // (silent now; controlTick starts it from rest)
-                    tapeSat_.reset();
-                    splitLp_ = splat(0.0f);
-                    dirty = (dirty & ~gQuality) | gSat;
-                    redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
-                }
-                std::memcpy(lastNorm_, seen, sizeof(lastNorm_));
-                if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ or Sat Type switched: fade out, then start again
-                if (dirty) readParams(dirty);
-            }
-        }
-        playing_ = ctx.transport.valid && ctx.transport.playing;
-
-        const float* inL = (ctx.inputs != nullptr && ctx.numInputs > 0) ? ctx.inputs[0] : nullptr;
-        const float* inR = (ctx.inputs != nullptr && ctx.numInputs > 1) ? ctx.inputs[1] : inL;
-        float* outL = ctx.outputs[0];
-        float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
-
         Stereo inSum = splat(0.0f);
-        for (int i = 0; i < ctx.numFrames; ++i)
+        for (int i = 0; i < frames; ++i)
         {
             const bool tick = ctrlCount_ == 0;
             if (tick) controlTick();
@@ -2871,7 +3091,7 @@ public:
             float dryLen = 0.0f;
             if (dryActive_)
             {
-                Stereo d = hq_ ? hbDry_.trip(x) : x;
+                Stereo d = hq ? hqDry(x) : x;
                 if (micHq_ && micRun_) d += (hbMicDry_.trip(d) - d) * micMix;
                 dryDelay_.write(d);
                 dryLen = dryD_.next();
@@ -2945,7 +3165,7 @@ public:
             // up to 1.5. Modeled: Mic Gain is how loud the sound reaches the microphone.)
             // With HQ a model that distorts runs at twice the rate between its own half-band pair
             // (see setMic), so what its clippers add above 22 kHz is filtered off instead of folding
-            // back. That makes the mic kHqDelay samples late: the dry copy (above) and the reported
+            // back. That makes the mic kHbDelay samples late: the dry copy (above) and the reported
             // latency allow for it while it is heard. The sound that goes round it is not delayed:
             // while the mic fades in or out the two are crossfaded, as before.
             if (micRun_ && (!micSimple_ || micMix > 0.0f))
@@ -2996,30 +3216,14 @@ public:
                     nrEncMix_ = clamp(nrEncMix_ + (nrEncOn_ ? nrFade_ : -nrFade_), 0.0f, 1.0f);
                     nrEncRun_ = nrEncOn_ || nrEncMix_ > 0.0f;      // faded out: done
                 }
-                if (!hq_)
+                if constexpr (!hq)
                 {
                     if (nrEncSeed_) { nrEnc_.seed(x); nrEncSeed_ = false; }
                     x = nrEnc_.encode(x, nrEncMix_);
                 }
             }
             // ----- drive, wear, compressor, saturator: the stages that distort ----
-            if (hq_)
-            {
-                // HQ: they run at twice the sample rate, so what they add above 22 kHz is
-                // filtered off instead of folding back down into the sound. The NR encoder comes
-                // first, in its place in the chain: its overshoot clipper distorts too (it is
-                // prepared for this rate in setQuality).
-                Stereo a, b;
-                hbUp_.up(x, a, b);
-                if (nrEnc)
-                {
-                    if (nrEncSeed_) { nrEnc_.seed(a); nrEncSeed_ = false; }
-                    a = nrEnc_.encode(a, nrEncMix_);
-                    b = nrEnc_.encode(b, nrEncMix_);
-                }
-                shape2(a, b, satMix);
-                x = hbDown_.down(a, b);
-            }
+            if constexpr (hq) x = hqShape(x, nrEnc, satMix);
             else x = shape(x, satMix);
 
             // ----- 4-pole high cut -------------------------------------------
@@ -3157,6 +3361,80 @@ public:
             if (outR != nullptr) outR[i] = x[1];
             if (tick) { const Stereo outMag = vabs(x); outPeak_ = 0.5f * (outMag[0] + outMag[1]); }
         }
+        return inSum;
+    }
+
+    void process(mpc::ProcessContext& ctx) override
+    {
+        // Read first: a load that has finished by now has also asked for its reset (endLoad),
+        // and the acquire makes that request visible to the check just below.
+        const uint32_t load = loadState_.load(std::memory_order_acquire);
+
+        if (resetPending_.load(std::memory_order_relaxed) && resetPending_.exchange(false))
+        {
+            resetWanted_.store(false);   // this one serves a waiting request too
+            doReset();
+        }
+        else if (resetWanted_.load(std::memory_order_relaxed) && resetWanted_.exchange(false))
+            fadeOut_ = kFadeTicks;       // a program change or state load: fade out, then reset
+
+        // Once per block: recompute the values of whichever groups had a parameter move. Not
+        // while the host is writing a program or a state, nor while the output fades out for
+        // the reset that follows: the old sound keeps its old settings until then, and the
+        // reset reads every parameter.
+        //
+        // The host's thread may begin or finish writing a program or a state at any moment,
+        // also while this loop reads the values. So what the loop saw counts only if no load
+        // was under way when it began and none began or ended while it ran (loadState_ is the
+        // same after it: see beginLoad / endLoad). Otherwise nothing is taken in and the values
+        // stay "unseen", for the next block or for the reset that follows every load. Without
+        // that, a block could apply half a program, or a whole one, to the old sound before its
+        // fade-out had begun.
+        if (fadeOut_ == 0 && !resetNextTick_ && (load & (kLoadEvent - 1u)) == 0)
+        {
+            float seen[kNumParams];
+            uint32_t dirty = 0;
+            for (int i = 0; i < kNumParams; ++i)
+            {
+                const float v = seen[i] = getNormalised(i);
+                // A Q-Link turned across a switch sends every value on the way: only a change
+                // of the position counts (or Type and HQ would restart the sound at each one).
+                if (v != lastNorm_[i] && param(i).toPlain(v) != param(i).toPlain(lastNorm_[i])) dirty |= groupOf(i);
+            }
+            // If any value read above was written after a load began, this fence makes that
+            // load's start visible below (it pairs with the fence in beginLoad).
+            std::atomic_thread_fence(std::memory_order_acquire);
+            if (loadState_.load(std::memory_order_relaxed) == load)
+            {
+                const auto plain = [&](int i) { return param(i).toPlain(seen[i]); };
+                // Sat Type alone, while the Saturator is off and has faded out completely: none
+                // of the stage is heard, so the type changes in place (the stage starts from rest
+                // when it comes back in) and the sound plays on.
+                if ((dirty & gQuality) && plain(kHq) == param(kHq).toPlain(lastNorm_[kHq])
+                    && plain(kSatOn) < 0.5f && rampT_[rSat] == 0.0f && ramp_[rSat].v == 0.0f)
+                {
+                    tape_ = std::lround(plain(kSatType)) == 1;
+                    hifiType_ = std::lround(plain(kSatType)) == 2;   // (not heard with the Saturator off: see readParams)
+                    hifiRun_ = false;                                // (silent now; controlTick starts it from rest)
+                    tapeSat_.reset();
+                    splitLp_ = splat(0.0f);
+                    dirty = (dirty & ~gQuality) | gSat;
+                    redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
+                }
+                std::memcpy(lastNorm_, seen, sizeof(lastNorm_));
+                if (dirty & gQuality) fadeOut_ = kFadeTicks;   // HQ or Sat Type switched: fade out, then start again
+                if (dirty) readParams(dirty);
+            }
+        }
+        playing_ = ctx.transport.valid && ctx.transport.playing;
+
+        const float* inL = (ctx.inputs != nullptr && ctx.numInputs > 0) ? ctx.inputs[0] : nullptr;
+        const float* inR = (ctx.inputs != nullptr && ctx.numInputs > 1) ? ctx.inputs[1] : inL;
+        float* outL = ctx.outputs[0];
+        float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
+
+        const Stereo inSum = hq_ ? runFrames<true>(ctx.numFrames, inL, inR, outL, outR)
+                                 : runFrames<false>(ctx.numFrames, inL, inR, outL, outR);
 
         // A NaN or an infinity from the host would go round in the filters for ever (and Slew
         // can turn one into a stuck silence that looks healthy). The sum of the input shows
@@ -3746,7 +4024,7 @@ private:
         wf1_.tick(shape1_);
         wf2_.tick(0.0f);
         // (settles when the glide ends; a model mic under HQ adds its own pair's delay while it is in)
-        const float micLate = micHq_ && rampT_[rMic] > 0.0f ? kHqDelay : 0.0f;
+        const float micLate = micHq_ && rampT_[rMic] > 0.0f ? kHbDelay : 0.0f;
         wantLatency_.store((int)(wf1_.base + wf2_.base + (hq_ ? kHqDelay : 0.0f) + micLate + 0.5f), std::memory_order_relaxed);
 
         // Mix: the dry copy is only kept while Mix is below 100 %. It waits as long as the tape
@@ -4495,7 +4773,7 @@ private:
     bool  humOn_ = false, buzzOn_ = false, headOn_ = false, hissOn_ = false, crackleOn_ = false;
     bool  tiltOn_ = false, driveOn_ = false, slewOn_ = false, loSatOn_ = false, hiSatOn_ = false;
     bool  boost_ = false, dropOn_ = false, whistleOn_ = false, scrapeOn_ = false, breathOn_ = false;
-    NoiseRed nrEnc_, nrDec_;                 // noise reduction: record side, playback side
+    NoiseRed nrEnc_, nrDec_;               // noise reduction: record side, playback side
     bool  nrEncOn_ = false, nrDecOn_ = false, nrEncSeed_ = false, nrDecSeed_ = false;
     float nrEncMix_ = 0.0f, nrDecMix_ = 0.0f, nrFade_ = 0.0f;   // how far each side is faded in
     float nrEncGoal_ = 0.0f;
@@ -4549,8 +4827,7 @@ private:
 
     // HQ (2x oversampling of the distorting stages)
     bool  hq_ = false;
-    float nlSr_ = 44100.0f;                  // the rate those stages run at
-    HalfBand hbUp_, hbDown_, hbDry_;         // up, down, and the same phase shift for the dry copy
+    float nlSr_ = 44100.0f;                  // the rate those stages run at (the half-band filters: at the end)
 
     // saturator and filters
     Stereo splitLp_ = {0.0f, 0.0f}, loCutLp_ = {0.0f, 0.0f};
@@ -4645,6 +4922,18 @@ private:
     // twice the rate (see setMic), its half-band pair, and the same phase shift for the dry copy
     bool  micHq_ = false;
     HalfBand hbMicUp_, hbMicDown_, hbMicDry_;
+
+    // HQ's half-band filters (up and down, and a pair of its own for the dry copy) and the state of
+    // its two places that may clip (1.8, see shape2 and shapeRest): the last sample into the
+    // preamp's, into the saturator's, and the two bands' (low in lanes 0-1, high in 2-3); satSeed_:
+    // take the bands' from the sound at the next sample; the NR encoder clipper's path end; the dry
+    // copy's two means and both copies of kHqEq. Last for the same reason (the filters grew from
+    // three sections to five in 1.8).
+    HalfBand hbUp_, hbDown_, hbDryUp_, hbDryDown_;
+    Stereo drvX_ = {}, satX_ = {}, nrClipP_ = {}, dryM_[2] = {};
+    Quad  satQ_ = {};
+    bool  satSeed_ = true;
+    PairBiquad hqEq_, hqDryEq_;
 };
 
 // The framework's dispatcher with five additions:
