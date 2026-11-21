@@ -253,7 +253,8 @@ MODES = [
 MODE_SHOWCASE = {"vhs": [("Azimuth", 0.25, "3.8'"), ("Azimuth", 0.5, "15'")]}
 CAPTION_H = 25                     # height of the caption strip at the top of a slot
 CAPTION_COLOUR = (210, 250, 255)
-CAPTION_OVERRIDE = {}              # name -> (caption, colour), used while a mode's captions are being painted
+CAPTION_DX = {"Hysteresis": 16}    # name -> px to the right of the cell's middle (see the caption drawing)
+CAPTION_OVERRIDE = {}            # name -> (caption, colour), used while a mode's captions are being painted
 # Controls that are on the page only while MODE_PARAM is on one step (name -> step): the page's background
 # leaves their slot empty, the whole slot (caption, knob seat, value window) is that mode's overlay, and the
 # control itself is valid only on that step, so in the other modes there is nothing to see or touch.
@@ -1109,7 +1110,8 @@ def draw_panel(img, page, params):
             if name in MODE_ONLY and name not in CAPTION_OVERRIDE or name in HIDE_CONTROLS:
                 continue
             cap, cap_col = CAPTION_OVERRIDE.get(name, (CAPTIONS.get(name, name.upper()), CAPTION_COLOUR))
-            draw_text(d, (cx + span * CELL_W / 2, sy + 4), cap, f_cap, cap_col, 1.5, "m")
+            # CAPTION_DX: a long caption in a block's first cell moves right, clear of the MPC's Q marker
+            draw_text(d, (cx + span * CELL_W / 2 + CAPTION_DX.get(name, 0), sy + 4), cap, f_cap, cap_col, 1.5, "m")
             p = params[name]
             if p.is_discrete:
                 continue
