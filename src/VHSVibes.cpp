@@ -941,11 +941,32 @@ struct DiodeCurve
 constexpr float kNrClipT0 = 0.44f * kRefLevel, kNrClipT50 = 0.09f * kRefLevel, kNrClipT100 = 0.03f * kRefLevel;
 constexpr float kClipperOld = 50.0f;   // where an older state has the knob
 constexpr float kNrDecLag = 0.1f;      // HQ: how late the NR decoder's mean over a step is, in samples (see NoiseRed::decode)
+// (1.8) Above 50 %: T stops falling and the side signal is driven into the diodes, harder and harder (the
+// amplifier ahead of the suppressor turned up far beyond its design, with nothing to take it back down):
+// what the chain adds becomes a large squared-off treble signal on top of the sound. Along s = (c - 0.5) / 0.5,
+// T rises from T50 to kNrDriveT T50 (a bigger square, which is what makes loud material dirty: with T held
+// at T50 a reference-level tone reached 7 % at most) and the drive g from 1 to kNrDriveMax, evenly in dB
+// (measured: see tests/nrclip_test.cpp and nrClipParams). Nothing is taken off after the diodes (kNrDriveTrim 1):
+// the setting is louder and brighter as well as dirtier (a trim of 0.5 kept music within 1.4 to 4.3 dB of 50 %
+// but halved the dirt of loud tones).
+constexpr float kNrDriveT = 3.0f;     // T at 100 % against T at 50 %
+constexpr float kNrDriveMax = 30.0f;  // the gain into the diodes at 100 %
+constexpr float kNrDriveTrim = 1.0f;  // the side chain's output at 100 % (1: none taken off)
 inline float nrClipLevel(float c)      // c: the knob, 0 to 1
 {
     const float l1 = std::log(kNrClipT50 / kNrClipT0), l2 = std::log(kNrClipT100 / kNrClipT0);
     const float a = 4.0f * l1 - l2, b = 2.0f * l2 - 4.0f * l1;   // ln (T / T0) = a c + b c^2
     return kNrClipT0 * std::exp(c * (a + b * c));
+}
+// The knob -> the level T, the drive g into the diodes and the trim after them: up to 50 % T alone (as
+// nrClipLevel, g = trim = 1), above it T, g and trim along s = (c - 0.5) / 0.5.
+inline void nrClipParams(float c, float& t, float& g, float& tr)
+{
+    if (c <= 0.5f) { t = nrClipLevel(c); g = 1.0f; tr = 1.0f; return; }
+    const float s2 = (c - 0.5f) * 2.0f;
+    t = kNrClipT50 * (1.0f + s2 * (kNrDriveT - 1.0f));
+    g = std::exp(s2 * std::log(kNrDriveMax));
+    tr = 1.0f + s2 * (kNrDriveTrim - 1.0f);
 }
 
 struct NoiseRed
@@ -962,7 +983,13 @@ struct NoiseRed
 
     Stereo ratio = {};   // the decoder: where its last solution stood against its straight one (see solveSide)
 
-    void setClip(float t) { clipT = t; clipInv = 1.0f / t; clipA = kNrDiodeA * t; }
+    float drive = 1.0f, trim = 1.0f;   // (1.8) above 50 %: the gain into the diodes, and the side chain's output after them
+    bool  driven = false;              // (either is not 1)
+    void setClip(float t, float g = 1.0f, float tr = 1.0f)
+    {
+        clipT = t; clipInv = 1.0f / t; clipA = kNrDiodeA * t;
+        drive = g; trim = tr; driven = g != 1.0f || tr != 1.0f;
+    }
 
     void prepare(float sr, bool decoder)
     {
@@ -1037,9 +1064,11 @@ struct NoiseRed
         {
             const Stereo q = *clipP, p = kNrChordIn * e - kNrChordRho * q;
             *clipP = p;
+            if (__builtin_expect(driven, 0)) return x + trim * (e + (drive - 1.0f) * 0.5f * (p + q) + diodeMean(drive * p, drive * q)) * mix;
             if (__builtin_expect(anyPast(p, q, clipA), 0)) return x + (e + diodeMean(p, q)) * mix;
             return x + e * mix;
         }
+        if (__builtin_expect(driven, 0)) return x + diodeDriven(e) * mix;
         if (__builtin_expect(!allBelow(vabs(e), clipA), 0)) return x + (e + diodeExc(e)) * mix;
         return x + e * mix;
     }
@@ -1057,6 +1086,17 @@ struct NoiseRed
         control(eb);
         const Stereo q = *clipP, pa = kNrChordIn * ea - kNrChordRho * q, pb = kNrChordIn * eb - kNrChordRho * pa;
         *clipP = pb;
+        if (__builtin_expect(driven, 0))
+        {
+            Stereo ra, rb;
+            diodeMean2(drive * pa, drive * q, drive * pb, ra, rb);
+            // the straight part: the sample's own once, the rest (drive - 1) along the path, as the diodes'
+            // mean is (with drive the path's middle against the sample would otherwise come out drive times
+            // over, and the side chain's output would not stay within the diodes' reach)
+            a += trim * (ea + (drive - 1.0f) * 0.5f * (q + pa) + ra) * mix;
+            b += trim * (eb + (drive - 1.0f) * 0.5f * (pa + pb) + rb) * mix;
+            return;
+        }
         if (__builtin_expect(anyPast(pa, q, clipA) || anyPast(pb, pa, clipA), 0))
         {
             Stereo ra, rb;
@@ -1074,6 +1114,13 @@ struct NoiseRed
         const Quad P = { pa[0], pa[1], pb[0], pb[1] }, Q = { q[0], q[1], pa[0], pa[1] };
         const Quad r = clipT * DiodeCurve::meanFast(P * clipInv, Q * clipInv);
         ra = stereo(r[0], r[1]); rb = stereo(r[2], r[3]);
+    }
+    // (1.8) Above 50 %: the side signal driven into the diodes and trimmed after them,
+    // trim (g e + T exc(g e / T)), the diodes' output of g e.
+    __attribute__((noinline)) Stereo diodeDriven(Stereo e) const
+    {
+        const Stereo t = splat(clipT), v = drive * e;
+        return trim * (v + (e < 0.0f ? -t : t) * DiodeCurve::exc(vabs(v) * clipInv));
     }
     // What the diodes take off the side signal e (T exc(e / T)), lane by lane.
     __attribute__((noinline)) Stereo diodeExc(Stereo e) const
@@ -1148,16 +1195,60 @@ struct NoiseRed
         {
             const Stereo q = *clipP;
             Stereo p = e;
-            if (__builtin_expect(anyPast(e, q, clipA), 0)) p = decodePastHq(y, x, e, q);
+            if (__builtin_expect(driven, 0)) p = decodeDrivenHq(y, x, e, q);
+            else if (__builtin_expect(anyPast(e, q, clipA), 0)) p = decodePastHq(y, x, e, q);
             *clipP = p;
             step(x, e * (1.0f / kNrGain));
             control(e);
             return x;
         }
-        if (__builtin_expect(!allBelow(vabs(e), clipA), 0)) decodePast(y, x, e);   // the diodes are working
+        if (__builtin_expect(driven, 0)) decodeDriven(y, x, e);
+        else if (__builtin_expect(!allBelow(vabs(e), clipA), 0)) decodePast(y, x, e);   // the diodes are working
         step(x, e * (1.0f / kNrGain));
         control(e);
         return x;
+    }
+    // (1.8) Above 50 %: the side signal u (units of T) from  u + kk X(u) = u0,  X(u) = trim (g u + exc(g u)) - u
+    // (the side chain's whole output less the straight line). The left side rises with u at a slope of
+    // 1 - kk + kk trim g (1 + exc'(g u)), never below 1 - kk (0.3 at most kk), so the answer exists for
+    // any drive and is one; it bends one way only on either side of 0, so Newton's method from either
+    // side lands on the near side after one step and closes in from there. It starts where the last
+    // sample's answer stood against its u0 (with drive the answer is short of u0, so the ratio is under 1).
+    Stereo solveDriven(Stereo u0, Stereo& side)
+    {
+        const Stereo kk = off * rec, gT = splat(drive);
+        Stereo u = u0 * (ratio > 0.0f ? ratio : splat(1.0f));
+        for (int n = 0; n < 5; ++n)
+        {
+            Stereo sl;
+            const Stereo v = gT * u, ex = DiodeCurve::exc(v, sl);
+            const Stereo out = trim * (v + ex);                          // the side chain's output, units of T
+            const Stereo du = (u + kk * (out - u) - u0) * DiodeCurve::recip(1.0f - kk + kk * trim * drive * (1.0f + sl));
+            u = vmax(u - du, splat(0.0f));
+            side = out - trim * (drive + drive * sl) * du;
+            if (allBelow(vabs(du) - 1.0e-4f * u, 1.0e-30f)) break;   // (the drive bends the curve harder: a closer stop)
+        }
+        ratio = u * DiodeCurve::recip(vmax(u0, splat(1.0e-6f)));
+        return u;
+    }
+    __attribute__((noinline)) void decodeDriven(Stereo y, Stereo& x, Stereo& e)
+    {
+        const Stereo u0 = vabs(e) * clipInv, t = splat(clipT);
+        Stereo side;
+        const Stereo u = solveDriven(u0, side);
+        const Stereo st = e < 0.0f ? -t : t;
+        x = y - st * side;
+        e = st * u;
+    }
+    __attribute__((noinline)) Stereo decodeDrivenHq(Stereo y, Stereo& x, Stereo& e, Stereo q)
+    {
+        const Stereo u0 = vabs(e) * clipInv, t = splat(clipT);
+        Stereo side;
+        const Stereo p = (e < 0.0f ? -t : t) * solveDriven(u0, side);
+        const Stereo d = p - q;
+        x = y - trim * (p + (drive - 1.0f) * (p - kNrDecLag * d) + diodeMean(drive * (p + (0.5f - kNrDecLag) * d), drive * (p - (0.5f + kNrDecLag) * d)));
+        e = kNrGain * (c1 * (sq + kap * x) - c2 * su) * DiodeCurve::recip(D);
+        return p;
     }
     // Returns the step's end, the side signal at this sample.
     __attribute__((noinline)) Stereo decodePastHq(Stereo y, Stereo& x, Stereo& e, Stereo q)
@@ -4976,8 +5067,9 @@ private:
             if (enc && !nrEncOn_ && nrEncMix_ == 0.0f) { nrEnc_.reset(); nrEncSeed_ = true; }
             if (dec && !nrDecOn_ && nrDecMix_ == 0.0f) { nrDec_.reset(); nrDecSeed_ = true; }
             nrEncOn_ = enc; nrDecOn_ = dec;
-            const float t = nrClipLevel(pct(kClipper));   // (1.8) the Clipper knob: both sides share the level
-            nrEnc_.setClip(t); nrDec_.setClip(t);
+            float t, g, tr;   // (1.8) the Clipper knob: both sides share the level, the drive and the trim
+            nrClipParams(pct(kClipper), t, g, tr);
+            nrEnc_.setClip(t, g, tr); nrDec_.setClip(t, g, tr);
             nrEncGoal_ = enc ? 1.0f : 0.0f;
             nrEncRun_ = enc || nrEncMix_ > 0.0f; nrDecRun_ = dec || nrDecMix_ > 0.0f;
         }

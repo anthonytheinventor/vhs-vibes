@@ -229,7 +229,12 @@ static double h3Of(const std::vector<float>& out, size_t from, double hz, double
 struct Enc
 {
     NoiseRed nr; Stereo cp = {}; float knob; bool hq;
-    Enc(float sr, float k, bool h) : knob(k), hq(h) { nr.prepare(sr, false); nr.setClip(k > 1.0f ? 1.0e6f : nrClipLevel(k < 0.0f ? 0.5f : k)); }
+    Enc(float sr, float k, bool h) : knob(k), hq(h)
+    {
+        nr.prepare(sr, false);
+        if (k > 1.0f) { nr.setClip(1.0e6f); return; }
+        float t, g, tr; nrClipParams(k < 0.0f ? 0.5f : k, t, g, tr); nr.setClip(t, g, tr);
+    }
     Stereo run(Stereo x)
     {
         if (knob >= 0.0f) return hq ? nr.encode<true>(x, 1.0f, &cp) : nr.encode<false>(x);
@@ -458,24 +463,31 @@ int main(int argc, char** argv)
                 for (int j = 0; j < 4; ++j) o[hq][j] = overshoot(sr, ks[j], hq != 0, hz);
                 worst0 = std::fmax(worst0, o[hq][0]);
                 off50 = std::fmax(off50, std::fabs(o[hq][1] - o[hq][3]));
-                order = order && o[hq][0] > o[hq][1] && o[hq][1] > o[hq][2];
+                order = order && o[hq][0] > o[hq][1];
             }
             std::printf("   %4.0f Hz, HQ off / on: 0 %% %+.2f / %+.2f dB, 50 %% %+.2f / %+.2f, 100 %% %+.2f / %+.2f; 1.7's clamp %+.2f / %+.2f; none %+.2f / %+.2f\n", hz,
                         o[0][0], o[1][0], o[0][1], o[1][1], o[0][2], o[1][2], o[0][3], o[1][3], overshoot(44100.0f, 2.0f, false, hz), overshoot(88200.0f, 2.0f, true, hz));
         }
         check(worst0 < 3.7, "at 0 % the overshoot stays near 3 dB, 3.7 at most (without the suppressor it is 5 to 9 dB)");
         check(off50 < 0.3, "at 50 % within 0.3 dB of 1.7's clamp");
-        check(order, "and less the further the knob is turned");
+        check(order, "and less at 50 % than at 0 % (above 50 % the side chain is driven: see 4)");
     }
 
-    std::printf("4. The knob: ln T a parabola in it through three points; the amount of clipping at each\n");
+    std::printf("4. The knob: up to 50 %% ln T a parabola in it; above, T rises again and the side chain is driven\n");
     {
-        const float t0 = nrClipLevel(0.0f) / kRefLevel, t50 = nrClipLevel(0.5f) / kRefLevel, t100 = nrClipLevel(1.0f) / kRefLevel;
+        float t0, t50, t100, g, tr, g100, tr100;
+        nrClipParams(0.0f, t0, g, tr); nrClipParams(0.5f, t50, g, tr);
+        const bool rest = g == 1.0f && tr == 1.0f;
+        nrClipParams(1.0f, t100, g100, tr100);
+        t0 /= kRefLevel; t50 /= kRefLevel; t100 /= kRefLevel;
         bool mono = true;
-        for (int i = 1; i <= 1000; ++i) mono = mono && nrClipLevel(i * 0.001f) < nrClipLevel((i - 1) * 0.001f);
-        std::printf("   T at 0, 25, 50, 75, 100 %%: %.4f %.4f %.4f %.4f %.4f kRefLevel\n", t0, nrClipLevel(0.25f) / kRefLevel, t50, nrClipLevel(0.75f) / kRefLevel, t100);
-        check(std::fabs(t0 - 0.44f) < 1e-5f && std::fabs(t50 - 0.09f) < 1e-5f && std::fabs(t100 - 0.03f) < 1e-5f && mono,
-              "0.44, 0.09 and 0.03 kRefLevel at 0, 50 and 100 %, falling all the way");
+        for (int i = 1; i <= 500; ++i) mono = mono && nrClipLevel(i * 0.001f) < nrClipLevel((i - 1) * 0.001f);
+        float lt = t50 * kRefLevel, lg = 1.0f;
+        for (int i = 501; i <= 1000; ++i) { float t, gg, r; nrClipParams(i * 0.001f, t, gg, r); mono = mono && t >= lt && gg > lg; lt = t; lg = gg; }
+        std::printf("   T at 0, 25, 50, 75, 100 %%: %.4f %.4f %.4f %.4f %.4f kRefLevel; drive at 100 %% %.1f, trim %.2f\n", t0, nrClipLevel(0.25f) / kRefLevel, t50,
+                    [] { float t, g2, r; nrClipParams(0.75f, t, g2, r); return t / kRefLevel; }(), t100, g100, tr100);
+        check(std::fabs(t0 - 0.44f) < 1e-5f && std::fabs(t50 - 0.09f) < 1e-5f && rest && mono && std::fabs(t100 - 0.27f) < 1e-4f && std::fabs(g100 - 30.0f) < 1e-3f,
+              "0.44 and 0.09 kRefLevel at 0 and 50 % (no drive there), falling between; above 50 % T rising to 0.27 and the drive to 30");
         // 50 % against 1.7's clamp: the 3rd harmonic of 1 kHz at reference level and at -3 dBFS (HQ: 88.2 kHz)
         double worst = 0;
         for (double dbfs : { -8.0, -3.0 })
@@ -487,15 +499,20 @@ int main(int argc, char** argv)
             worst = std::fmax(worst, std::fabs(ha - hb));
         }
         check(worst < 2.0, "at 50 % the 3rd harmonic is 1.7's within 2 dB (the diodes' knee is rounder: at -3 dBFS 1.9 dB less)");
-        // 100 %: plainly dirty from -38 to -18 dBFS
-        double least = 1.0;
-        for (double dbfs : { -38.0, -28.0, -18.0 })
-        {
-            const double t = encThd(88200.0f, 1.0f, true, 1000.0, dbfs - dB(kRefLevel)), t50b = encThd(88200.0f, 0.5f, true, 1000.0, dbfs - dB(kRefLevel));
-            std::printf("   1 kHz at %+.0f dBFS: THD at 100 %% %.2f %% (50 %%: %.2f %%)\n", dbfs, 100 * t, 100 * t50b);
-            least = std::fmin(least, t);
-        }
-        check(least > 0.03, "at 100 % a 1 kHz tone from -38 to -18 dBFS has over 3 % distortion");
+        // above 50 %: dirtier with every step, at every level; at 100 % plainly dirty, loud material too
+        bool rising = true; double loud = 1.0, quiet = 1.0;
+        for (double hz : { 1000.0, 5000.0 })
+            for (double dbfs : { -38.0, -18.0, -8.0, -3.0 })
+            {
+                double t[6];
+                for (int j = 0; j < 6; ++j) t[j] = encThd(88200.0f, 0.5f + 0.1f * j, true, hz, dbfs - dB(kRefLevel));
+                std::printf("   %4.0f Hz at %+3.0f dBFS: THD at 50 / 60 / 70 / 80 / 90 / 100 %%: %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %%\n", hz, dbfs,
+                            100 * t[0], 100 * t[1], 100 * t[2], 100 * t[3], 100 * t[4], 100 * t[5]);
+                for (int j = 1; j < 6; ++j) rising = rising && t[j] > t[j - 1];
+                if (dbfs >= -8.0) loud = std::fmin(loud, t[5]); else quiet = std::fmin(quiet, t[5]);
+            }
+        check(rising, "above 50 % every step of the knob is dirtier, 1 and 5 kHz from -38 to -3 dBFS");
+        check(loud > 0.09 && quiet > 0.2, "at 100 %: over 9 % at reference level and at -3 dBFS, over 20 % at -18 and -38 dBFS");
     }
 
     std::printf("5. NR On gives back the input (the difference against the tone, over the second second)\n");
@@ -506,7 +523,8 @@ int main(int argc, char** argv)
         auto direct = [](bool hq, float knob, double hz, double dbfs)
         {
             NoiseRed en, de; en.prepare(hq ? 88200.0f : 44100.0f, false); de.prepare(44100.0f, true);
-            en.setClip(nrClipLevel(knob)); de.setClip(nrClipLevel(knob));
+            float t, g, tr; nrClipParams(knob, t, g, tr);
+            en.setClip(t, g, tr); de.setClip(t, g, tr);
             Stereo cpE = {}, cpD = {};
             const double amp = std::pow(10.0, dbfs / 20.0);
             double d = 0, r = 0;
@@ -544,24 +562,26 @@ int main(int argc, char** argv)
         // 0 % against its clamp at 0.40 kRefLevel, 50 % against the clamp of 1.7 (0.12)
         struct Was { double hz, dbfs, at0, at50; };
         const Was was[] = { { 313, -3, -79.7, -76.8 }, { 313, -12, -70.6, -72.0 }, { 997, -3, -60.9, -56.5 }, { 997, -12, -52.7, -54.1 } };
-        double worst[2] = { -999, -999 }, worst100 = -999;
+        double worst[2] = { -999, -999 }, worstHiOff = -999, worstHiOn = -999;
         bool asGood = true;
         for (int hq : { 0, 1 })
             for (const Was& w : was)
             {
-                double d[3], p[3];
-                const float ks[3] = { 0.0f, 0.5f, 1.0f };
-                for (int j = 0; j < 3; ++j) { d[j] = direct(hq != 0, ks[j], w.hz, w.dbfs); p[j] = plugin(hq, ks[j], w.hz, w.dbfs); }
-                std::printf("   HQ %s %4.0f Hz %+4.0f dBFS: the two sides alone at 0 / 50 / 100 %%: %6.1f %6.1f %6.1f dB;  the plugin: %6.1f %6.1f %6.1f dB\n",
-                            hq ? "on " : "off", w.hz, w.dbfs, d[0], d[1], d[2], p[0], p[1], p[2]);
+                double d[5], p[5];
+                const float ks[5] = { 0.0f, 0.5f, 0.6f, 0.8f, 1.0f };
+                for (int j = 0; j < 5; ++j) { d[j] = direct(hq != 0, ks[j], w.hz, w.dbfs); p[j] = plugin(hq, ks[j], w.hz, w.dbfs); }
+                std::printf("   HQ %s %4.0f Hz %+4.0f dBFS: the two sides alone at 0 / 50 / 60 / 80 / 100 %%: %6.1f %6.1f %6.1f %6.1f %6.1f dB;  the plugin: %6.1f %6.1f %6.1f %6.1f %6.1f dB\n",
+                            hq ? "on " : "off", w.hz, w.dbfs, d[0], d[1], d[2], d[3], d[4], p[0], p[1], p[2], p[3], p[4]);
                 worst[hq] = std::fmax(worst[hq], std::fmax(d[0], d[1]));
-                worst100 = std::fmax(worst100, d[2]);
+                for (int j = 2; j < 5; ++j) (hq ? worstHiOn : worstHiOff) = std::fmax(hq ? worstHiOn : worstHiOff, d[j]);
                 if (hq) asGood = asGood && d[0] <= w.at0 + 1.0 && d[1] <= w.at50 + 3.5;
             }
         check(worst[0] < -110.0, "HQ off, the two sides alone: within -110 dB at 0 and 50 %");
         check(asGood, "HQ on, the two sides alone: within 1 dB of the clamp before them at 0 % (or better), within 3.5 dB at 50 % (see NoiseRed::decode)");
-        std::snprintf(what, sizeof(what), "at 100 %% too: worst %.1f dB (HQ off and on)", worst100);
-        check(worst100 < -40.0, what);
+        std::snprintf(what, sizeof(what), "above 50 %%, HQ off: worst %.1f dB (at most -100)", worstHiOff);
+        check(worstHiOff < -100.0, what);
+        std::snprintf(what, sizeof(what), "above 50 %%, HQ on (the encoder at twice the rate, the decoder at the session's): worst %.1f dB (at most -25: what the two rates' networks do not share, the steep curve shows)", worstHiOn);
+        check(worstHiOn < -25.0, what);
     }
 
     std::printf("6. The record-side figures at 0 and 50 %% (as nr_test 1)\n");
@@ -593,6 +613,39 @@ int main(int argc, char** argv)
         std::printf("   at 50 %%: worst error against the published figures %.2f dB, every rate\n", worst50);
         check(moved[1] < 0.7 && worst50 < 1.0, "at 50 % the diodes' knee reaches the -20 dB points (up to 0.7 dB less boost): each figure within 1 dB");
         check(most < 0.5, "a signal at NR reference level passes unchanged");
+    }
+
+    std::printf("7. Driven hard (Clipper 100 %%): bounded, no NaN, back to silence (Init, NR Rec, Play, On, HQ off and on)\n");
+    {
+        bool ok = true; double worst = 0;
+        for (int nr : { 1, 2, 3 })
+            for (int hq : { 0, 1 })
+                for (int in = 0; in < 4; ++in)
+                {
+                    Fx f(hq);
+                    f.set(kNr, (float)nr); f.set(kClipper, 100.0f);
+                    uint32_t s = 7;
+                    std::vector<float> out;
+                    // full-scale noise, DC 0.9, impulses of 1.0, and a 1 kHz tone at -6 dBFS with the knob swept 0 - 100 - 0
+                    auto sig = [&](long i) -> double {
+                        if (i >= 88200) return 0.0;
+                        if (in == 0) { s = s * 1664525u + 1013904223u; return (s >> 8) / 8388608.0 - 1.0; }
+                        if (in == 1) return 0.9;
+                        if (in == 2) return i % 11025 == 0 ? 1.0 : 0.0;
+                        return 0.5 * std::sin(kTwoPiD * 1000.0 * (double)i / 44100.0);
+                    };
+                    for (int b = 0; b < 88200 / 128 + 200; ++b)
+                    {
+                        if (in == 3) { const double t = b * 128.0 / 88200.0; f.set(kClipper, (float)(t < 0.5 ? 200.0 * t : t < 1.0 ? 200.0 - 200.0 * t : 0.0)); }
+                        f.play(128.0 / 44100.0, sig, &out);
+                    }
+                    double pk = 0, tail = 0; bool fin = true;
+                    for (size_t i = 0; i < out.size(); ++i) { fin = fin && std::isfinite(out[i]); pk = std::fmax(pk, std::fabs(out[i])); if (i + 4410 >= out.size()) tail = std::fmax(tail, std::fabs(out[i])); }
+                    worst = std::fmax(worst, pk);
+                    ok = ok && fin && pk < 3.0 && tail < 1e-6;
+                }
+        std::printf("   largest output against inputs up to 1.0: %.2f\n", worst);
+        check(ok, "finite, under 3.0 for inputs up to full scale (+9.5 dB), silent again 0.4 s after the input stops");
     }
 
     std::printf(fails == 0 ? "PASS\n" : "FAIL\n");
