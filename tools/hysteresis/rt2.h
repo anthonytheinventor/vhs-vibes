@@ -115,7 +115,8 @@ struct Core
     inline float gInt(const Group& G, float a, float u) const
     {
         const Cfg& C = *c;
-        const float lo = C.h0 + 2.0f / C.invh, hi = -C.h0 - 3.0f / C.invh;
+        // the same range on both sides (the plugin's, since its 1.8 review: odd, as the planes are)
+        const float hi = -C.h0 - 2.0f / C.invh, lo = -hi;
         if (a >= lo && a <= hi) return lookT(G.Gi, a, u);
         const float ac = a < lo ? lo : hi;
         return lookT(G.Gi, ac, u) + lookT(G.T, ac, u) * (a - ac);
@@ -124,7 +125,9 @@ struct Core
     {
         const Cfg& C = *c;
         float fa = (a - C.h0) * C.invh;
-        fa = std::min(std::max(fa, 1.0f), (float)(C.nh - 3) - 0.001f);
+        // clamped the same distance from both ends (the plugin's, since its 1.8 review)
+        const float faHi = (float)(C.nh - 3) - 0.001f, faLo = (float)(C.nh - 1) - faHi;
+        fa = std::min(std::max(fa, faLo), faHi);
         const int ia = (int)fa; const float ta = fa - (float)ia;
         float fu = 0.0f; int iu = 0;
         if (C.nu > 1)
@@ -193,8 +196,9 @@ struct Core
                             // no slope axis: the previous sample's integral is still valid, one lookup per lane
                             const v2 g = v2{gInt(G, A[0], 0.0f), gInt(G, A[1], 0.0f)}, gp = Gp[j]; Gp[j] = g;
                             const v2 d = A - ap;
+                            // (the threshold grows with |A|, as the plugin's since its 1.8 review: see kQ0 in src/hysteresis.h)
                             for (int k = 0; k < 2; ++k)
-                                r[k] = std::fabs(d[k]) > 0.005f ? (g[k] - gp[k]) / d[k] : look(G, 0.5f * (A[k] + ap[k]), 0.0f);
+                                r[k] = std::fabs(d[k]) > 0.005f + 0.004f * std::fabs(A[k]) ? (g[k] - gp[k]) / d[k] : look(G, 0.5f * (A[k] + ap[k]), 0.0f);
                             mj[j][o] = r;
                             continue;
                         }

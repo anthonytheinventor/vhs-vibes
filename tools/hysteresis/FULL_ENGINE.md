@@ -18,8 +18,9 @@ cheaper control moves and the CPU bars in `07755ee`). Everything needed is in th
 
 To look at it: `git show c47ee86:src/hysteresis.h`. To build it: `git worktree add ../vv-full c47ee86`.
 
-`HYSTERESIS_SPEC.md` beside this file is the specification both engines were built from: equations,
-signal flow, tables, calibration, latency, accuracy and test figures.
+`HYSTERESIS_SPEC.md` beside this file now describes the engine that shipped. The specification both
+engines were built from (equations, signal flow, tables, calibration, latency, accuracy and test figures for
+both) is that file as it was before 1.8's review: `git show 860e6bb:tools/hysteresis/HYSTERESIS_SPEC.md`.
 
 ## What the two engines share
 

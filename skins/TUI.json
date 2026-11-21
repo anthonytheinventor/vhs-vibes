@@ -12251,13 +12251,13 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "dim Clipper plain",
+                                "name": "dim NR Clipper plain",
                                 "type": "Image",
                                 "data": {
                                     "version": 2,
                                     "imageType": "Regular",
                                     "colour": "0",
-                                    "image": "dim_clipper_plain.png"
+                                    "image": "dim_nrclipper_plain.png"
                                 }
                             },
                             "handle remapping": {
@@ -12281,13 +12281,13 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "dim Clipper plain ignored if Saturator",
+                                "name": "dim NR Clipper plain ignored if Saturator",
                                 "type": "Image",
                                 "data": {
                                     "version": 2,
                                     "imageType": "Regular",
                                     "colour": "0",
-                                    "image": "dim_clipper_plain.png"
+                                    "image": "dim_nrclipper_plain.png"
                                 }
                             },
                             "handle remapping": {
@@ -12311,13 +12311,13 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "dim Clipper plain unless Saturator",
+                                "name": "dim NR Clipper plain unless Saturator",
                                 "type": "Image",
                                 "data": {
                                     "version": 2,
                                     "imageType": "Regular",
                                     "colour": "0",
-                                    "image": "dim_clipper_plain.png"
+                                    "image": "dim_nrclipper_plain.png"
                                 }
                             },
                             "handle remapping": {
@@ -12696,7 +12696,7 @@
                             "version": 2,
                             "componentData": {
                                 "version": 1,
-                                "name": "Clipper",
+                                "name": "NR Clipper",
                                 "type": "vvKnobUni plain0 dim B-Type NR - plain2 ignored if Saturator dim B-Type NR - plain2 unless Saturator dim B-Type NR",
                                 "data": {
                                     "version": 1,

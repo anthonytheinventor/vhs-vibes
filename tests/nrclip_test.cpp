@@ -317,9 +317,9 @@ int main(int argc, char** argv)
         rp->set(kClipper, pc.def);
         std::printf("   kClipper %d of %d: \"%s\" \"%s\", %.0f to %.0f, a new instance %.0f %%; reads \"%s\" at 50 %%\n", (int)kClipper, (int)kNumParams,
                     pc.id.c_str(), pc.name.c_str(), (double)pc.min, (double)pc.max, (double)rp->get(kClipper), at50.c_str());
-        check(kClipper == 66 && kNumParams == 67 && raw->numParams == 67 && pc.id == "clipper" && pc.name == "Clipper" && pc.min == 0.0f && pc.max == 100.0f
+        check(kClipper == 66 && kNumParams == 67 && raw->numParams == 67 && pc.id == "clipper" && pc.name == "NR Clipper" && pc.min == 0.0f && pc.max == 100.0f
               && pc.def == 0.0f && isSetting(kClipper) && groupOf(kClipper) == gNr && raw->dispatcher(raw, effCanBeAutomated, kClipper, 0, nullptr, 0.0f) == 1,
-              "number 66, the last: clipper, \"Clipper\", 0 to 100, 0 in a new instance, a setting, automatable, in the NR group");
+              "number 66, the last: clipper, \"NR Clipper\", 0 to 100, 0 in a new instance, a setting, automatable, in the NR group");
         check(at50 == "50%" || at50 == "50 %", "it reads in % alone");
         raw->dispatcher(raw, effClose, 0, 0, nullptr, 0.0f);
 

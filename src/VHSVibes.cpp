@@ -287,7 +287,7 @@ enum ParamIndex
                    //        Full as On (internalLoadState: Lite's 0.5 rounds to 1, Full's 2 clamps to 1).
                    //        Sat Type = VHS with the Saturator on only. Off in a new instance, in an older state
                    //        and in every program.
-    kClipper,      // %      (1.8) how hard B-Type NR's overshoot suppressor works (see nrClipLevel): 0 % (a new
+    kClipper,      // %      (1.8, named "NR Clipper") how hard B-Type NR's overshoot suppressor works (see nrClipLevel): 0 % (a new
                    //        instance) acts only on sudden jumps, as the chips do; 50 % is the level of every
                    //        version before 1.8 (where an older state loads); every program has 0 % but Stereo Rental (50 %);
                    //        100 % well below it. A read-out in % alone. Nothing while B-Type NR is Off.
@@ -3358,7 +3358,9 @@ public:
         addParam(choiceParam("hysteresis", "Hysteresis", {"Off", "On (CPU+)"}, 0));
         // 1.8: B-Type NR's overshoot suppressor (see nrClipLevel): 0 % in a new instance, 50 % (the level
         // before it existed) in an older state; 0 % in every program but Stereo Rental
-        addParam(floatParam ("clipper",    "Clipper",      0.0f, 100.0f, 0.0f, "%", 0));
+        // (the name "NR Clipper": what the host lists, assigns to a Q-Link and automates; the skin's caption
+        // stays CLIPPER under its NR header. A state keeps the id, so a state saved as "Clipper" loads the same.)
+        addParam(floatParam ("clipper",    "NR Clipper",   0.0f, 100.0f, 0.0f, "%", 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -3995,7 +3997,7 @@ private:
     {
         hys::Stage& s = *hy_;
         s.dl[s.dw & 127] = x;
-        Stereo d = s.dl[(s.dw - s.dInt) & 127];
+        Stereo d = s.dl[(s.dw - (uint32_t)s.dInt) & 127];
         ++s.dw;
         if (s.dHalf)
         {

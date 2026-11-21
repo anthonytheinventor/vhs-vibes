@@ -302,11 +302,49 @@ static void sweep(int nu)
 }
 
 // The plugin's table header (src/hysteresis_tables.h): the remanence planes the plugin's engine (FAST: the
-// one that was called Lite) reads, the middle row (u = 0) of each SLOPE plane (17 slope points; that row is
-// exactly the FAST plane: the two come from the same element runs), the group delays per bias plane, the
-// FAST playback FIRs with the fixed latency for both speeds, and the constants. (Up to the plugin's
-// three-position switch it also had every row and the SLOPE FIRs, for Full.) Each float is written with 9
-// significant digits, so it reads back as exactly the value computed here.
+// one that was called Lite) reads, the group delays per bias plane, the FAST playback FIRs with the fixed
+// latency for both speeds, and the constants. Each float is written with 9 significant digits, so it reads
+// back as exactly the value computed here.
+// The planes: the bias values the Bias knob reaches (25 to 150 %: the 0 to 20 % planes of the simulation
+// were shipped up to 1.8's review and never read), along the record field A from -kHmaxPlugin to
+// +kHmaxPlugin. Up to |A| = 6 (the simulation's cached grid, TOpt::Hmax) a plane is the middle row (u = 0)
+// of the SLOPE plane (17 slope points; that row is exactly the FAST plane: the two come from the same
+// element runs); past it the same element runs are made at each A (extendRow). At 25 % bias the deepest
+// group is far from saturated at 6 (about 0.38, rising to 0.9 at 8 and 1 by 12), so the old edge at 6,
+// past which the engine held the end value, was a hard knee that the pre-emphasized treble reaches.
+static const double kHmaxPlugin = 12.0;
+// The plugin row of a plane (u = 0) out to kHmaxPlugin: the cached plane up to its own edge, element runs
+// (s = 0, the group's paths averaged in path order) past it; odd in A.
+static std::vector<float> extendRow(bool ep, double bp, const TOpt& t, const Plane& P, int j)
+{
+    const int nhh = (P.nh - 1) / 2, nx = (int)std::lround(kHmaxPlugin / t.step), row = (P.nu / 2) * P.nh;
+    std::vector<float> pos((size_t)nx + 1);
+    for (int i = 0; i <= nhh; ++i) pos[(size_t)i] = P.T[j][(size_t)(row + nhh + i)];
+    if (nx > nhh)
+    {
+        const double v = ep ? kEP : kSP, Hb = kHbRight * bp / 100;
+        Geometry Gs(gPar, v, t.sub);
+        std::vector<std::unique_ptr<RawPath>> paths;
+        for (int q = j * t.sub / t.J; q < (j + 1) * t.sub / t.J; ++q) paths.push_back(std::make_unique<RawPath>(Gs.y[q], v, t.nph));
+        const int np = (int)paths.size(), tasks = (nx - nhh) * np;
+        std::vector<double> m((size_t)tasks);
+#pragma omp parallel for schedule(dynamic)
+        for (int k = 0; k < tasks; ++k)
+        {
+            const double A = (nhh + 1 + k / np) * t.step;
+            std::vector<double> U;
+            m[(size_t)k] = paths[(size_t)(k % np)]->element(Hb, [&](double) { return A; }, U);
+        }
+        for (int i = nhh + 1; i <= nx; ++i)
+        {
+            double a = 0; for (int q = 0; q < np; ++q) a += m[(size_t)((i - nhh - 1) * np + q)] / np;
+            pos[(size_t)i] = (float)a;
+        }
+    }
+    std::vector<float> r((size_t)(2 * nx + 1));
+    for (int i = 0; i <= nx; ++i) { r[(size_t)(nx + i)] = pos[(size_t)i]; r[(size_t)(nx - i)] = -pos[(size_t)i]; }
+    return r;
+}
 // A float literal for v as a float: 9 significant digits (it reads back as exactly that float), with a
 // point or an exponent so that "f" may follow.
 static std::string ff(double v)
@@ -320,10 +358,10 @@ static std::string ff(double v)
 
 static void writePluginHeader(const std::string& fn)
 {
-    const double grid[] = {0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 110, 120, 135, 150};
+    const double grid[] = {25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 110, 120, 135, 150};
     const int nb = sizeof(grid) / sizeof(grid[0]);
     TOpt t; t.nu = 17; t.adaa = true; t.os = 2;
-    const int nh = 2 * (int)std::lround(t.Hmax / t.step) + 1;
+    const int nh = 2 * (int)std::lround(kHmaxPlugin / t.step) + 1;
     FILE* f = fopen(fn.c_str(), "w");
     if (!f) { std::printf("cannot write %s\n", fn.c_str()); return; }
     std::fprintf(f, "// VHS Vibes: tables of the tape hysteresis recorder (Sat Type VHS, Hysteresis On; see src/hysteresis.h).\n"
@@ -331,7 +369,7 @@ static void writePluginHeader(const std::string& fn)
                     "// SPDX-License-Identifier: MIT\n#pragma once\nnamespace hysttab {\n");
     std::fprintf(f, "constexpr int kJ = %d, kNh = %d, kNb = %d, kFir = %d, kLat = 14;   // kLat: element lag at twice the rate\n",
                  t.J, nh, nb, rt2::kFir);
-    std::fprintf(f, "constexpr float kH0 = %s, kInvStep = %s;\n", ff(-t.Hmax).c_str(), ff(1.0 / t.step).c_str());
+    std::fprintf(f, "constexpr float kH0 = %s, kInvStep = %s;   // the planes start at A = kH0, a point every 1 / kInvStep\n", ff(-kHmaxPlugin).c_str(), ff(1.0 / t.step).c_str());
     std::fprintf(f, "constexpr float kHbRight = %s;        // correct bias, in units of the coercivity (deep-gap field)\n", ff(kHbRight).c_str());
     std::fprintf(f, "constexpr float kFieldPerUnit = %s;   // record field per unit of the pre-emphasized signal\n", ff(kK).c_str());
     std::fprintf(f, "constexpr float kSpeed[2] = { %s, %s };   // tape speed, micrometers per second: SP, EP\n", ff(kSP).c_str(), ff(kEP).c_str());
@@ -356,7 +394,7 @@ static void writePluginHeader(const std::string& fn)
         }
         // T(0, 0) is 0 by symmetry; the element runs leave about 1e-10 there, which would turn silence into
         // a faint offset. It is written as 0.
-        std::fprintf(f, "// %s remanence planes, -1..1: [bias][group][A], A = kH0 + i / kInvStep (the slope axis' middle row, u = 0)\nconstexpr float kT%s[kNb][kJ][kNh] = {\n",
+        std::fprintf(f, "// %s remanence planes, -1..1: [bias][group][A], A = kH0 + i / kInvStep (u = 0: no slope axis)\nconstexpr float kT%s[kNb][kJ][kNh] = {\n",
                      ep ? "EP" : "SP", ep ? "Ep" : "Sp");
         for (int b = 0; b < nb; ++b)
         {
@@ -364,12 +402,8 @@ static void writePluginHeader(const std::string& fn)
             for (int j = 0; j < t.J; ++j)
             {
                 std::fprintf(f, "  {");
-                const size_t k0 = (size_t)(t.nu / 2) * nh;   // the middle row
-                for (size_t k = k0; k < k0 + (size_t)nh; ++k)
-                {
-                    const bool zero = k == k0 + nh / 2;
-                    std::fprintf(f, "%s%s", k > k0 ? "," : "", ff(zero ? 0.0 : (double)Ps[b].T[j][k]).c_str());
-                }
+                const std::vector<float> r = extendRow(ep, grid[b], t, Ps[b], j);
+                for (int k = 0; k < nh; ++k) std::fprintf(f, "%s%s", k ? "," : "", ff(k == nh / 2 ? 0.0 : (double)r[(size_t)k]).c_str());
                 std::fprintf(f, "},\n");
             }
             std::fprintf(f, " },\n");

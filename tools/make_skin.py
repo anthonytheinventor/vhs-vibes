@@ -198,7 +198,7 @@ PAGES = [
         ("GLOBAL", "グローバル", ["Animation", "Visual Vibes", "HQ", None]),
         # (1.8) two half headers: the linear track's Hysteresis over the left two cells, NR over the right two
         # (B-Type NR's four buttons stacked in one cell, then its Clipper)
-        ([("LINEAR", "リニア", 0, 2), ("NR", "ノイズリダクション", 2, 4)], "", ["Hysteresis", None, "B-Type NR", "Clipper"]),
+        ([("LINEAR", "リニア", 0, 2), ("NR", "ノイズリダクション", 2, 4)], "", ["Hysteresis", None, "B-Type NR", "NR Clipper"]),
     ]},
 ]
 # A block's title may be a list of (title, katakana, first cell, end cell) instead: a header of its own over
@@ -215,6 +215,7 @@ CAPTIONS = {
     "Sat Type": "TYPE",
     "Wobble On": "POWER", "Noise On": "POWER",
     "Deck On": "DECK POWER", "Visual Vibes": "VISUAL VIBES",
+    "NR Clipper": "CLIPPER",   # (1.8) the host's name says NR; on the page it sits under the NR header
 }
 BIPOLAR = {"Tilt", "Lows", "Mic Gain"}
 # The 16 parameters on the knobs in Program (track) Q-Link mode, Q-Link 1..16.
@@ -248,7 +249,7 @@ MODES = [
      "takeover": ("Saturator", {"Hiss", "Crackle", "Head Buzz", "Breathing", "Tracking", "Drift", "Dropouts"}),
      # ... and these do nothing at all then (readParams: B-Type NR is the linear track's, its mode is
      # forced to Off while Hi-Fi is on), so they are dimmed in this step while that switch is on (power dimming only)
-     "ignores": ("Saturator", {"B-Type NR", "Clipper"})},
+     "ignores": ("Saturator", {"B-Type NR", "NR Clipper"})},
 ]
 # Previews only: knobs of a mode shown turned up, (name, knob position 0..1, the plugin's read-out there)
 MODE_SHOWCASE = {"vhs": [("Azimuth", 0.25, "3.8'"), ("Azimuth", 0.5, "15'")]}
@@ -289,7 +290,7 @@ DIM_GROUPS = {   # power switch -> the controls it governs (Azimuth is on the DE
     "Mic": {"Mic Type", "Mic Gain", "Mic Model"},
     "Deck On": {"AGC", "AGC Model", "Tracking", "Breathing", "Drift"},
     "Animation": {"Visual Vibes"},
-    "B-Type NR": {"Clipper"},
+    "B-Type NR": {"NR Clipper"},
 }
 # ... and the ones a switch governs only in their plain look, not while a mode has taken them over. Outside
 # Hi-Fi on, Breathing only moves the hiss and the head buzz (controlTick), so it does nothing with the

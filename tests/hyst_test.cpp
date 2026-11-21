@@ -11,6 +11,8 @@
 //   4. silence stays silent, a hot signal stays finite and comes back to silence
 //   5. the latency it reports and the delay it has; the dry copy at Mix 50 % stays lined up
 //   6. a Bias sweep, switching Off / On and SP / EP while a tone plays: no click; a new speed glides
+//   7. (1.8 review) the counters that wrap: a recorder whose counters are set just short of 2^32 sounds the
+//      same to the bit as one whose are not; the planes reach 12 and the engine is odd at extreme drive
 // Ends with PASS or FAIL.
 //   hyst_test [older states ...]   (run.sh passes the states 1.6.0, 1.4.0 and 1.7.0 saved)
 #include <algorithm>
@@ -337,7 +339,7 @@ int main(int argc, char** argv)
     {
         // the record field of a tone at `lv` dB re the reference level, lifted by the emphasis as the prototype's tests do
         double worstLvl = 0, worstH3 = 0, worstSmp = 0; int n3 = 0;
-        char at[96] = {};
+        char at[96] = {}, atS[96] = {};
         {
             for (int ep = 0; ep < 2; ++ep)
                 for (double bp : { 25.0, 50.0, 100.0, 150.0 })
@@ -353,7 +355,7 @@ int main(int argc, char** argv)
                             const double a1 = std::abs(toneAt(a, 44100.0, f, 16384)), b1 = std::abs(toneAt(b, 44100.0, f, 16384));
                             const double dl = std::fabs(dB(b1 / a1));
                             if (dl > worstLvl) { worstLvl = dl; std::snprintf(at, 96, "%s %.0f Hz %+.0f dB bias %.0f %%", ep ? "EP" : "SP", f, lv, bp); }
-                            worstSmp = std::fmax(worstSmp, df / pk);
+                            if (df / pk > worstSmp) { worstSmp = df / pk; std::snprintf(atS, 96, "%s %.0f Hz %+.0f dB bias %.0f %%", ep ? "EP" : "SP", f, lv, bp); }
                             if (3 * f < 20000.0)
                             {
                                 const double a3 = std::abs(toneAt(a, 44100.0, 3 * f, 16384)), b3 = std::abs(toneAt(b, 44100.0, 3 * f, 16384));
@@ -361,9 +363,12 @@ int main(int argc, char** argv)
                             }
                         }
         }
-        std::printf("   160 cases; level within %.4f dB (worst %s), third harmonic within %.4f dB (%d cases above -60 dBc), samples within %.2e of the peak\n",
-                    worstLvl, at, worstH3, n3, worstSmp);
-        check(worstLvl < 0.01 && worstH3 < 0.05 && worstSmp < 1e-4, "it agrees with the prototype: level within 0.01 dB, third harmonic within 0.05 dB, every sample within 1e-4 of the peak");
+        std::printf("   160 cases; level within %.4f dB (worst %s), third harmonic within %.4f dB (%d cases above -60 dBc), samples within %.2e of the peak (%s)\n",
+                    worstLvl, at, worstH3, n3, worstSmp, atS);
+        // (every sample: 2e-4 since the 1.8 review, 1e-4 before: the plugin blends each plane's integral as a float,
+        // the prototype in double, and on the quietest tones, near the bottom of the curve, that shows: 1.2e-4 of
+        // the peak, SP 1 kHz at -20 dB, bias 50 %)
+        check(worstLvl < 0.01 && worstH3 < 0.05 && worstSmp < 2e-4, "it agrees with the prototype: level within 0.01 dB, third harmonic within 0.05 dB, every sample within 2e-4 of the peak");
     }
 
     std::printf("3. The recorder's own figures and the plugin at reference level\n");
@@ -572,6 +577,55 @@ int main(int argc, char** argv)
             std::snprintf(what, sizeof(what), "HQ %s: SP to EP and back while it is heard: the one engine glides to the new speed (heard all along) and ends on EP's own tables", hq ? "on" : "off");
             check(glided && endsEp && heard, what);
         }
+    }
+
+    std::printf("7. Counters that wrap, the planes' range, odd symmetry\n");
+    {
+        // two instances alike; in the second the ring and dry-line counters are moved just short of 2^32 after
+        // 0.2 s (keeping their place modulo 128, so every index is the same), and both play 1 s more: the
+        // second's counters pass 2^32 within 3 ms
+        bool same = true;
+        for (int hq = 0; hq < 2; ++hq)
+        {
+            Fx a(hq, 1, { {kMix, 70.0f} }), b(hq, 1, { {kMix, 70.0f} });
+            const auto sig = [](long i) { return 0.8 * kRefLevel * std::sin(kTwoPiD * 440.0 * (double)i / 44100.0) + 0.3 * kRefLevel * std::sin(kTwoPiD * 5100.0 * (double)i / 44100.0); };
+            const std::vector<float> a0 = a.play(0.2, sig), b0 = b.play(0.2, sig);
+            hys::Stage& s = *b.vv()->hy_;
+            s.w = 0xFFFFFF00u + (s.w & 127u); s.dw = 0xFFFFFF00u + (s.dw & 127u);
+            const uint32_t w0 = s.w, d0 = s.dw;
+            const std::vector<float> a1 = a.play(1.0, sig), b1 = b.play(1.0, sig);
+            const bool wrapped = s.w < 0x00100000u && s.dw < 0x00100000u;
+            same = same && wrapped && a0 == b0 && a1 == b1;
+            std::printf("   HQ %s: counters moved to %08x / %08x, after 1 s %08x / %08x; output %s\n", hq ? "on " : "off", w0, d0,
+                        s.w, s.dw, a1 == b1 ? "the same to the bit" : "DIFFERENT");
+        }
+        check(same, "past 2^32 the counters wrap and the sound is the same to the bit (they used to be ints, undefined past 2^31)");
+        // the planes reach 12, where every group is saturated, even the deepest at 25 % bias
+        double t12 = 1.0, t6 = 1.0;
+        for (int e = 0; e < 2; ++e)
+            for (int j = 0; j < hysttab::kJ; ++j)
+            {
+                const float* T = (e ? hysttab::kTEp : hysttab::kTSp)[0][j];
+                t12 = std::fmin(t12, T[hysttab::kNh - 1]); t6 = std::fmin(t6, T[hysttab::kNh - 1 - 120]);
+            }
+        std::printf("   at 25 %% bias the least saturated group has T = %.4f at A = 6 and %.5f at A = 12\n", t6, t12);
+        check(hysttab::kH0 == -12.0f && hysttab::kNh == 481 && hysttab::kBiasPct[0] == 25.0f && t12 > 0.9999,
+              "the planes run from -12 to 12 (every group within 1e-4 of saturation at the end) and start at 25 % bias");
+        // odd symmetry at extreme drive: a hot treble tone and its negative, 25 and 100 % bias, SP and EP: the
+        // recorder's outputs are each other's negatives (to the float rounding of the reads)
+        double worst = 0;
+        for (int ep = 0; ep < 2; ++ep)
+            for (double bp : { 25.0, 100.0 })
+            {
+                std::vector<float> hs(8192), hn(8192);
+                for (size_t i = 0; i < hs.size(); ++i) { hs[i] = (float)(14.0 * std::sin(kTwoPiD * 4100.0 * (double)i / 44100.0)); hn[i] = -hs[i]; }
+                const std::vector<float> y = runMine(ep, bp, hs), z = runMine(ep, bp, hn);
+                double pk = 0, df = 0;
+                for (size_t i = 0; i < y.size(); ++i) { pk = std::fmax(pk, std::fabs((double)y[i])); df = std::fmax(df, std::fabs((double)y[i] + z[i])); }
+                worst = std::fmax(worst, df / pk);
+            }
+        std::printf("   a 4.1 kHz tone at field 14 (past both ends) and its negative: outputs agree to %.1e of the peak\n", worst);
+        check(worst < 1e-5, "odd at extreme drive: a tone and its negative come out each other's negative within 1e-5 of the peak");
     }
 
     std::printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
