@@ -8,12 +8,18 @@ static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, f
 
 static double rmsOf(const std::vector<float>& v, size_t from) { double s = 0; for (size_t i = from; i < v.size(); ++i) s += (double)v[i] * v[i]; return std::sqrt(s / (double)(v.size() - from)); }
 static double dB(double x) { return 20.0 * std::log10(x > 1e-30 ? x : 1e-30); }
+// (1.8) The overshoot suppressor where Clipper 50 % puts it, the level of every version before 1.8 (the
+// checks of what it does were written then), or at 0 % for the figures the chips are specified with
+// (where it does not work: at 50 % the diodes' knee reaches the -20 dB points); nrclip_test.cpp checks
+// the knob's other points.
+static void at50(NoiseRed& nr) { nr.setClip(nrClipLevel(kClipperOld * 0.01f)); }
+static void at0(NoiseRed& nr) { nr.setClip(nrClipLevel(0.0f)); }
 
 // a sine at `hz`, `levelDb` relative to NR reference level, through one side of the NR for a second;
 // returns the gain over the last 0.3 s in dB
 static double gainOf(float sr, bool decode, float hz, float levelDb)
 {
-    NoiseRed nr; nr.prepare(sr, decode);
+    NoiseRed nr; nr.prepare(sr, decode); at0(nr);
     const int n = (int)sr;
     std::vector<float> in((size_t)n), out((size_t)n);
     const float amp = kRefLevel * std::pow(10.0f, levelDb / 20.0f);
@@ -130,14 +136,14 @@ int main()
     for (float sr : {44100.0f, 96000.0f})
     {
         const std::vector<float> in = programme((int)(6 * sr), sr);
-        NoiseRed enc, dec; enc.prepare(sr, false); dec.prepare(sr, true);
+        NoiseRed enc, dec; enc.prepare(sr, false); dec.prepare(sr, true); at50(enc); at50(dec);
         std::vector<float> diff(in.size()), coded(in.size());
         int clipped = 0;
         for (size_t i = 0; i < in.size(); ++i)
         {
             const Stereo y = enc.encode(splat(in[i]));
             coded[i] = y[0];
-            if (std::fabs(y[0] - in[i]) >= kNrClip * 0.9999f) ++clipped;
+            if (std::fabs(y[0] - in[i]) > enc.clipA) ++clipped;   // the side signal is on the diodes' curve
             diff[i] = dec.decode(y)[0] - in[i];
         }
         const double left = dB(rmsOf(diff, 0) / rmsOf(in, 0));
@@ -152,7 +158,7 @@ int main()
     std::printf("4. A sudden jump in level (5 kHz, -40 dB to NR reference level and back)\n");
     {
         const float sr = 44100.0f;
-        NoiseRed nr; nr.prepare(sr, false);
+        NoiseRed nr; nr.prepare(sr, false); at50(nr);
         const int n1 = (int)sr, n2 = (int)sr, n3 = (int)sr;
         std::vector<float> in, out;
         for (int i = 0; i < n1 + n2 + n3; ++i)
@@ -178,7 +184,7 @@ int main()
         const float sr = 44100.0f;
         auto chain = [&](float hz, float level, float tapeGainDb, float tapeLpHz)
         {
-            NoiseRed enc, dec; enc.prepare(sr, false); dec.prepare(sr, true);
+            NoiseRed enc, dec; enc.prepare(sr, false); dec.prepare(sr, true); at50(enc); at50(dec);
             const float tg = std::pow(10.0f, tapeGainDb / 20.0f), lp = tapeLpHz > 0.0f ? 1.0f - std::exp(-6.2831853f * tapeLpHz / sr) : 1.0f;
             const int n = (int)sr;
             std::vector<float> in((size_t)n), out((size_t)n), tape((size_t)n);

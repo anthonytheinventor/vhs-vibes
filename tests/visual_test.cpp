@@ -95,9 +95,9 @@ int main(int argc, char** argv)
     {
         Fx fx(20, false);
         const mpc::Param& v = fx.plug()->param(kVisualVibes);
-        check(fx.e->numParams == 66 && kVisualVibes == 58 && v.id == "visual_vibes" && v.name == "Visual Vibes"
+        check(fx.e->numParams == 67 && kVisualVibes == 58 && v.id == "visual_vibes" && v.name == "Visual Vibes"
               && v.kind == mpc::Param::Kind::Bool && v.def == 0.0f && v.automatable && isSetting(kVisualVibes) && groupOf(kVisualVibes) == 0,
-              "66 parameters; number 58 is visual_vibes, \"Visual Vibes\", a switch, off in a new instance, automatable, no sound group");
+              "67 parameters; number 58 is visual_vibes, \"Visual Vibes\", a switch, off in a new instance, automatable, no sound group");
         static const char* const ids[] = { "vis_snow", "vis_head", "vis_streak", "vis_grid", "vis_haze" };
         static const char* const names[] = { "Snow", "Head", "Streak", "Grid", "Haze" };
         bool meters = true;

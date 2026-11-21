@@ -197,7 +197,8 @@ PAGES = [
         ("ALIGNMENT", "アライメント", ["Tracking", "Breathing", "Drift", "Azimuth"]),
         ("GLOBAL", "グローバル", ["Animation", "Visual Vibes", "HQ", None]),
         # (1.8) two half headers: the linear track's Hysteresis over the left two cells, NR over the right two
-        ([("LINEAR", "リニア", 0, 2), ("NR", "ノイズリダクション", 2, 4)], "", ["Hysteresis", None, "B-Type NR", "<"]),
+        # (B-Type NR's four buttons stacked in one cell, then its Clipper)
+        ([("LINEAR", "リニア", 0, 2), ("NR", "ノイズリダクション", 2, 4)], "", ["Hysteresis", None, "B-Type NR", "Clipper"]),
     ]},
 ]
 # A block's title may be a list of (title, katakana, first cell, end cell) instead: a header of its own over
@@ -247,7 +248,7 @@ MODES = [
      "takeover": ("Saturator", {"Hiss", "Crackle", "Head Buzz", "Breathing", "Tracking", "Drift", "Dropouts"}),
      # ... and these do nothing at all then (readParams: B-Type NR is the linear track's, its mode is
      # forced to Off while Hi-Fi is on), so they are dimmed in this step while that switch is on (power dimming only)
-     "ignores": ("Saturator", {"B-Type NR"})},
+     "ignores": ("Saturator", {"B-Type NR", "Clipper"})},
 ]
 # Previews only: knobs of a mode shown turned up, (name, knob position 0..1, the plugin's read-out there)
 MODE_SHOWCASE = {"vhs": [("Azimuth", 0.25, "3.8'"), ("Azimuth", 0.5, "15'")]}
@@ -275,7 +276,9 @@ MODE_ONLY = {"Azimuth": 1, "Hysteresis": 1}
 # listed when the switch off leaves it doing nothing. Left out on purpose: Hi Cut (works with the
 # Saturator off), Wobble's Lo Cut and Hi Cut (they filter whatever the switch says), Dropouts (no switch
 # silences them), Mono, Mix, Output, HQ, the preamp. B-Type NR follows no power switch (not even the deck's),
-# but Hi-Fi with the Saturator on leaves it idle: the mode's "ignores" dims it then (see MODES).
+# but Hi-Fi with the Saturator on leaves it idle: the mode's "ignores" dims it then (see MODES). (1.8) Clipper
+# follows B-Type NR itself as its switch: it does nothing while that is Off (a switch with more steps than
+# two counts as on on every step but its first), and Hi-Fi with the Saturator on ignores it as it does NR.
 DIM_POWER = True
 DIM_GROUPS = {   # power switch -> the controls it governs (Azimuth is on the DECK page, but the Saturator's)
     "Saturator": {"Split", "Lows", "Lo Sat", "Highs", "Hi Sat", "Sat Type", "Azimuth", "Hysteresis"},
@@ -286,6 +289,7 @@ DIM_GROUPS = {   # power switch -> the controls it governs (Azimuth is on the DE
     "Mic": {"Mic Type", "Mic Gain", "Mic Model"},
     "Deck On": {"AGC", "AGC Model", "Tracking", "Breathing", "Drift"},
     "Animation": {"Visual Vibes"},
+    "B-Type NR": {"Clipper"},
 }
 # ... and the ones a switch governs only in their plain look, not while a mode has taken them over. Outside
 # Hi-Fi on, Breathing only moves the hiss and the head buzz (controlTick), so it does nothing with the
@@ -374,8 +378,13 @@ def mode_ignores(mode, name):
 
 
 def power_handle(switch, on, params):
-    """Valid only while `switch` (a two-step switch) is on (or off)."""
-    return "IndexedEnabling/%d/2/%s" % (1 if on else 0, params[switch].handle)
+    """Valid only while `switch` is on (or off). A switch of more than two steps (B-Type NR) is off on its
+    first step and on on every other."""
+    p = params[switch]
+    n = len(p.choices) if p.kind == "choice" else 2
+    if n == 2 or not on:
+        return "IndexedEnabling/%d/%d/%s" % (1 if on else 0, n, p.handle)
+    return "RangedEnabling/1/%d/%d/%s" % (n - 1, n, p.handle)
 
 
 def dim_file(name, mode=None):
@@ -456,7 +465,9 @@ SEGMENTS = {
     "Mic Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # stacked, as Mic Type beside it: MODELED does not fit 64 px
     "AGC Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # the same, beside AGC
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
-    "B-Type NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
+    # (1.8) four stacked in one cell, OFF to ON from the top, in the style of Sat Type's column: 24 px high
+    # with 4 px between them in the cell's 108 px below the caption (28 .. 136)
+    "B-Type NR": ((130, 24), [(5, 28), (5, 56), (5, 84), (5, 112)], ["OFF", "REC", "PLAY", "ON"]),
     "Hysteresis": ((130, 40), [(5, 28), (5, 74)], ["OFF", "ON"]),   # (1.8) two stacked, as AGC Model and Mic Model
 }
 # (1.8) What a button costs the CPU, drawn into its art as small bars beside the caption (none, one):
@@ -1648,7 +1659,7 @@ def fx_previews(page, number, bg, params, images):
 
 
 POWER_NAMES = {"Saturator": "VIBE power", "Wobble On": "Wobble power", "Noise On": "Noise power",
-               "Chorus": "Chorus power", "Mic": "Mic power", "Deck On": "Deck power"}   # (labels; else the name)
+               "Chorus": "Chorus power", "Mic": "Mic power", "Deck On": "Deck power", "B-Type NR": "B-Type NR"}   # (labels; else the name)
 
 
 def power_switches():
@@ -1779,8 +1790,8 @@ def main():
             if m.get("ignores") and m["ignores"][1] & set(m["knobs"]):
                 sys.exit('make_skin: mode %s both recolours and ignores %s' % (m["key"], ", ".join(sorted(m["ignores"][1] & set(m["knobs"])))))
         for sw, names in groups:
-            if sw not in params or params[sw].kind != "bool":
-                sys.exit('make_skin: the dimming switch "%s" must be an on/off parameter' % sw)
+            if sw not in params or (params[sw].kind != "bool" and not (params[sw].kind == "choice" and sw in SEGMENTS)):
+                sys.exit('make_skin: the dimming switch "%s" must be an on/off parameter or a row of buttons' % sw)
             for name in sorted(names - shown):
                 sys.exit('make_skin: "%s" is dimmed by %s but is not on any page' % (name, sw))
         for name in sorted(n for n in shown if dimmed(n)):   # the faded strips and buttons the dimmed controls use

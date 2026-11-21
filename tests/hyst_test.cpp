@@ -245,10 +245,10 @@ int main(int argc, char** argv)
     {
         Fx fx;
         const mpc::Param& p = fx.p->param(kHysteresis);
-        check(kHysteresis == 65 && kNumParams == 66 && fx.e->numParams == 66 && p.id == "hysteresis" && p.name == "Hysteresis"
+        check(kHysteresis == 65 && kNumParams == 67 && fx.e->numParams == 67 && p.id == "hysteresis" && p.name == "Hysteresis"
               && p.choices.size() == 2 && p.choices[0] == "Off" && p.choices[1] == "On (CPU+)" && p.def == 0.0f
               && isSetting(kHysteresis) && groupOf(kHysteresis) == gHyst && fx.e->dispatcher(fx.e, effCanBeAutomated, kHysteresis, 0, nullptr, 0.0f) == 1,
-              "number 65, the last: hysteresis, \"Hysteresis\", Off / On (CPU+), Off by default, a setting, automatable");
+              "number 65 (Clipper comes after it): hysteresis, \"Hysteresis\", Off / On (CPU+), Off by default, a setting, automatable");
         // the read-out the host shows (that it costs CPU) and the text it can set the switch by
         {
             char txt[64] = {};
@@ -284,11 +284,12 @@ int main(int argc, char** argv)
         const VstIntPtr r = b.e->dispatcher(b.e, effSetChunk, 0, (VstIntPtr)st.size(), const_cast<uint8_t*>(st.data()), 0.0f);
         check(r != 0 && b.get(kHysteresis) == 1.0f && b.get(kSatType) == 1.0f, "a state saved with On loads with On");
         // a state of the three-position switch (Off / Lite / Full: plain 0 / 1 / 2 at normalised 0 / 0.5 / 1),
-        // as that version saved it: this state with its last entry's two values replaced
+        // as that version saved it: this state with Hysteresis's two values replaced (the entry before
+        // Clipper, 1.8's last)
         {
             uint32_t n; std::memcpy(&n, st.data() + 8, 4);
             size_t pos = 12;
-            for (uint32_t k = 0; k + 1 < n; ++k) pos += 1 + (size_t)st[pos] + 8;
+            for (uint32_t k = 0; k + 2 < n; ++k) pos += 1 + (size_t)st[pos] + 8;
             const bool last = st[pos] == 10 && std::memcmp(&st[pos + 1], "hysteresis", 10) == 0;
             bool three = last;
             const float plain[3] = { 0.0f, 1.0f, 2.0f }, norm[3] = { 0.0f, 0.5f, 1.0f }, want[3] = { 0.0f, 1.0f, 1.0f };
@@ -313,21 +314,23 @@ int main(int argc, char** argv)
             old = old && rr != 0 && c.get(kHysteresis) == 0.0f;
             ++loaded;
         }
-        // and a state of this version with Hysteresis taken out, as an older one has it
+        // and a state of this version with Hysteresis and Clipper (its last two entries) taken out, as an
+        // older one has it
         {
             std::vector<uint8_t> s = st;
             uint32_t n; std::memcpy(&n, s.data() + 8, 4);
             size_t pos = 12;
-            for (uint32_t k = 0; k + 1 < n; ++k) pos += 1 + (size_t)s[pos] + 8;
-            const bool last = s[pos] == 10 && std::memcmp(&s[pos + 1], "hysteresis", 10) == 0;
-            s.erase(s.begin() + (long)pos, s.begin() + (long)(pos + 1 + 10 + 8));
-            --n; std::memcpy(s.data() + 8, &n, 4);
+            for (uint32_t k = 0; k + 2 < n; ++k) pos += 1 + (size_t)s[pos] + 8;
+            const bool last = s[pos] == 10 && std::memcmp(&s[pos + 1], "hysteresis", 10) == 0
+                           && s[pos + 19] == 7 && std::memcmp(&s[pos + 20], "clipper", 7) == 0;
+            s.erase(s.begin() + (long)pos, s.begin() + (long)(pos + 1 + 10 + 8 + 1 + 7 + 8));
+            n -= 2; std::memcpy(s.data() + 8, &n, 4);
             Fx c; c.p->set(kHysteresis, 1.0f);
             const VstIntPtr rr = c.e->dispatcher(c.e, effSetChunk, 0, (VstIntPtr)s.size(), s.data(), 0.0f);
             old = old && last && rr != 0 && c.get(kHysteresis) == 0.0f && c.get(kSatType) == 1.0f;
         }
         std::printf("   %d older state(s) from earlier versions loaded over On\n", loaded);
-        check(old && loaded == argc - 1, "older states (and this one without its last entry) load with Hysteresis Off");
+        check(old && loaded == argc - 1, "older states (and this one without its last two entries) load with Hysteresis Off");
     }
 
     std::printf("2. The recorder against the prototype (tools/hysteresis/rt2.h, the same tables and correction)\n");

@@ -151,7 +151,8 @@ static std::vector<uint8_t> stateBefore14(AEffect* e)
         const size_t len = 1 + (size_t)d[pos] + 8;
         const std::string id(reinterpret_cast<const char*>(d) + pos + 1, d[pos]);
         const bool newer = id == "scrape" || id == "whistle" || id == "hq" || id == "nr" || id == "sat_type" || id == "mic_model"
-                        || id == "agc_model" || id == "visual_vibes" || (id.compare(0, 4, "vis_") == 0 && id != "vis_reel" && id != "vis_level");
+                        || id == "agc_model" || id == "visual_vibes" || (id.compare(0, 4, "vis_") == 0 && id != "vis_reel" && id != "vis_level")
+                        || id == "azimuth" || id == "hysteresis" || id == "clipper";   // (1.7, 1.8)
         if (!newer) { out.insert(out.end(), d + pos, d + pos + len); ++kept; }
         pos += len;
     }
@@ -417,10 +418,10 @@ int main()
             bool same = true;
             for (int i = 0; i < kScrape; ++i) if (isSetting(i)) same = same && b.get(i) == a.get(i);
             bool rest = true;
-            for (int i = kScrape; i < kNumParams; ++i) if (isSetting(i)) rest = rest && b.get(i) == 0.0f;
+            for (int i = kScrape; i < kNumParams; ++i) if (isSetting(i)) rest = rest && b.get(i) == (i == kClipper ? kClipperOld : 0.0f);   // (1.8) Clipper: 50 %, the level before it
             std::printf("   loaded into %s: Scrape %.0f, Whistle %.0f\n", first < 0 ? "a fresh instance" : first == 21 ? "Sticky Tape" : "Tube TV", b.get(kScrape), b.get(kWhistle));
             check(same, "every older parameter is as saved");
-            check(rest, "the parameters added in 1.4 and since are at rest");
+            check(rest, "the parameters added in 1.4 and since are at rest (Clipper at 50 %, where it was before it existed)");
         }
         a.set(kScrape, 40); a.set(kWhistle, 25);
         void* data = nullptr;

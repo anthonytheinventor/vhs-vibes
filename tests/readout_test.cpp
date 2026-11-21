@@ -21,18 +21,17 @@
 #include <vector>
 
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float) { return opcode == audioMasterVersion ? 2400 : 0; }
-static const int k170Params = 65;   // 1.7.0's parameters; 1.8 adds Hysteresis after them
+static const int k170Params = 65;   // 1.7.0's parameters; 1.8 adds Hysteresis and Clipper after them
 #ifndef WRITE170
-// 1.8 saves one thing more after the parameters (the B-Type NR clip level, see nrclip_test.cpp): eight
-// bytes of extra state, which 1.7.0 passes over. They are checked and taken off before the comparison.
+// The parameters 1.8 added after 1.7.0's come last in a saved state, and are taken off before the
+// comparison. (The state ends with an empty extra part, as 1.7.0's: the first 1.8 builds had eight
+// bytes there, see nrclip_test.cpp; checked here.)
 static int g_extraWrong = 0;
 static std::vector<uint8_t> withoutExtra(std::vector<uint8_t> s)
 {
-    static const uint8_t tail[12] = { 8, 0, 0, 0, 'V', 'V', 'X', 1, 1, 0, 0, 0 };   // extraLen 8, a new instance's flag
-    if (s.size() < 12 || std::memcmp(s.data() + s.size() - 12, tail, 12) != 0) { ++g_extraWrong; return s; }
-    s.resize(s.size() - 8);
-    std::memset(s.data() + s.size() - 4, 0, 4);
-    // and the parameters added after 1.7.0 (Hysteresis, 1.8), which come last: 1.7.0 has the first 65
+    static const uint8_t tail[4] = { 0, 0, 0, 0 };   // extraLen 0
+    if (s.size() < 12 || std::memcmp(s.data() + s.size() - 4, tail, 4) != 0) { ++g_extraWrong; return s; }
+    // the parameters added after 1.7.0 (Hysteresis and Clipper, 1.8), which come last: 1.7.0 has the first 65
     uint32_t n = 0;
     std::memcpy(&n, s.data() + 8, 4);
     size_t pos = 12;
@@ -188,7 +187,7 @@ int main(int argc, char** argv)
     std::printf("1.7.0 wrote %zu bytes, this source %zu (%zu saved states); read-outs %zu and %zu bytes\n",
                 old.size(), now.size(), chunks.size(), oldTexts.size(), nowTexts.size());
     check(!old.empty() && old == now, "Drive, Lo Sat, Hi Sat, Comp, Noise and Whistle: id, name, range, default and mapping, getParameter, every program and the saved states are as in 1.7.0");
-    check(g_extraWrong == 0, "(each saved state ends with 1.8's eight bytes of extra state, a new instance's NR clip level; without them it is 1.7.0's)");
+    check(g_extraWrong == 0, "(each saved state ends with an empty extra part, as 1.7.0's)");
     check(!oldTexts.empty() && std::string(oldTexts.begin(), oldTexts.end()) == nowTexts,
           "every other read-out in every program, Whistle, and Lo Sat and Hi Sat in VHS and Hi-Fi, read as in 1.7.0");
 
