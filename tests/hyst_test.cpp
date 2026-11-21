@@ -1,16 +1,16 @@
 // VHS Vibes 1.8: Hysteresis (Sat Type VHS with the Saturator on): the tape hysteresis recorder of
-// src/hysteresis.h, Lite (one table per group) and Full (a slope axis too), in place of TapeSat's curve.
+// src/hysteresis.h (one table per group: the engine that was called Lite), in place of TapeSat's curve.
 // Checked here:
-//   1. the parameter (appended last, Off in a new instance, in every program and in older states;
-//      saved and loaded with a state)
+//   1. the parameter (appended last, Off / On, Off in a new instance, in every program and in older states;
+//      saved and loaded with a state; a state of the three-position switch loads Lite and Full as On)
 //   2. the recorder against the prototype it was built from (tools/hysteresis/rt2.h, the same tables,
-//      the same correction): a grid of tones, levels, bias 25 / 50 / 100 / 150 %, SP and EP, both engines
-//   3. the specification's figures (SLOPE at correct bias, SP: 441 Hz and 1 kHz, through the record
-//      and playback emphasis), and the whole plugin at reference level: about 3 % third harmonic, with
-//      HQ off and on alike
+//      the same correction): a grid of tones, levels, bias 25 / 50 / 100 / 150 %, SP and EP
+//   3. the recorder's own figures at correct bias, SP (441 Hz and 1 kHz, through the record and playback
+//      emphasis: the values the three-position version's Lite gave), and the whole plugin at reference
+//      level: about 3 % third harmonic, with HQ off and on alike
 //   4. silence stays silent, a hot signal stays finite and comes back to silence
 //   5. the latency it reports and the delay it has; the dry copy at Mix 50 % stays lined up
-//   6. a Bias sweep, switching Off / Lite / Full and SP / EP while a tone plays: no click
+//   6. a Bias sweep, switching Off / On and SP / EP while a tone plays: no click; a new speed glides
 // Ends with PASS or FAIL.
 //   hyst_test [older states ...]   (run.sh passes the states 1.6.0, 1.4.0 and 1.7.0 saved)
 #include <algorithm>
@@ -162,18 +162,18 @@ struct Emph
 
 // The prototype engine (rt2.h), set up from the plugin's tables as the prototype's tools set it up:
 // planes and their integrals (per plane, in double) blended, group delays blended, taps in double.
-static void protoCfg(rt2::Cfg& c, int slope, int ep, double bp)
+static void protoCfg(rt2::Cfg& c, int ep, double bp)
 {
     using namespace hysttab;
-    c.os = 2; c.J = kJ; c.nh = kNh; c.nu = slope ? kNu : 1; c.lat = kLat;
-    c.h0 = kH0; c.invh = kInvStep; c.sc = kSc; c.umax = kUmax; c.tauS = (float)(88200.0 / kSpeed[ep]);
+    c.os = 2; c.J = kJ; c.nh = kNh; c.nu = 1; c.lat = kLat;
+    c.h0 = kH0; c.invh = kInvStep; c.tauS = (float)(88200.0 / kSpeed[ep]);
     c.cubicA = true; c.adaa = true; c.useIir = false; c.rational = false;
     int b = 0; while (b + 2 < kNb && kBiasPct[b + 1] <= bp) ++b;
     const double f = std::clamp((bp - kBiasPct[b]) / (kBiasPct[b + 1] - kBiasPct[b]), 0.0, 1.0);
-    const float (*P)[kJ][kNu * kNh] = ep ? kTEp : kTSp;
+    const float (*P)[kJ][kNh] = ep ? kTEp : kTSp;
     const float (*D)[kJ] = ep ? kD0Ep : kD0Sp;
-    const float (*F)[kFir] = slope ? (ep ? kFirSlopeEp : kFirSlopeSp) : (ep ? kFirFastEp : kFirFastSp);
-    const int off = slope ? 0 : (kNu / 2) * kNh, n = c.nu * kNh, mid = kNh / 2;
+    const float (*F)[kFir] = ep ? kFirFastEp : kFirFastSp;
+    const int off = 0, n = c.nu * kNh, mid = kNh / 2;
     auto integral = [&](const float* T) {
         std::vector<double> g((size_t)n, 0.0);
         for (int u = 0; u < c.nu; ++u)
@@ -201,21 +201,21 @@ static void protoCfg(rt2::Cfg& c, int slope, int ep, double bp)
         for (int k = 0; k < kFir; ++k) G.fir[k] = F[j][k];
     }
 }
-static rt2::HfCorr protoCorr(int slope, int ep)
+static rt2::HfCorr protoCorr(int ep)
 {
     rt2::HfCorr h;
-    const float* p = hys::kCorr[slope][ep];
+    const float* p = hys::kCorr[ep];
     h.kSig = (float)(44100.0 / hysttab::kSpeed[ep]); h.e0 = p[1]; h.c = p[2];
     h.aAtt = (float)(1 - std::exp(-1.0 / (0.0005 * 44100))); h.aRel = (float)(1 - std::exp(-1.0 / (0.030 * 44100)));
     h.hpA = (float)std::exp(-kTwoPiD * p[0] / 44100.0);
     return h;
 }
 // the record field hs (44.1 kHz) through the prototype, and through the plugin's recorder: field out
-static std::vector<float> runProto(int slope, int ep, double bp, const std::vector<float>& hs)
+static std::vector<float> runProto(int ep, double bp, const std::vector<float>& hs)
 {
-    static rt2::Cfg c; c = rt2::Cfg(); protoCfg(c, slope, ep, bp);
+    static rt2::Cfg c; c = rt2::Cfg(); protoCfg(c, ep, bp);
     static rt2::Core core; core.init(c);
-    rt2::HfCorr corr = protoCorr(slope, ep);
+    rt2::HfCorr corr = protoCorr(ep);
     std::vector<float> L(hs), R(hs);
     for (size_t i = 0; i < hs.size(); i += 128)
     {
@@ -225,12 +225,12 @@ static std::vector<float> runProto(int slope, int ep, double bp, const std::vect
     }
     return L;
 }
-static std::vector<float> runMine(int slope, int ep, double bp, const std::vector<float>& hs)
+static std::vector<float> runMine(int ep, double bp, const std::vector<float>& hs)
 {
     static std::unique_ptr<hys::Stage> s(new hys::Stage());
     s->clear();
-    s->eng[0].configure(slope, ep, 44100.0f); s->eng[0].setBias((float)bp);
-    s->cur = 0; s->run[0] = true; s->run[1] = false; s->warm[0] = 0;
+    s->eng.configure(ep, 44100.0f); s->eng.setBias((float)bp);
+    s->run = true; s->warm = 0;
     std::vector<float> y(hs.size());
     for (size_t i = 0; i < hs.size(); ++i) y[i] = s->run1(splat(hs[i]))[0];
     return y;
@@ -241,32 +241,30 @@ int main(int argc, char** argv)
     int fails = 0;
     auto check = [&](bool ok, const std::string& what) { std::printf("   %s  %s\n", ok ? "ok  " : "FAIL", what.c_str()); if (!ok) ++fails; };
     char what[300];
-    const char* eng[2] = { "Lite", "Full" };
-
     std::printf("1. The parameter\n");
     {
         Fx fx;
         const mpc::Param& p = fx.p->param(kHysteresis);
         check(kHysteresis == 65 && kNumParams == 66 && fx.e->numParams == 66 && p.id == "hysteresis" && p.name == "Hysteresis"
-              && p.choices.size() == 3 && p.choices[0] == "Off" && p.choices[1] == "Lite (CPU+)" && p.choices[2] == "Full (CPU++)" && p.def == 0.0f
+              && p.choices.size() == 2 && p.choices[0] == "Off" && p.choices[1] == "On (CPU+)" && p.def == 0.0f
               && isSetting(kHysteresis) && groupOf(kHysteresis) == gHyst && fx.e->dispatcher(fx.e, effCanBeAutomated, kHysteresis, 0, nullptr, 0.0f) == 1,
-              "number 65, the last: hysteresis, \"Hysteresis\", Off / Lite (CPU+) / Full (CPU++), Off by default, a setting, automatable");
-        // the read-out the host shows (what each choice costs) and the text it can set the switch by
+              "number 65, the last: hysteresis, \"Hysteresis\", Off / On (CPU+), Off by default, a setting, automatable");
+        // the read-out the host shows (that it costs CPU) and the text it can set the switch by
         {
             char txt[64] = {};
             bool shown = true;
-            const char* want[3] = { "Off", "Lite (CPU+)", "Full (CPU++)" };
-            for (int v = 0; v < 3; ++v)
+            const char* want[2] = { "Off", "On (CPU+)" };
+            for (int v = 0; v < 2; ++v)
             {
                 fx.p->set(kHysteresis, (float)v);
                 std::memset(txt, 0, sizeof(txt));
                 fx.e->dispatcher(fx.e, effGetParamDisplay, kHysteresis, 0, txt, 0.0f);
                 shown = shown && std::strcmp(txt, want[v]) == 0;
             }
-            char full[] = "Full (CPU++)";
-            const bool byText = fx.e->dispatcher(fx.e, effString2Parameter, kHysteresis, 0, full, 0.0f) == 1 && fx.get(kHysteresis) == 2.0f;
+            char on[] = "On (CPU+)";
+            const bool byText = fx.e->dispatcher(fx.e, effString2Parameter, kHysteresis, 0, on, 0.0f) == 1 && fx.get(kHysteresis) == 1.0f;
             fx.p->set(kHysteresis, 0.0f);
-            check(shown && byText, "the read-outs say what each costs: Off, Lite (CPU+), Full (CPU++) (and the host can set it by that text)");
+            check(shown && byText, "the read-outs: Off, On (CPU+) (and the host can set it by that text)");
         }
         AEffect* e = VSTPluginMain(hostCb);
         const float fresh = static_cast<mpc::Plugin*>(e->object)->get(kHysteresis);
@@ -275,23 +273,42 @@ int main(int argc, char** argv)
         bool progs = fx.e->numPrograms == 46;
         for (int k = 0; k < fx.e->numPrograms; ++k)
         {
-            fx.p->set(kHysteresis, 2.0f);
+            fx.p->set(kHysteresis, 1.0f);
             fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f);
             progs = progs && fx.get(kHysteresis) == 0.0f;
         }
         check(progs, "every one of the 46 programs sets it to Off");
-        Fx a(0, 2);
+        Fx a(0, 1);
         const std::vector<uint8_t> st = a.chunk();
-        Fx b; b.p->set(kHysteresis, 1.0f);
+        Fx b;
         const VstIntPtr r = b.e->dispatcher(b.e, effSetChunk, 0, (VstIntPtr)st.size(), const_cast<uint8_t*>(st.data()), 0.0f);
-        check(r != 0 && b.get(kHysteresis) == 2.0f && b.get(kSatType) == 1.0f, "a state saved with Full loads with Full");
+        check(r != 0 && b.get(kHysteresis) == 1.0f && b.get(kSatType) == 1.0f, "a state saved with On loads with On");
+        // a state of the three-position switch (Off / Lite / Full: plain 0 / 1 / 2 at normalised 0 / 0.5 / 1),
+        // as that version saved it: this state with its last entry's two values replaced
+        {
+            uint32_t n; std::memcpy(&n, st.data() + 8, 4);
+            size_t pos = 12;
+            for (uint32_t k = 0; k + 1 < n; ++k) pos += 1 + (size_t)st[pos] + 8;
+            const bool last = st[pos] == 10 && std::memcmp(&st[pos + 1], "hysteresis", 10) == 0;
+            bool three = last;
+            const float plain[3] = { 0.0f, 1.0f, 2.0f }, norm[3] = { 0.0f, 0.5f, 1.0f }, want[3] = { 0.0f, 1.0f, 1.0f };
+            for (int v = 0; v < 3; ++v)
+            {
+                std::vector<uint8_t> s = st;
+                std::memcpy(&s[pos + 11], &plain[v], 4); std::memcpy(&s[pos + 15], &norm[v], 4);
+                Fx c; c.p->set(kHysteresis, v ? 0.0f : 1.0f);
+                const VstIntPtr rr = c.e->dispatcher(c.e, effSetChunk, 0, (VstIntPtr)s.size(), s.data(), 0.0f);
+                three = three && rr != 0 && c.get(kHysteresis) == want[v] && c.get(kSatType) == 1.0f;
+            }
+            check(three, "a state of the three-position switch loads Off as Off, and Lite and Full as On");
+        }
         int loaded = 0; bool old = true;
         for (int k = 1; k < argc; ++k)
         {
             FILE* f = std::fopen(argv[k], "rb");
             if (f == nullptr) { old = false; continue; }
             std::vector<uint8_t> o; int ch; while ((ch = std::fgetc(f)) != EOF) o.push_back((uint8_t)ch); std::fclose(f);
-            Fx c; c.p->set(kHysteresis, 2.0f);
+            Fx c; c.p->set(kHysteresis, 1.0f);
             const VstIntPtr rr = c.e->dispatcher(c.e, effSetChunk, 0, (VstIntPtr)o.size(), o.data(), 0.0f);
             old = old && rr != 0 && c.get(kHysteresis) == 0.0f;
             ++loaded;
@@ -305,20 +322,20 @@ int main(int argc, char** argv)
             const bool last = s[pos] == 10 && std::memcmp(&s[pos + 1], "hysteresis", 10) == 0;
             s.erase(s.begin() + (long)pos, s.begin() + (long)(pos + 1 + 10 + 8));
             --n; std::memcpy(s.data() + 8, &n, 4);
-            Fx c; c.p->set(kHysteresis, 2.0f);
+            Fx c; c.p->set(kHysteresis, 1.0f);
             const VstIntPtr rr = c.e->dispatcher(c.e, effSetChunk, 0, (VstIntPtr)s.size(), s.data(), 0.0f);
             old = old && last && rr != 0 && c.get(kHysteresis) == 0.0f && c.get(kSatType) == 1.0f;
         }
-        std::printf("   %d older state(s) from earlier versions loaded over Full\n", loaded);
+        std::printf("   %d older state(s) from earlier versions loaded over On\n", loaded);
         check(old && loaded == argc - 1, "older states (and this one without its last entry) load with Hysteresis Off");
     }
 
     std::printf("2. The recorder against the prototype (tools/hysteresis/rt2.h, the same tables and correction)\n");
     {
         // the record field of a tone at `lv` dB re the reference level, lifted by the emphasis as the prototype's tests do
-        double worstLvl[2] = {0, 0}, worstH3[2] = {0, 0}, worstSmp[2] = {0, 0}; int n3[2] = {0, 0};
-        char at[2][96] = {};
-        for (int slope = 0; slope < 2; ++slope)
+        double worstLvl = 0, worstH3 = 0, worstSmp = 0; int n3 = 0;
+        char at[96] = {};
+        {
             for (int ep = 0; ep < 2; ++ep)
                 for (double bp : { 25.0, 50.0, 100.0, 150.0 })
                     for (double f : { 100.0, 1000.0, 3000.0, 5000.0, 10000.0 })
@@ -327,33 +344,32 @@ int main(int argc, char** argv)
                             const double h = hysttab::kFieldPerUnit * kRefLevel * std::pow(10.0, lv / 20.0) * Emph::mag(f, ep);
                             std::vector<float> hs(16384 + 8192);
                             for (size_t i = 0; i < hs.size(); ++i) hs[i] = (float)(h * std::sin(kTwoPiD * f * (double)i / 44100.0));
-                            const std::vector<float> a = runProto(slope, ep, bp, hs), b = runMine(slope, ep, bp, hs);
+                            const std::vector<float> a = runProto(ep, bp, hs), b = runMine(ep, bp, hs);
                             double pk = 0, df = 0;
                             for (size_t i = 0; i < a.size(); ++i) { pk = std::fmax(pk, std::fabs((double)a[i])); df = std::fmax(df, std::fabs((double)a[i] - b[i])); }
                             const double a1 = std::abs(toneAt(a, 44100.0, f, 16384)), b1 = std::abs(toneAt(b, 44100.0, f, 16384));
                             const double dl = std::fabs(dB(b1 / a1));
-                            if (dl > worstLvl[slope]) { worstLvl[slope] = dl; std::snprintf(at[slope], 96, "%s %.0f Hz %+.0f dB bias %.0f %%", ep ? "EP" : "SP", f, lv, bp); }
-                            worstSmp[slope] = std::fmax(worstSmp[slope], df / pk);
+                            if (dl > worstLvl) { worstLvl = dl; std::snprintf(at, 96, "%s %.0f Hz %+.0f dB bias %.0f %%", ep ? "EP" : "SP", f, lv, bp); }
+                            worstSmp = std::fmax(worstSmp, df / pk);
                             if (3 * f < 20000.0)
                             {
                                 const double a3 = std::abs(toneAt(a, 44100.0, 3 * f, 16384)), b3 = std::abs(toneAt(b, 44100.0, 3 * f, 16384));
-                                if (a3 / a1 > 1e-3) { worstH3[slope] = std::fmax(worstH3[slope], std::fabs(dB((b3 / b1) / (a3 / a1)))); ++n3[slope]; }
+                                if (a3 / a1 > 1e-3) { worstH3 = std::fmax(worstH3, std::fabs(dB((b3 / b1) / (a3 / a1)))); ++n3; }
                             }
                         }
-        for (int slope = 0; slope < 2; ++slope)
-        {
-            std::printf("   %s: 160 cases; level within %.4f dB (worst %s), third harmonic within %.4f dB (%d cases above -60 dBc), samples within %.2e of the peak\n",
-                        eng[slope], worstLvl[slope], at[slope], worstH3[slope], n3[slope], worstSmp[slope]);
-            std::snprintf(what, sizeof(what), "%s agrees with the prototype: level within 0.01 dB, third harmonic within 0.05 dB, every sample within 1e-4 of the peak", eng[slope]);
-            check(worstLvl[slope] < 0.01 && worstH3[slope] < 0.05 && worstSmp[slope] < 1e-4, what);
         }
+        std::printf("   160 cases; level within %.4f dB (worst %s), third harmonic within %.4f dB (%d cases above -60 dBc), samples within %.2e of the peak\n",
+                    worstLvl, at, worstH3, n3, worstSmp);
+        check(worstLvl < 0.01 && worstH3 < 0.05 && worstSmp < 1e-4, "it agrees with the prototype: level within 0.01 dB, third harmonic within 0.05 dB, every sample within 1e-4 of the peak");
     }
 
-    std::printf("3. The specification's figures and the plugin at reference level\n");
+    std::printf("3. The recorder's own figures and the plugin at reference level\n");
     {
-        // SLOPE at correct bias, SP, record emphasis -> recorder -> playback emphasis (gain out - in, H3, H5 at the output)
+        // at correct bias, SP, record emphasis -> recorder -> playback emphasis (gain out - in, H3, H5 at the
+        // output): the figures the three-position version's Lite gave here (its Full had the specification's
+        // SLOPE figures: 441 Hz 0 dB -0.69 dB, H3 2.98 %)
         struct T { double f, lv, gain, h3, h5; };
-        const T spec[] = { {441, -20, 0.03, 0.06, 0.006}, {441, 0, -0.69, 2.98, 0.067}, {441, 8, -4.10, 11.4, 2.13}, {1000, 0, -1.15, 3.16, 0.146} };
+        const T spec[] = { {441, -20, 0.01, 0.0785, 0.00461}, {441, 0, -0.71, 2.93, 0.0166}, {441, 8, -4.12, 11.4, 2.08}, {1000, 0, -1.13, 2.95, 0.0953} };
         bool ok = true;
         for (const T& t : spec)
         {
@@ -361,18 +377,18 @@ int main(int argc, char** argv)
             Emph em(0);
             std::vector<float> hs(32768 + 8192);
             for (size_t i = 0; i < hs.size(); ++i) hs[i] = (float)(hysttab::kFieldPerUnit * em.pre((float)(a * std::sin(kTwoPiD * t.f * (double)i / 44100.0))));
-            std::vector<float> y = runMine(1, 0, 100.0, hs);
+            std::vector<float> y = runMine(0, 100.0, hs);
             for (float& v : y) v = em.de(v * hys::kInvField);
             const double y1 = std::abs(toneAt(y, 44100.0, t.f)), y3 = std::abs(toneAt(y, 44100.0, 3 * t.f)), y5 = std::abs(toneAt(y, 44100.0, 5 * t.f));
             const double g = dB(y1 / a), h3 = 100 * y3 / y1, h5 = 100 * y5 / y1;
-            std::printf("   %4.0f Hz %+3.0f dB: gain %+.2f dB (spec %+.2f), H3 %.3f %% (%.2f), H5 %.3f %% (%.3f)\n", t.f, t.lv, g, t.gain, h3, t.h3, h5, t.h5);
+            std::printf("   %4.0f Hz %+3.0f dB: gain %+.2f dB (was %+.2f), H3 %.3f %% (%.2f), H5 %.3f %% (%.3f)\n", t.f, t.lv, g, t.gain, h3, t.h3, h5, t.h5);
             ok = ok && std::fabs(g - t.gain) < 0.1 && std::fabs(h3 / t.h3 - 1) < 0.06 && (t.h5 < 0.01 || std::fabs(h5 / t.h5 - 1) < 0.2);
         }
-        check(ok, "Full at correct bias, SP: gain within 0.1 dB, H3 within 6 % and H5 within 20 % of the specification's figures");
+        check(ok, "at correct bias, SP: gain within 0.1 dB, H3 within 6 % and H5 within 20 % of the figures the three-position version's Lite gave");
         // the whole plugin, Init with the tape at Rec Level 0 dB, SP, bias right, a reference-level tone
-        double h3s[2][3][2] = {}, gs[2][3][2] = {};
+        double h3s[2][2][2] = {}, gs[2][2][2] = {};
         for (int hq = 0; hq < 2; ++hq)
-            for (int mode = 0; mode < 3; ++mode)
+            for (int mode = 0; mode < 2; ++mode)
                 for (int k = 0; k < 2; ++k)
                 {
                     const double f = k ? 1000.0 : 441.0;
@@ -382,19 +398,18 @@ int main(int argc, char** argv)
                     gs[hq][mode][k] = dB(y1 / kRefLevel); h3s[hq][mode][k] = 100 * y3 / y1;
                 }
         for (int hq = 0; hq < 2; ++hq)
-            std::printf("   HQ %s, 441 Hz | 1 kHz at reference level: Off %+.2f dB %.2f %% | %+.2f dB %.2f %%; Lite %+.2f dB %.2f %% | %+.2f dB %.2f %%; Full %+.2f dB %.2f %% | %+.2f dB %.2f %%\n",
-                        hq ? "on " : "off", gs[hq][0][0], h3s[hq][0][0], gs[hq][0][1], h3s[hq][0][1], gs[hq][1][0], h3s[hq][1][0], gs[hq][1][1], h3s[hq][1][1],
-                        gs[hq][2][0], h3s[hq][2][0], gs[hq][2][1], h3s[hq][2][1]);
+            std::printf("   HQ %s, 441 Hz | 1 kHz at reference level: Off %+.2f dB %.2f %% | %+.2f dB %.2f %%; On %+.2f dB %.2f %% | %+.2f dB %.2f %%\n",
+                        hq ? "on " : "off", gs[hq][0][0], h3s[hq][0][0], gs[hq][0][1], h3s[hq][0][1], gs[hq][1][0], h3s[hq][1][0], gs[hq][1][1], h3s[hq][1][1]);
         bool three = true, same = true, near = true;
         for (int hq = 0; hq < 2; ++hq)
-            for (int mode = 1; mode < 3; ++mode)
+            for (int mode = 1; mode < 2; ++mode)
                 for (int k = 0; k < 2; ++k)
                 {
                     three = three && h3s[hq][mode][k] > 2.6 && h3s[hq][mode][k] < 3.4;
                     same = same && std::fabs(gs[1][mode][k] - gs[0][mode][k]) < 0.05 && std::fabs(h3s[1][mode][k] / h3s[0][mode][k] - 1) < 0.03;
                     near = near && std::fabs(gs[hq][mode][k] - gs[hq][0][k]) < 0.6;
                 }
-        check(three, "Lite and Full: about 3 % third harmonic at reference level (2.6 to 3.4 %), at 441 Hz and 1 kHz");
+        check(three, "On: about 3 % third harmonic at reference level (2.6 to 3.4 %), at 441 Hz and 1 kHz");
         check(same, "HQ on leaves them as they are (level within 0.05 dB, H3 within 3 %)");
         check(near, "at bias right they come out within 0.6 dB of TapeSat's curve (Hysteresis Off)");
     }
@@ -403,7 +418,7 @@ int main(int argc, char** argv)
     {
         bool zero = true, finite = true, back = true;
         for (int hq = 0; hq < 2; ++hq)
-            for (int mode = 1; mode < 3; ++mode)
+            for (int mode = 1; mode < 2; ++mode)
                 for (float bias : { 200.0f, 2500.0f, 8000.0f })
                 {
                     Fx fx(hq, mode, { {kSplit, bias}, {kHiSat, 100.0f} });
@@ -418,7 +433,7 @@ int main(int argc, char** argv)
                     for (float v : q) finite = finite && std::isfinite(v);
                     for (size_t i = q.size() - 4410; i < q.size(); ++i) back = back && std::fabs(q[i]) < 1e-9f;
                 }
-        check(zero, "silence in, exactly silence out (Lite and Full, HQ off and on, bias low, right and high, SP and EP)");
+        check(zero, "silence in, exactly silence out (HQ off and on, bias low, right and high, SP and EP)");
         check(finite, "a full-scale square wave and a 15 kHz tone 6 dB over full scale, Rec Level +8 dB, Drive 100 %: never a NaN or an infinity");
         check(back, "and two seconds after the sound stops it is silence again (under -180 dBFS)");
     }
@@ -429,7 +444,7 @@ int main(int argc, char** argv)
         for (int hq = 0; hq < 2; ++hq)
         {
             std::complex<double> t0; int lat0 = 0;
-            for (int mode = 0; mode < 3; ++mode)
+            for (int mode = 0; mode < 2; ++mode)
             {
                 Fx fx(hq, mode, { {kLoSat, 0.0f} });
                 const std::vector<float> y = fx.play(1.5, [](long i) { return 0.01 * std::sin(kTwoPiD * 2000.0 * (double)i / 44100.0); });
@@ -440,12 +455,12 @@ int main(int argc, char** argv)
                 double d = ph / (kTwoPiD * 2000.0) * 44100.0;
                 while (d < 30) d += 44100.0 / 2000.0;
                 const double want = kHyLate[hq];
-                std::printf("   HQ %s, %s: %.3f samples later than Off at 2 kHz (by design %.1f); reported %d against %d\n", hq ? "on " : "off", eng[mode - 1], d, want, lat, lat0);
+                std::printf("   HQ %s: %.3f samples later than Off at 2 kHz (by design %.1f); reported %d against %d\n", hq ? "on " : "off", d, want, lat, lat0);
                 delayOk = delayOk && std::fabs(d - want) < 0.1;
                 latOk = latOk && std::abs((lat - lat0) - (int)std::lround(want)) <= 1;
             }
         }
-        check(delayOk, "the recorder is as late as kHyLate says (41.5 samples, 41.0 with HQ on), Lite and Full alike");
+        check(delayOk, "the recorder is as late as kHyLate says (41.5 samples, 41.0 with HQ on)");
         check(latOk, "and the latency the plugin reports grows by that much");
         // other rates: the element lag grows with the rate (no read past the newest sample), the lateness with it
         bool rates = true;
@@ -455,7 +470,7 @@ int main(int argc, char** argv)
                 std::complex<double> t[2]; int lat[2] = {0, 0}; float late = 0;
                 for (int mode = 0; mode < 2; ++mode)
                 {
-                    Fx fx(hq, mode * 2, { {kLoSat, 0.0f} }, sr);
+                    Fx fx(hq, mode, { {kLoSat, 0.0f} }, sr);
                     const std::vector<float> y = fx.play(1.5, [&](long i) { return 0.01 * std::sin(kTwoPiD * 2000.0 * (double)i / sr); });
                     t[mode] = toneAt(y, sr, 2000.0);
                     lat[mode] = fx.vv()->wantLatency_.load();
@@ -465,7 +480,7 @@ int main(int argc, char** argv)
                 double d = ph / (kTwoPiD * 2000.0) * sr;
                 while (d < late - 0.5 * sr / 2000.0) d += sr / 2000.0;
                 const double g = dB(std::abs(t[1] / t[0]));
-                std::printf("   %.0f Hz, HQ %s, Full: %.3f samples later than Off (lateness %.1f), %+.2f dB at 2 kHz; reported %d against %d\n",
+                std::printf("   %.0f Hz, HQ %s: %.3f samples later than Off (lateness %.1f), %+.2f dB at 2 kHz; reported %d against %d\n",
                             sr, hq ? "on " : "off", d, late, g, lat[1], lat[0]);
                 rates = rates && std::fabs(d - late) < 1.0 && std::abs((lat[1] - lat[0]) - (int)std::lround(late)) <= 1 && std::fabs(g) < 1.0;
             }
@@ -490,52 +505,53 @@ int main(int argc, char** argv)
                     }
                     r[mode] = dB(l[1] / l[0]);
                 }
-                std::printf("   HQ %s, %5.0f Hz: Mix 50 %% against 100 %%: Off %+.3f dB, Lite %+.3f dB\n", hq ? "on " : "off", f, r[0], r[1]);
+                std::printf("   HQ %s, %5.0f Hz: Mix 50 %% against 100 %%: Off %+.3f dB, On %+.3f dB\n", hq ? "on " : "off", f, r[0], r[1]);
                 if (f <= 6000.0) worstLo = std::fmax(worstLo, std::fabs(r[1] - r[0]));
                 worstDiff = std::fmax(worstDiff, r[0] - r[1]);
             }
-        check(worstLo < 0.15 && worstDiff < 0.3, "with Lite, Mix 50 % blends as with Hysteresis Off (within 0.15 dB up to 6 kHz, never 0.3 dB deeper above): the dry copy is as late as the recorder");
+        check(worstLo < 0.15 && worstDiff < 0.3, "with On, Mix 50 % blends as with Hysteresis Off (within 0.15 dB up to 6 kHz, never 0.3 dB deeper above): the dry copy is as late as the recorder");
     }
 
     std::printf("6. Moving the knobs while a tone plays\n");
     {
         // a reference-level 1 kHz tone; the Bias knob (Split) swept from the bottom (25 %) to the top (150 %) in 0.5 s
-        for (int slope = 0; slope < 2; ++slope)
         {
             double line[2];
             for (int sweep = 0; sweep < 2; ++sweep)
             {
-                Fx fx(0, slope + 1, { {kSplit, sweep ? 200.0f : 2500.0f} });
+                Fx fx(0, 1, { {kSplit, sweep ? 200.0f : 2500.0f} });
                 const long s0 = 44100, s1 = s0 + 22050;
                 const std::vector<float> y = fx.play(2.0, [](long i) { return kRefLevel * std::sin(kTwoPiD * 1000.0 * (double)i / 44100.0); },
                                                      [&](long pos) { if (sweep && pos >= s0 && pos <= s1 + 128) fx.e->setParameter(fx.e, kSplit, (float)std::min(1.0, (double)(pos - s0) / (double)(s1 - s0))); });
                 line[sweep] = offLine(y, (size_t)s0 + 2048, 44100.0, 1000.0);
             }
-            const double lim = slope ? -64.0 : -75.0;
-            std::printf("   %s: highest line off the harmonics %.1f dBFS while the bias sweeps (still at 100 %%: %.1f; the specification's prototype: %s)\n",
-                        eng[slope], line[1], line[0], slope ? "-70 at 128-sample updates" : "-81 at 32-sample updates");
-            std::snprintf(what, sizeof(what), "%s: the Bias sweep leaves no line above %.0f dBFS", eng[slope], lim);
+            const double lim = -75.0;
+            std::printf("   highest line off the harmonics %.1f dBFS while the bias sweeps (still at 100 %%: %.1f; the specification's prototype: -81 at 32-sample updates)\n",
+                        line[1], line[0]);
+            std::snprintf(what, sizeof(what), "the Bias sweep leaves no line above %.0f dBFS", lim);
             check(line[1] < lim, what);
         }
-        // switching while a 300 Hz tone at reference level plays: Off -> Lite -> Full -> Lite -> Off, and SP -> EP -> SP
+        // switching while a 300 Hz tone at reference level plays: Off -> On, SP -> EP -> SP, On -> Off -> On
+        // before the recorder is out, Off, the Saturator off, then On with the Saturator on
         for (int hq = 0; hq < 2; ++hq)
         {
             Fx fx(hq, 0);
-            bool twoFull = false, bridged = false;   // (CPU) two Full engines at once; Full SP -> EP by way of Lite EP
+            bool glided = false, endsEp = false, heard = true;   // the new speed by a glide of the one engine, heard throughout
             const std::vector<float> y = fx.play(3.0, [](long i) { return kRefLevel * std::sin(kTwoPiD * 300.0 * (double)i / 44100.0); },
                                                  [&](long pos) {
                                                      const hys::Stage& s = *fx.vv()->hy_;
-                                                     twoFull = twoFull || (s.run[0] && s.run[1] && s.eng[0].slope && s.eng[1].slope);
-                                                     bridged = bridged || (pos / 128 > 300 && pos / 128 < 400 && s.run[s.cur] && !s.eng[s.cur].slope && s.eng[s.cur].ep);
                                                      const long t = pos / 128;
+                                                     glided = glided || (t > 200 && t < 300 && s.eng.es > 0.0f && s.eng.es < 1.0f);
+                                                     if (t == 299) endsEp = s.eng.es == 1.0f && s.eng.ep == 1;
+                                                     if (t > 200 && t < 400) heard = heard && s.run && s.f == 1.0f;
                                                      if (t == 100) fx.p->set(kHysteresis, 1.0f);
-                                                     if (t == 200) fx.p->set(kHysteresis, 2.0f);
-                                                     if (t == 300) fx.p->set(kHiSat, 100.0f);
-                                                     if (t == 400) fx.p->set(kHiSat, 0.0f);
-                                                     if (t == 500) fx.p->set(kHysteresis, 1.0f);
+                                                     if (t == 200) fx.p->set(kHiSat, 100.0f);
+                                                     if (t == 300) fx.p->set(kHiSat, 0.0f);
+                                                     if (t == 400) fx.p->set(kHysteresis, 0.0f);
+                                                     if (t == 402) fx.p->set(kHysteresis, 1.0f);
                                                      if (t == 600) fx.p->set(kHysteresis, 0.0f);
                                                      if (t == 700) fx.p->set(kSatOn, 0.0f);
-                                                     if (t == 800) { fx.p->set(kHysteresis, 2.0f); fx.p->set(kSatOn, 1.0f); }
+                                                     if (t == 800) { fx.p->set(kHysteresis, 1.0f); fx.p->set(kSatOn, 1.0f); }
                                                  });
             // the distorted tone's own steps: the largest in the still stretches (each setting at rest, 0.1 s
             // after each switch to 0.1 s before the next), against the largest anywhere
@@ -546,12 +562,12 @@ int main(int argc, char** argv)
                 rest = std::fmax(rest, stepRatio(std::vector<float>(y.begin() + from, y.begin() + std::min<long>((long)y.size(), to)), 44100.0, 300.0, 1));
             }
             const double r = stepRatio(y, 44100.0, 300.0, 44100 / 2);
-            const bool still = fx.get(kHysteresis) == 2.0f && fx.vv()->hyAny_ && fx.vv()->hy_->f == 1.0f;
-            std::printf("   HQ %s: Off, Lite, Full, EP, SP, Lite, Off, Saturator off, Full with the Saturator on: largest step %.3f of a clean tone's (at rest %.3f)\n", hq ? "on " : "off", r, rest);
+            const bool still = fx.get(kHysteresis) == 1.0f && fx.vv()->hyAny_ && fx.vv()->hy_->f == 1.0f;
+            std::printf("   HQ %s: Off, On, EP, SP, Off and On again at once, Off, Saturator off, On with the Saturator on: largest step %.3f of a clean tone's (at rest %.3f)\n", hq ? "on " : "off", r, rest);
             std::snprintf(what, sizeof(what), "HQ %s: no click at any switch (no step 10 %% over the largest at rest), and the recorder is in at the end", hq ? "on" : "off");
             check(r < 1.1 * rest && still, what);
-            std::snprintf(what, sizeof(what), "HQ %s: Full SP to EP goes by way of Lite EP, and two Full engines never run at once (the costliest block)", hq ? "on" : "off");
-            check(!twoFull && bridged, what);
+            std::snprintf(what, sizeof(what), "HQ %s: SP to EP and back while it is heard: the one engine glides to the new speed (heard all along) and ends on EP's own tables", hq ? "on" : "off");
+            check(glided && endsEp && heard, what);
         }
     }
 

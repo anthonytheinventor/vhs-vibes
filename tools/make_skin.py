@@ -457,11 +457,11 @@ SEGMENTS = {
     "AGC Model": ((130, 40), [(5, 28), (5, 74)], ["SIMPLE", "MODELED"]),   # the same, beside AGC
     "Mic Type": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["CAMCORDER", "DYNAMIC", "PHONE", "BOOMBOX"]),
     "B-Type NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
-    "Hysteresis": ((130, 32), [(5, 28), (5, 66), (5, 104)], ["OFF", "LITE", "FULL"]),   # (1.8) three in a column, as Sat Type
+    "Hysteresis": ((130, 40), [(5, 28), (5, 74)], ["OFF", "ON"]),   # (1.8) two stacked, as AGC Model and Mic Model
 }
-# (1.8) What a button costs the CPU, drawn into its art as small bars beside the caption (none, one, three):
+# (1.8) What a button costs the CPU, drawn into its art as small bars beside the caption (none, one):
 # a cost marker, in the caption's own color, not a warning
-SEG_MARKS = {"Hysteresis": [0, 1, 3]}
+SEG_MARKS = {"Hysteresis": [0, 1]}
 TOGGLE_SIZE = (88, 44)
 TOGGLE_POS = (26, 50)
 KNOB_POS = (24, 26)
