@@ -124,7 +124,7 @@ int main(int argc, char** argv)
             held = held && fx.get(kVisualVibes) == 0.0f;
             for (int k = 0; k < 5; ++k) held = held && fx.plug()->getNormalised(kFxMeters[k]) == 0.5f;
         }
-        check(held, "choosing any of the 46 programs leaves Visual Vibes off and every meter where it was");
+        check(held, "choosing any of the 54 programs leaves Visual Vibes off and every meter where it was");
     }
 
     std::printf("3. Older states\n");

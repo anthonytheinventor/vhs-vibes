@@ -272,14 +272,35 @@ int main(int argc, char** argv)
         const float fresh = static_cast<mpc::Plugin*>(e->object)->get(kHysteresis);
         e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f);
         check(fresh == 0.0f, "Off in a new instance");
-        bool progs = fx.e->numPrograms == 46;
+        // 54 programs: the 46 up to 1.7 and the two NR ones of 1.8 set it Off, the six VHS ones of 1.8 (46 to 51) On,
+        // each with Sat Type VHS and the Saturator on, and the bias each is named for
+        bool progs = fx.e->numPrograms == 54;
+        char nm[64];
+        const char* names[8] = { "VHS - Factory Aligned", "VHS - Bias Drift", "VHS - Starved Bias", "VHS - Whisper Gate",
+                                 "VHS - Hot And Starved", "VHS - Six Hour Starved", "NR - Fuzz In The Gaps", "NR - Blown Encoder" };
+        const float split[6] = { 2500.0f, 1077.0f, 292.0f, 200.0f, 360.0f, 320.0f }, speed[6] = { 0, 0, 0, 0, 0, 100.0f };
         for (int k = 0; k < fx.e->numPrograms; ++k)
         {
-            fx.p->set(kHysteresis, 1.0f);
+            fx.p->set(kHysteresis, k & 1 ? 1.0f : 0.0f);
             fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f);
-            progs = progs && fx.get(kHysteresis) == 0.0f;
+            fx.e->dispatcher(fx.e, effGetProgramNameIndexed, k, 0, nm, 0.0f);
+            const bool on = k >= 46 && k <= 51;
+            progs = progs && fx.get(kHysteresis) == (on ? 1.0f : 0.0f) && (k < 46 || std::strcmp(nm, names[k - 46]) == 0);
+            if (on) progs = progs && fx.get(kSatType) == 1.0f && fx.get(kSatOn) == 1.0f && std::fabs(fx.get(kSplit) - split[k - 46]) < 0.5f && fx.get(kHiSat) == speed[k - 46];
+            if (k >= 52) progs = progs && fx.get(kNr) == 1.0f && fx.get(kClipper) == (k == 52 ? 80.0f : 100.0f);
         }
-        check(progs, "every one of the 46 programs sets it to Off");
+        check(progs, "54 programs: 0 to 45 and the two NR ones set it Off; 46 to 51 (VHS - Factory Aligned .. VHS - Six Hour Starved) On, in VHS with the Saturator on, at their bias and speed; 52 and 53 (NR - Fuzz In The Gaps, NR - Blown Encoder) NR Rec at 80 and 100 %");
+        // an older program chosen after a new one takes Hysteresis and NR Clipper back where it wants them
+        bool back = true;
+        for (int n = 46; n < 54; ++n)
+            for (int k = 0; k < 46; ++k)
+            {
+                fx.e->dispatcher(fx.e, effSetProgram, 0, n, nullptr, 0.0f);
+                fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f);
+                fx.e->dispatcher(fx.e, effGetProgramNameIndexed, k, 0, nm, 0.0f);
+                back = back && fx.get(kHysteresis) == 0.0f && fx.get(kClipper) == (std::strcmp(nm, "Stereo Rental") == 0 ? kClipperOld : 0.0f);
+            }
+        check(back, "any of the 46 older programs chosen after any of the new ones puts Hysteresis Off and NR Clipper at 0 % (Stereo Rental 50 %)");
         Fx a(0, 1);
         const std::vector<uint8_t> st = a.chunk();
         Fx b;

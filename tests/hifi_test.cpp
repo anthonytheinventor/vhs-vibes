@@ -547,13 +547,13 @@ int main(int argc, char** argv)
             "mic_on", "mic_type", "mic_gain", "mono", "dropouts", "wobble_on", "noise_on", "vis_reel", "vis_level",
             "deck_on", "agc", "drift", "tracking", "breathing", "mix", "animate", "scrape", "whistle", "hq", "nr", "sat_type",
             "mic_model", "agc_model", "visual_vibes", "vis_snow", "vis_head", "vis_streak", "vis_grid", "vis_haze", "azimuth", "hysteresis", "clipper" };
-        bool same = fx.e->numParams == 67 && fx.e->numPrograms == 46;
+        bool same = fx.e->numParams == 67 && fx.e->numPrograms == 54;
         for (int i = 0; i < 67 && same; ++i) same = fx.plug()->param(i).id == ids[i];
-        check(same, "67 parameters (Hysteresis and Clipper, 1.8, the last) with their ids in their places, 46 programs");
+        check(same, "67 parameters (Hysteresis and Clipper, 1.8, the last) with their ids in their places, 54 programs");
         check(p.choices.size() == 3 && p.choices[0] == "Simple" && p.choices[1] == "VHS" && p.choices[2] == "Hi-Fi" && p.def == 0.0f, "Sat Type: Simple, VHS, Hi-Fi; Simple in a new instance");
         bool none = true;
-        for (int k = 0; k < 46; ++k) { fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f); none = none && (fx.get(kSatType) == 2.0f) == (k >= 39 && k < 44); }
-        check(none, "the 39 older programs do not use Hi-Fi (they keep their sound); the five after them do, the two Azimuth ones after those do not");
+        for (int k = 0; k < 54; ++k) { fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f); none = none && (fx.get(kSatType) == 2.0f) == (k >= 39 && k < 44); }
+        check(none, "the 39 older programs do not use Hi-Fi (they keep their sound); the five after them do, the two Azimuth ones and the eight of 1.8 after those do not");
         check(fx.e->version == 1800 && fx.e->dispatcher(fx.e, effGetVendorVersion, 0, 0, nullptr, 0.0f) == 1800, "version 1.8.0");
 
         // a state saved by 1.6.0

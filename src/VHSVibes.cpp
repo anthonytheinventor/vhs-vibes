@@ -5998,6 +5998,61 @@ private:
             {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
             {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
             {kAgcModel, 0}, {kAgc, 35}, {kDrift, 25}, {kAzimuth, 7.5f} });
+
+        // Added in 1.8, after the others: no older program turns Hysteresis on or NR Clipper up (but Stereo
+        // Rental, at 50 %), so a project saved with an older version sounds as it did.
+        // Hysteresis On (the tape's memory, Sat Type = VHS; Split is the bias: right at 2.5 kHz, 25 % of right
+        // at the bottom, 1.08 kHz a third of the way down). With too little bias the recorder needs a stronger
+        // signal before it records at all, and its curve bends sooner: quiet sound breaks up first. Output
+        // makes up what the starved ones lose.
+        // The honest baseline: a deck aligned at the factory, SP, a little under reference level. Close to SP Tape.
+        program("VHS - Factory Aligned", {
+            {kDrive, 10}, {kComp, 15}, {kHiCut, 13000}, {kSatType, 1}, {kLoSat, 50}, {kHiSat, 0}, {kHighs, 0},
+            {kWarp, 8}, {kFlutter, 10}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 50}, {kHiCut2, 13000},
+            {kHum, 5}, {kHiss, 35}, {kCrackle, 3}, {kHysteresis, 1} });
+        // The bias has drifted a third of the way down: a brighter top, a little grit on the quiet parts.
+        program("VHS - Bias Drift", {
+            {kDrive, 10}, {kComp, 15}, {kHiCut, 14000}, {kSatType, 1}, {kLoSat, 50}, {kHiSat, 0}, {kSplit, 1077}, {kHighs, 0},
+            {kWarp, 15}, {kFlutter, 15}, {kWow, 8}, {kFlutter2, 8}, {kLoCut, 50}, {kHiCut2, 14000},
+            {kHum, 5}, {kHiss, 40}, {kCrackle, 5}, {kDrift, 15}, {kOutput, 1}, {kHysteresis, 1} });
+        // Bias near the bottom at a moderate level: soft material breaks up, loud material comes through.
+        program("VHS - Starved Bias", {
+            {kDrive, 10}, {kComp, 20}, {kHiCut, 12000}, {kSatType, 1}, {kLoSat, 55}, {kHiSat, 0}, {kSplit, 292}, {kHighs, 0},
+            {kWarp, 10}, {kFlutter, 12}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 60}, {kHiCut2, 12000},
+            {kHum, 5}, {kHiss, 35}, {kCrackle, 5}, {kDropouts, 10}, {kOutput, 7}, {kHysteresis, 1} });
+        // No bias to speak of: a 1 kHz tone under about -30 dBFS comes out some 33 dB down, by -10 dBFS it is
+        // through, so tails and reverb are chopped off and the hiss (played back, after the tape) is all
+        // that is left of them.
+        program("VHS - Whisper Gate", {
+            {kDrive, 0}, {kComp, 10}, {kHiCut, 12000}, {kSatType, 1}, {kLoSat, 56}, {kHiSat, 0}, {kSplit, 200}, {kHighs, 0},
+            {kWarp, 10}, {kFlutter, 10}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 60}, {kHiCut2, 12000},
+            {kHum, 0}, {kHiss, 12}, {kCrackle, 0}, {kOutput, 10}, {kHysteresis, 1} });
+        // Too little bias and recorded hot: gritty quiet parts, squashed peaks.
+        program("VHS - Hot And Starved", {
+            {kDrive, 20}, {kComp, 25}, {kHiCut, 10000}, {kSatType, 1}, {kLoSat, 85}, {kHiSat, 0}, {kSplit, 360}, {kHighs, 0},
+            {kWarp, 15}, {kFlutter, 15}, {kWow, 8}, {kFlutter2, 8}, {kLoCut, 70}, {kHiCut2, 11000},
+            {kHum, 8}, {kHeadBuzz, 10}, {kHiss, 40}, {kCrackle, 8}, {kOutput, 7}, {kHysteresis, 1} });
+        // VHS - Six Hour Tape with the same fault: at EP the highs dull themselves as well.
+        program("VHS - Six Hour Starved", {
+            {kDrive, 30}, {kWear, 30}, {kComp, 40}, {kHiCut, 6000},
+            {kSatType, 1}, {kLoSat, 55}, {kHiSat, 100}, {kSplit, 320}, {kHighs, 0},
+            {kWarp, 50}, {kFlutter, 50}, {kWow, 35}, {kFlutter2, 30}, {kLoCut, 100}, {kHiCut2, 8000},
+            {kHum, 20}, {kHiss, 65}, {kCrackle, 20},
+            {kAgcModel, 0}, {kAgc, 35}, {kDrift, 25}, {kOutput, 6}, {kHysteresis, 1} });
+        // NR Clipper (B-Type NR's overshoot suppressor, its diodes driven harder as the knob goes up) on a tape
+        // recorded with noise reduction and played without, as in Wrong Switch but with less hiss: a bright
+        // fuzz that swells in the gaps and ducks under the loud hits.
+        program("NR - Fuzz In The Gaps", {
+            {kDrive, 15}, {kComp, 20}, {kHiCut, 11000},
+            {kWarp, 10}, {kFlutter, 10}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 50}, {kHiCut2, 12000},
+            {kHum, 5}, {kHiss, 25}, {kCrackle, 5},
+            {kNr, 1}, {kClipper, 80} });
+        // The encoder's diodes all the way into a hot VHS tape: the harshest pairing, Hysteresis off.
+        program("NR - Blown Encoder", {
+            {kDrive, 25}, {kComp, 20}, {kHiCut, 10000}, {kSatType, 1}, {kLoSat, 80}, {kHiSat, 15}, {kHighs, 0},
+            {kWarp, 10}, {kFlutter, 12}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 60}, {kHiCut2, 11000},
+            {kHum, 5}, {kHiss, 40}, {kCrackle, 8},
+            {kNr, 1}, {kClipper, 100}, {kOutput, 6} });
     }
 
     // ----- state ------------------------------------------------------------------

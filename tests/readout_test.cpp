@@ -22,6 +22,7 @@
 
 static VstIntPtr hostCb(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void*, float) { return opcode == audioMasterVersion ? 2400 : 0; }
 static const int k170Params = 65;   // 1.7.0's parameters; 1.8 adds Hysteresis and Clipper after them
+static const int k170Programs = 46; // 1.7.0's programs; 1.8 adds eight after them
 #ifndef WRITE170
 // The parameters 1.8 added after 1.7.0's come last in a saved state, and are taken off before the
 // comparison. (The state ends with an empty extra part, as 1.7.0's: the first 1.8 builds had eight
@@ -87,7 +88,7 @@ static std::vector<uint8_t> record(std::vector<std::vector<uint8_t>>& chunks)
 {
     std::vector<uint8_t> out;
     Fx f;
-    const uint32_t head[] = { (uint32_t)std::min(f.p->numParams(), k170Params), (uint32_t)f.p->numPrograms() };   // (1.7.0's; see withoutExtra)
+    const uint32_t head[] = { (uint32_t)std::min(f.p->numParams(), k170Params), (uint32_t)std::min(f.p->numPrograms(), k170Programs) };   // (1.7.0's; see withoutExtra)
     put(out, head, sizeof(head));
     auto state = [&] { chunks.push_back(f.chunk()); putS(out, std::string(chunks.back().begin(), chunks.back().end())); };
     for (int i : kWatched)
@@ -107,7 +108,7 @@ static std::vector<uint8_t> record(std::vector<std::vector<uint8_t>>& chunks)
         f.e->setParameter(f.e, i, 0.37f); putF(out, f.p->get(i)); putF(out, f.e->getParameter(f.e, i)); state();
         f.p->set(i, was);
     }
-    for (int prog = 0; prog < f.p->numPrograms(); ++prog)
+    for (int prog = 0; prog < f.p->numPrograms() && prog < k170Programs; ++prog)
     {
         f.e->dispatcher(f.e, effSetProgram, 0, prog, nullptr, 0.0f);
         for (int i : kWatched) { putF(out, f.p->get(i)); putF(out, f.e->getParameter(f.e, i)); }
@@ -128,7 +129,7 @@ static std::string texts()
 {
     std::string out;
     Fx f;
-    for (int prog = 0; prog < f.p->numPrograms(); ++prog)
+    for (int prog = 0; prog < f.p->numPrograms() && prog < k170Programs; ++prog)
     {
         f.e->dispatcher(f.e, effSetProgram, 0, prog, nullptr, 0.0f);
         out += "program " + std::to_string(prog) + ":";

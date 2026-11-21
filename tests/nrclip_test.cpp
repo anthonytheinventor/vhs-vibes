@@ -360,7 +360,8 @@ int main(int argc, char** argv)
             viaProg.set(kClipper, 9.0f);
             viaProg.e->dispatcher(viaProg.e, effSetProgram, 0, prog, nullptr, 0.0f);
             char nm[64] = {0}; viaProg.e->dispatcher(viaProg.e, effGetProgramNameIndexed, prog, 0, nm, 0.0f);
-            progs = progs && viaProg.get(kClipper) == (std::string(nm) == "Stereo Rental" ? kClipperOld : 0.0f);
+            const std::string n = nm;
+            progs = progs && viaProg.get(kClipper) == (n == "Stereo Rental" ? kClipperOld : n == "NR - Fuzz In The Gaps" ? 80.0f : n == "NR - Blown Encoder" ? 100.0f : 0.0f);
         }
         AEffect* mpc = VSTPluginMain(hostCb);   // the MPC's load: sample rate, open, program 0
         mpc->dispatcher(mpc, effSetSampleRate, 0, 0, nullptr, 44100.0f);
@@ -368,7 +369,7 @@ int main(int argc, char** argv)
         mpc->dispatcher(mpc, effSetProgram, 0, 0, nullptr, 0.0f);
         const float fresh0 = static_cast<mpc::Plugin*>(mpc->object)->get(kClipper);
         mpc->dispatcher(mpc, effClose, 0, 0, nullptr, 0.0f);
-        check(progs && fresh0 == 0.0f, "every program puts Clipper at 0 % but Stereo Rental (50 %, its 1.7.0 sound), and a new instance the MPC puts on program 0 stays at 0 %");
+        check(progs && fresh0 == 0.0f, "every program puts Clipper at 0 % but Stereo Rental (50 %, its 1.7.0 sound) and the two NR programs of 1.8 (80 and 100 %), and a new instance the MPC puts on program 0 stays at 0 %");
         // a state that cannot be loaded leaves it as it was
         Fx keep(0); keep.set(kClipper, 61.0f);
         std::vector<uint8_t> cut = sNew; cut.resize(cut.size() / 2);

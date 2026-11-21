@@ -250,17 +250,17 @@ int main(int argc, char** argv)
         }
         std::printf("   %d older state(s) loaded over Azimuth 30'\n", loaded);
         check(states && loaded == argc - 1 && loaded >= 2, "a state from 1.6.0 and one from 1.4.0 load with Azimuth at 0");
-        Fx fx; bool progs = fx.e->numPrograms == 46; char name[64];
+        Fx fx; bool progs = fx.e->numPrograms == 54; char name[64];
         for (int p = 0; p < fx.e->numPrograms; ++p)
         {
             fx.set(kAzimuth, 30.0f);
             fx.e->dispatcher(fx.e, effSetProgram, 0, p, nullptr, 0.0f);
             const float want = p == 44 ? 6.5f : p == 45 ? 7.5f : 0.0f;
             progs = progs && std::fabs(fx.get(kAzimuth) - want) < 1e-4f;
-            if (p >= 44) { fx.e->dispatcher(fx.e, effGetProgramNameIndexed, p, 0, name, 0.0f); std::printf("   program %d: %s, Azimuth %s, Sat Type %.0f, Hi Sat %.0f\n", p, name, fx.text(kAzimuth).c_str(), fx.get(kSatType), fx.get(kHiSat));
+            if (p == 44 || p == 45) { fx.e->dispatcher(fx.e, effGetProgramNameIndexed, p, 0, name, 0.0f); std::printf("   program %d: %s, Azimuth %s, Sat Type %.0f, Hi Sat %.0f\n", p, name, fx.text(kAzimuth).c_str(), fx.get(kSatType), fx.get(kHiSat));
                            progs = progs && fx.get(kSatType) == 1.0f && std::strncmp(name, "VHS - ", 6) == 0; }
         }
-        check(progs, "46 programs: 0 to 43 set Azimuth to 0, 44 and 45 are VHS programs with 6.5' and 7.5'");
+        check(progs, "54 programs: 44 and 45 are VHS programs with 6.5' and 7.5', every other one sets Azimuth to 0");
     }
 
     std::printf("6. No clicks when Azimuth or the tape speed is turned while sound plays\n");

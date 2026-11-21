@@ -966,7 +966,7 @@ int main()
         const int orig[5] = { 4, 10, 15, 18, 22 };
         int micOn = 0;
         for (int p = 0; p < 34; ++p) { a.e->dispatcher(a.e, effSetProgram, 0, p, nullptr, 0.0f); if (pa->getBool(kMicOn)) ++micOn; }
-        check(micOn == 5 && a.e->numPrograms == 46, "46 programs; of 0 to 33, five have the Mic on");
+        check(micOn == 5 && a.e->numPrograms == 54, "54 programs; of 0 to 33, five have the Mic on");
         for (int k = 0; k < 5; ++k)
         {
             char na[64] = {0}, nb[64] = {0};
