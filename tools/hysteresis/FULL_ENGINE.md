@@ -87,5 +87,12 @@ accuracy it adds is real on paper and small in the sound.
   engines and crossfaded. Full should adopt the same.
 - A fitted smooth function in place of the table was tried and rejected (unstable fits, no cheap
   antiderivative). A table of the antiderivative shipped as constants would add about 2 MB.
+- Full's cost was mostly its second table axis: 98 KB of working table per engine. A compact stand-in
+  for that axis is worth a try before bringing the table back: a small neural network trained on the
+  ground truth, or a low-order fit of how the table changes with slope. The idea comes from a tape
+  plugin that trained small "state transition" networks to stand in for its hysteresis solver (about
+  three times faster than the solver, with a sound of its own at extreme settings). For On's
+  one-axis table a network would be slower and less exact than the lookup; it is only the slope axis
+  that might gain.
 - The parameter is a two-position choice now. A third position would have to be appended as the
   last choice so that saved projects keep their meaning: Off, On, then Full.
