@@ -6866,8 +6866,8 @@
                 "key": "Parameter 65",
                 "value": [
                     "Off",
-                    "Lite",
-                    "Full"
+                    "Lite (CPU+)",
+                    "Full (CPU++)"
                 ]
             }
         ],

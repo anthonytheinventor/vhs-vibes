@@ -458,6 +458,9 @@ SEGMENTS = {
     "B-Type NR": ((130, 40), [(7, 28), (143, 28), (7, 74), (143, 74)], ["OFF", "REC", "PLAY", "ON"]),
     "Hysteresis": ((130, 32), [(5, 28), (5, 66), (5, 104)], ["OFF", "LITE", "FULL"]),   # (1.8) three in a column, as Sat Type
 }
+# (1.8) What a button costs the CPU, drawn into its art as small bars beside the caption (none, one, three):
+# a cost marker, in the caption's own color, not a warning
+SEG_MARKS = {"Hysteresis": [0, 1, 3]}
 TOGGLE_SIZE = (88, 44)
 TOGGLE_POS = (26, 50)
 KNOB_POS = (24, 26)
@@ -1250,8 +1253,9 @@ def draw_text_s(d, xy, text, fnt, fill, s, tracking=1.0, centre_w=None):
         x += fnt.getlength(ch) + tracking * s
 
 
-def make_segment(size, caption, on, mode=None):
-    """One button of a segment switch; a mode's button lights in the mode's colours."""
+def make_segment(size, caption, on, mode=None, marks=0):
+    """One button of a segment switch; a mode's button lights in the mode's colors. marks: that many small
+    bars at the right end (SEG_MARKS: what the choice costs the CPU), in the caption's color, a little quieter."""
     s = 4
     w, h = size
     img = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
@@ -1275,6 +1279,16 @@ def make_segment(size, caption, on, mode=None):
         d.rounded_rectangle(body, r, fill=(24, 9, 58, 255), outline=(96, 62, 160, 255), width=s)
         col = (150, 128, 204, 255)
     draw_text_s(d, (0, (h * s - 15 * s) / 2), caption, f, col, s, 1.0, centre_w=w * s)
+    if marks:
+        # bars 3 px wide, 10 px high, 3 px apart, their right edge 14 px in from the button's: clear of the
+        # caption (centred) and of the rounded end
+        bw, bh, gap = 3 * s, 10 * s, 3 * s
+        x1 = (w - 14) * s
+        y0 = (h * s - bh) / 2
+        mc = col[:3] + (190,)
+        for k in range(marks):
+            x = x1 - (marks - k) * bw - (marks - 1 - k) * gap
+            d.rectangle((x, y0, x + bw - 1, y0 + bh - 1), fill=mc)
     return img.resize((w, h), Image.LANCZOS)
 
 
@@ -1751,8 +1765,9 @@ def main():
     images["toggle_off.png"] = make_toggle(False)
     for name, (size, offsets, captions) in SEGMENTS.items():
         for i, cap in enumerate(captions):
-            images[seg_file(name, i, True)] = make_segment(size, cap, True, mode_at(i) if name == MODE_PARAM else None)
-            images[seg_file(name, i, False)] = make_segment(size, cap, False)
+            marks = SEG_MARKS.get(name, [0] * len(captions))[i]
+            images[seg_file(name, i, True)] = make_segment(size, cap, True, mode_at(i) if name == MODE_PARAM else None, marks)
+            images[seg_file(name, i, False)] = make_segment(size, cap, False, None, marks)
     if DIM_POWER:
         groups = list(DIM_GROUPS.items()) + list(DIM_PLAIN_ONLY.items())
         for m in MODES:

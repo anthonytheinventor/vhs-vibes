@@ -276,7 +276,8 @@ enum ParamIndex
                    //        square of the knob (see Azimuth). Sat Type = VHS with the Saturator on only.
                    //        Rests at 0, where the stage is not there; 0 in an older state and program.
     // added in 1.8
-    kHysteresis,   // choice the tape's memory (see hysteresis.h): Off (TapeSat's curve, as before), Lite, Full.
+    kHysteresis,   // choice the tape's memory (see hysteresis.h): Off (TapeSat's curve, as before), Lite, Full
+                   //        (read-outs "Off", "Lite (CPU+)", "Full (CPU++)": what each costs).
                    //        Sat Type = VHS with the Saturator on only. Off in a new instance, in an older state
                    //        and in every program.
     kNumParams
@@ -2980,7 +2981,10 @@ public:
         // 1.7, after the meters: arc-min, 60 x the square of the knob (skew 0.5), resting at 0 (no stage)
         addParam(floatParam ("azimuth",    "Azimuth",      0.0f, kAzMaxArcMin, 0.0f, "", 1, 0.5f));
         // 1.8: the tape's memory, Off (TapeSat's curve, as before it existed), Lite or Full
-        addParam(choiceParam("hysteresis", "Hysteresis", {"Off", "Lite", "Full"}, 0));
+        // (the read-out says what each costs: with Lite the whole plugin takes about 3.5 times the instructions
+        // it takes with Off, with Full about 5 (arm32, HQ off). Only the text: a state keeps the id and the
+        // value 0 / 1 / 2, and the skin takes its read-outs from these labels)
+        addParam(choiceParam("hysteresis", "Hysteresis", {"Off", "Lite (CPU+)", "Full (CPU++)"}, 0));
 
         if (numParams() != kNumParams) mpc::log("VHSVibes: parameter count mismatch");
 
@@ -3167,9 +3171,11 @@ private:
     // The sound comes kHyLate later (the reported latency and the dry copy follow). Switching Hysteresis
     // on starts the recorder from rest unheard for kHyWarmTicks, then crossfades from the curve in
     // kHyFadeSec; off crossfades back. Lite to Full, or SP to EP: the other engine starts from rest unheard,
-    // then a crossfade. A moving Bias knob glides (the whole range in 0.5 s at most) and the tables follow
-    // it every 32 samples (Lite) or 128 (Full). All of it runs only in the sample loop's copy for the
-    // recorder (hyAny_) and in hyTick: with Hysteresis Off the plugin is what it was.
+    // then a crossfade; Full at one speed to Full at the other goes by way of Lite at the new speed (two
+    // crossfades, never two Full engines at once: see hyTick). A moving Bias knob glides (the whole range
+    // in 0.5 s at most) and the tables follow it every 32 samples (Lite) or 128 (Full). All of it runs
+    // only in the sample loop's copy for the recorder (hyAny_) and in hyTick: with Hysteresis Off the
+    // plugin is what it was.
     int hyLag() const { return hy_->lagN; }
     // how late the recorder makes the sound (session samples) at this rate and HQ setting, and from it the
     // dry copy's delay and the playback side's lag
@@ -3227,7 +3233,7 @@ private:
         s.thX = s.thY = splat(0.0f);
         s.bpStep = 125.0f * (float)kCtrl / (0.5f * sr_);
         s.bpNow = s.bpTo;
-        s.cur = 0; s.run[1] = false; s.xe = s.xeInc = 0.0f;
+        s.cur = 0; s.run[1] = false; s.due = -1; s.xe = s.xeInc = 0.0f;
         s.eng[0].configure(hyMode_ == 2, s.wantEp, sr_);
         s.eng[0].setBias(s.bpNow);
         s.run[0] = true; s.warm[0] = kHyWarmTicks; s.tick[0] = 0;
@@ -3238,7 +3244,7 @@ private:
     __attribute__((noinline)) void hyStop()
     {
         hys::Stage& s = *hy_;
-        s.run[0] = s.run[1] = false;
+        s.run[0] = s.run[1] = false; s.due = -1;
         s.feeding = false;
         s.f = s.fTo = s.fInc = 0.0f;
         s.xe = s.xeInc = 0.0f;
@@ -3271,14 +3277,20 @@ private:
             const float d = s.bpTo - s.bpNow;
             s.bpNow = std::fabs(d) < 0.01f ? s.bpTo : s.bpNow + clamp(0.2f * d, -s.bpStep, s.bpStep);
         }
-        // an engine crossfade that has ended
+        // an engine crossfade that has ended; an engine whose tables were made last tick runs from this one
         if (s.run[1 - s.cur] && s.warm[1 - s.cur] == 0 && s.xe >= 1.0f) { s.run[s.cur] = false; s.cur = 1 - s.cur; s.xe = 0.0f; }
+        if (s.due >= 0) { s.run[s.due] = true; s.due = -1; }
         for (int e = 0; e < 2; ++e)
         {
             if (!s.run[e]) continue;
             if (s.warm[e] > 0) --s.warm[e];
             ++s.tick[e];
-            if (s.eng[e].bp != s.bpNow && s.tick[e] >= (s.eng[e].slope ? 8 : 2)) { s.tick[e] = 0; s.eng[e].setBias(s.bpNow); }
+            // the tables follow the bias; the engine on its way out keeps its own (it is going, and two
+            // engines are already the costliest stretch)
+            if (s.eng[e].bp != s.bpNow && s.tick[e] >= (s.eng[e].slope ? 8 : 2) && !(e == s.cur && s.run[1 - e]))
+            {
+                s.tick[e] = 0; s.eng[e].setBias(s.bpNow);
+            }
         }
         const bool want = hyMode_ != 0;
         const bool satIn = rampT_[rSat] > 0.0f || ramp_[rSat].v > 0.0f;   // the Saturator is heard, or fading
@@ -3305,7 +3317,7 @@ private:
             // a new engine or speed: from rest, unheard, then a crossfade (or in place while nothing of it is heard)
             const int slope = hyMode_ == 2 ? 1 : 0, o = 1 - s.cur;
             hys::Engine& c = s.eng[s.cur];
-            if ((c.slope != slope || c.ep != s.wantEp) && !s.run[o])
+            if ((c.slope != slope || c.ep != s.wantEp) && !s.run[o] && s.due < 0)
             {
                 if (s.f <= 0.0f && s.fInc <= 0.0f)
                 {
@@ -3314,9 +3326,14 @@ private:
                 }
                 else
                 {
+                    // Full to Full at the other speed goes by way of Lite at the new speed (a crossfade to it,
+                    // then one from it), so that two Full engines never run at once: one Full engine is the
+                    // costliest thing in the plugin, and two would cost a block nearly twice the steady Full.
+                    // The new engine's tables are made in this tick and it runs from the next (due): the tick
+                    // that pays for the tables does not also pay for a second engine (one tick more unheard).
                     hys::Engine& n = s.eng[o];
-                    n.configure(slope, s.wantEp, sr_); n.setBias(s.bpNow);
-                    s.run[o] = true; s.warm[o] = kHyWarmTicks; s.tick[o] = 0;
+                    n.configure(slope && c.slope ? 0 : slope, s.wantEp, sr_); n.setBias(s.bpNow);
+                    s.due = o; s.warm[o] = kHyWarmTicks + 1; s.tick[o] = 0;
                     s.xe = 0.0f; s.xeInc = xfStep;
                 }
             }

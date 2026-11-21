@@ -25,7 +25,9 @@
 // Lite (FAST) and Full (SLOPE) have the same latency, kLatency, at both speeds. The Bias knob picks
 // two neighboring bias planes and their blend; the working tables (T, Gi, the group delays and the
 // interpolation taps) are worked out again when the bias has moved (setBias): Lite every 32 samples,
-// Full every 128 while it moves. Nothing here allocates, locks or does I/O.
+// Full every 128 while it moves. A Full update reads the two planes once and writes T and Gi once (about
+// 200 KB) in about 82,000 instructions (arm32; it was about 250,000), a sixth of what a steady Full block
+// costs the whole plugin. Nothing here allocates, locks or does I/O.
 #pragma once
 
 namespace hys {
@@ -114,23 +116,11 @@ struct Engine
         const float f = clamp((b - kBiasPct[k]) / (kBiasPct[k + 1] - kBiasPct[k]), 0.0f, 1.0f);
         const float (*P)[kJ][kPlane] = ep ? kTEp : kTSp;
         const float (*D)[kJ] = ep ? kD0Ep : kD0Sp;
-        const int off = slope ? 0 : kUMid * kNh, n = nu * kNh, mid = kNh / 2;
-        const float h = 0.5f / kInvStep;
+        const int off = slope ? 0 : kUMid * kNh;
         for (int j = 0; j < kJ; ++j)
         {
-            const float* a = &P[k][j][off];
-            const float* c = &P[k + 1][j][off];
-            float* t = T[j];
-            for (int i = 0; i < n; ++i) t[i] = a[i] + f * (c[i] - a[i]);
             for (int u = 0; u < nu; ++u)
-            {
-                const float* tr = t + u * kNh;
-                float* g = Gi[j] + u * kNh;
-                float acc = 0.0f; g[mid] = 0.0f;
-                for (int i = mid + 1; i < kNh; ++i) { acc += h * (tr[i] + tr[i - 1]); g[i] = acc; }
-                acc = 0.0f;
-                for (int i = mid - 1; i >= 0; --i) { acc -= h * (tr[i] + tr[i + 1]); g[i] = acc; }
-            }
+                blendRow(&P[k][j][off + u * kNh], &P[k + 1][j][off + u * kNh], f, T[j] + u * kNh, Gi[j] + u * kNh);
             // the group's delay and its Lagrange taps for the samples -1 .. 2 around it (value and slope), in
             // double: worked out in float they differed from the prototype's by a rounding, and where A moves by
             // just over the difference quotient's threshold (0.005) that showed at -74 dB on single samples
@@ -146,6 +136,57 @@ struct Engine
             cs[j][2] = (float)(-(3 * tt * tt - 2 * tt - 2) / 2);
             cs[j][3] = (float)((3 * tt * tt - 1) / 6);
             if (!slope) gp[j] = Stereo{ gInt(Gi[j], T[j], ap[j][0], 0.0f), gInt(Gi[j], T[j], ap[j][1], 0.0f) };
+        }
+    }
+    // One row of the working tables: the two planes' rows blended (a + f (c - a)) and the integral of the
+    // blend along A by the trapezoid rule from A = 0 (the middle of the row) out to either end. Operation
+    // for operation what 1.8 first did in two passes, so the values are the same to the bit (checked for
+    // 2,000 bias values, both engines and speeds, on x86-64, 32-bit and 64-bit ARM), in one pass and a third
+    // of the instructions: four blends at a time, and the running sum taken from them while they are still
+    // in registers (the row is read once and written once, never read back).
+    // a + f (c - a) four at a time, rounded as the compiler rounds the scalar expression on this target: where
+    // the hardware has a fused multiply-add clang fuses the scalar one (one rounding), but on 32-bit ARM not
+    // the vector one (NEON's vmul and vadd: two roundings), so it is asked to. Another compiler gets the
+    // scalar expression itself, lane by lane (the same rounding as the scalar code by construction).
+    static inline Quad lerp4(Quad a, Quad c, Quad f)
+    {
+#if defined(__clang__) && (defined(__ARM_FEATURE_FMA) || defined(__FMA__))
+        return __builtin_elementwise_fma(f, c - a, a);
+#elif defined(__clang__)
+        return a + f * (c - a);
+#else
+        Quad r;
+        for (int l = 0; l < 4; ++l) r[l] = a[l] + f[l] * (c[l] - a[l]);
+        return r;
+#endif
+    }
+    static void blendRow(const float* a, const float* c, float f, float* t, float* g)
+    {
+        constexpr int mid = kNh / 2;
+        static_assert(kNh == 2 * mid + 1 && mid % 4 == 0, "the row: a middle and two halves of whole quads");
+        const float h = 0.5f / kInvStep;
+        const Quad fq = { f, f, f, f };
+        const float tm = a[mid] + f * (c[mid] - a[mid]);
+        t[mid] = tm; g[mid] = 0.0f;
+        float prev = tm, acc = 0.0f;
+        for (int i = mid + 1; i < kNh; i += 4)
+        {
+            Quad qa, qc, gq;
+            std::memcpy(&qa, a + i, sizeof(Quad)); std::memcpy(&qc, c + i, sizeof(Quad));
+            const Quad tq = lerp4(qa, qc, fq);
+            std::memcpy(t + i, &tq, sizeof(Quad));
+            for (int l = 0; l < 4; ++l) { acc += h * (tq[l] + prev); gq[l] = acc; prev = tq[l]; }
+            std::memcpy(g + i, &gq, sizeof(Quad));
+        }
+        prev = tm; acc = 0.0f;
+        for (int i = mid - 4; i >= 0; i -= 4)
+        {
+            Quad qa, qc, gq;
+            std::memcpy(&qa, a + i, sizeof(Quad)); std::memcpy(&qc, c + i, sizeof(Quad));
+            const Quad tq = lerp4(qa, qc, fq);
+            std::memcpy(t + i, &tq, sizeof(Quad));
+            for (int l = 3; l >= 0; --l) { acc -= h * (tq[l] + prev); gq[l] = acc; prev = tq[l]; }
+            std::memcpy(g + i, &gq, sizeof(Quad));
         }
     }
 
@@ -272,6 +313,7 @@ struct Stage
     float  late = kLatency;
     int    dInt = 41, lagN = 42;
     bool   dHalf = true;
+    int    due = -1;              // an engine whose tables were made this tick: it runs from the next (hyTick)
 
     void clear()
     {

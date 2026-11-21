@@ -248,9 +248,26 @@ int main(int argc, char** argv)
         Fx fx;
         const mpc::Param& p = fx.p->param(kHysteresis);
         check(kHysteresis == 65 && kNumParams == 66 && fx.e->numParams == 66 && p.id == "hysteresis" && p.name == "Hysteresis"
-              && p.choices.size() == 3 && p.choices[0] == "Off" && p.choices[1] == "Lite" && p.choices[2] == "Full" && p.def == 0.0f
+              && p.choices.size() == 3 && p.choices[0] == "Off" && p.choices[1] == "Lite (CPU+)" && p.choices[2] == "Full (CPU++)" && p.def == 0.0f
               && isSetting(kHysteresis) && groupOf(kHysteresis) == gHyst && fx.e->dispatcher(fx.e, effCanBeAutomated, kHysteresis, 0, nullptr, 0.0f) == 1,
-              "number 65, the last: hysteresis, \"Hysteresis\", Off / Lite / Full, Off by default, a setting, automatable");
+              "number 65, the last: hysteresis, \"Hysteresis\", Off / Lite (CPU+) / Full (CPU++), Off by default, a setting, automatable");
+        // the read-out the host shows (what each choice costs) and the text it can set the switch by
+        {
+            char txt[64] = {};
+            bool shown = true;
+            const char* want[3] = { "Off", "Lite (CPU+)", "Full (CPU++)" };
+            for (int v = 0; v < 3; ++v)
+            {
+                fx.p->set(kHysteresis, (float)v);
+                std::memset(txt, 0, sizeof(txt));
+                fx.e->dispatcher(fx.e, effGetParamDisplay, kHysteresis, 0, txt, 0.0f);
+                shown = shown && std::strcmp(txt, want[v]) == 0;
+            }
+            char full[] = "Full (CPU++)";
+            const bool byText = fx.e->dispatcher(fx.e, effString2Parameter, kHysteresis, 0, full, 0.0f) == 1 && fx.get(kHysteresis) == 2.0f;
+            fx.p->set(kHysteresis, 0.0f);
+            check(shown && byText, "the read-outs say what each costs: Off, Lite (CPU+), Full (CPU++) (and the host can set it by that text)");
+        }
         AEffect* e = VSTPluginMain(hostCb);
         const float fresh = static_cast<mpc::Plugin*>(e->object)->get(kHysteresis);
         e->dispatcher(e, effClose, 0, 0, nullptr, 0.0f);
@@ -504,8 +521,12 @@ int main(int argc, char** argv)
         for (int hq = 0; hq < 2; ++hq)
         {
             Fx fx(hq, 0);
+            bool twoFull = false, bridged = false;   // (CPU) two Full engines at once; Full SP -> EP by way of Lite EP
             const std::vector<float> y = fx.play(3.0, [](long i) { return kRefLevel * std::sin(kTwoPiD * 300.0 * (double)i / 44100.0); },
                                                  [&](long pos) {
+                                                     const hys::Stage& s = *fx.vv()->hy_;
+                                                     twoFull = twoFull || (s.run[0] && s.run[1] && s.eng[0].slope && s.eng[1].slope);
+                                                     bridged = bridged || (pos / 128 > 300 && pos / 128 < 400 && s.run[s.cur] && !s.eng[s.cur].slope && s.eng[s.cur].ep);
                                                      const long t = pos / 128;
                                                      if (t == 100) fx.p->set(kHysteresis, 1.0f);
                                                      if (t == 200) fx.p->set(kHysteresis, 2.0f);
@@ -529,6 +550,8 @@ int main(int argc, char** argv)
             std::printf("   HQ %s: Off, Lite, Full, EP, SP, Lite, Off, Saturator off, Full with the Saturator on: largest step %.3f of a clean tone's (at rest %.3f)\n", hq ? "on " : "off", r, rest);
             std::snprintf(what, sizeof(what), "HQ %s: no click at any switch (no step 10 %% over the largest at rest), and the recorder is in at the end", hq ? "on" : "off");
             check(r < 1.1 * rest && still, what);
+            std::snprintf(what, sizeof(what), "HQ %s: Full SP to EP goes by way of Lite EP, and two Full engines never run at once (the costliest block)", hq ? "on" : "off");
+            check(!twoFull && bridged, what);
         }
     }
 
