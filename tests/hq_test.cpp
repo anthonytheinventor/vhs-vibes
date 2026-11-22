@@ -541,6 +541,27 @@ int main()
         }
     }
 
+    // ---- 9. the clicks' detector path comes to rest when Hiss changes after a click ----
+    {
+        std::printf("\n9. Hi-Fi, HQ: the clicks' detector path rests again after Hiss is turned up and down\n");
+        // Without hiss a click's detector path takes three calls; Hiss turned up after the second left its
+        // count past the value it was compared with, and the path ran for good (nothing heard: CPU only).
+        HiFiPath h;
+        HiFiPath::Settings s; s.headGate = 1.0f; s.clicks = 1.0f; s.cnr0Db = 4.0f; s.hiss = 0.0f;
+        h.prepare(88200.0f, true); h.set(s); h.reset();
+        const uint32_t before = h.clickCount;
+        long pairs = 0;
+        while (h.clickCount == before && pairs < 1000000) { (void)h.process<true>(splat(0.0f)); (void)h.process<true>(splat(0.0f)); ++pairs; }
+        s.hiss = 1.0f; s.clicks = 0.0f; h.set(s);
+        for (int i = 0; i < 88200; ++i) (void)h.process<true>(splat(0.0f));
+        const int withHiss = (int)h.detRun, left = h.clkLeft;
+        s.hiss = 0.0f; h.set(s);
+        for (int i = 0; i < 88200; ++i) (void)h.process<true>(splat(0.0f));
+        std::snprintf(what, sizeof(what), "a click, then Hiss up: the path is at %d a second later (1: the hiss alone), its count at %d; Hiss down again: at %d (0: at rest)",
+                      withHiss, left, (int)h.detRun);
+        check(pairs < 1000000 && withHiss == 1 && left >= 0 && h.detRun == 0, what);
+    }
+
     std::printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
     return fails ? 1 : 0;
 }

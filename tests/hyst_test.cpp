@@ -649,6 +649,47 @@ int main(int argc, char** argv)
         check(worst < 1e-5, "odd at extreme drive: a tone and its negative come out each other's negative within 1e-5 of the peak");
     }
 
+    // ---- a knob that moves in every block, in blocks shorter than the recorder's lag ----
+    {
+        std::printf("\nRec Level moved in every block of 32 samples (shorter than the playback side's lag)\n");
+        // The playback side takes the knobs' new values as late as the recorder is (about 42 samples).
+        // Its countdown used to start again at every change, so in 32-sample blocks it never ended while
+        // the knob moved: the make-up stood still, the sound swelled by the knob's travel and fell back
+        // with a step when the knob stopped. Rec Level 0 to +8 dB in half a second under a quiet 441 Hz tone.
+        bool ok = true;
+        for (int hq = 0; hq <= 1; ++hq)
+        {
+            double late[2] = {0, 0}, step[2] = {0, 0}, base[2] = {0, 0};
+            int k = 0;
+            for (int block : { 32, 128 })
+            {
+                Fx fx(hq, 1);
+                static float L[128], R[128]; float* io[2] = { L, R };
+                std::vector<float> out;
+                const long total = 3 * 44100, s0 = 44100, s1 = 44100 + 22050;
+                for (long pos = 0; pos < total; pos += block)
+                {
+                    if (pos >= s0 && pos < s1) fx.p->set(kLoSat, kRecZero + (100.0f - kRecZero) * (float)(pos - s0) / (float)(s1 - s0));
+                    else if (pos >= s1) fx.p->set(kLoSat, 100.0f);
+                    for (int i = 0; i < block; ++i) L[i] = R[i] = (float)(0.05 * std::sin(kTwoPiD * 441.0 * (double)(pos + i) / 44100.0));
+                    fx.e->processReplacing(fx.e, io, io, block);
+                    out.insert(out.end(), L, L + block);
+                }
+                double s = 0;
+                const long a = (long)(1.4 * 44100), b = (long)(1.5 * 44100);
+                for (long i = a; i < b; ++i) s += (double)out[(size_t)i] * out[(size_t)i];
+                late[k] = 10.0 * std::log10(s / (double)(b - a) + 1e-30);
+                for (long i = s1 - 200; i < s1 + 2000; ++i) step[k] = std::fmax(step[k], std::fabs((double)out[(size_t)i] - out[(size_t)i - 1]));
+                for (long i = (long)(0.8 * 44100); i < s0; ++i) base[k] = std::fmax(base[k], std::fabs((double)out[(size_t)i] - out[(size_t)i - 1]));
+                ++k;
+            }
+            std::printf("   HQ %s: late in the sweep %.2f dBFS in blocks of 32, %.2f in blocks of 128; largest step where the knob stops %.1f times the tone's before (128: %.1f)\n",
+                        hq ? "on" : "off", late[0], late[1], step[0] / base[0], step[1] / base[1]);
+            ok = ok && std::fabs(late[0] - late[1]) < 0.5 && step[0] < 3.0 * base[0];
+        }
+        check(ok, "the level follows the knob in blocks of 32 as in blocks of 128 (within 0.5 dB), and no step where the knob stops");
+    }
+
     std::printf(fails ? "FAIL (%d)\n" : "PASS\n", fails);
     return fails ? 1 : 0;
 }

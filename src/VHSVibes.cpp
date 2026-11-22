@@ -3228,7 +3228,8 @@ struct HiFiPath
         clkNext = half;
         clkNow = splat(0.0f);
         if (extras) detAdd += c; else detAdd = c;
-        if (--clkLeft == (extras ? 1 : 0)) detRun = extras ? 1 : 3;
+        // (<=: Hiss turned up between a click's second call and its third leaves clkLeft at 0 here)
+        if (--clkLeft <= (extras ? 1 : 0)) detRun = extras ? 1 : 3;
     }
 
     // The playback side, from the demodulator's output z. The expander's gain d / Dref, d within
@@ -3629,7 +3630,10 @@ private:
             t.invB0 = 1.0f / t.b0;
         }
         s.nA1 = tapeSat_.a1; s.nB1 = tapeSat_.b1; s.nInvB0 = tapeSat_.invB0; s.nAEdge = tapeSat_.aEdge; s.nMakeup = tapeSat_.makeup;
-        if (lag > 0) s.lag = lag; else hyPlayNow(s);
+        // (a countdown already running is left to run: started again at every call, it never ended while
+        // a knob moved in blocks shorter than the lag, and the playback side stood still until the knob did)
+        if (lag <= 0) hyPlayNow(s);
+        else if (s.lag <= 0) s.lag = lag;
     }
     void hyTapeRefresh(int lag)
     {
