@@ -1,11 +1,11 @@
 // VHS Vibes 1.8: Clipper, how hard the B-Type NR's overshoot suppressor works (see kNrClipLaw and
 // DiodeCurve in the source). Up to 1.7 the suppressor was a hard clamp at a level that clipped loud
 // steady tones; since 1.8 it is a pair of silicon diodes' curve at every setting, and the knob sets
-// its level: 0 % (a new instance, every program but Stereo Rental) acts only on sudden jumps, 50 % is the amount of
+// its level: 0 % (a new instance, every program but Stereo Rental and Wrong Switch) acts only on sudden jumps, 50 % is the amount of
 // clipping of every version before (an older state), 100 % well below. Checked here:
 //   1. the knob in the state: a new instance has 0 %, a state saved by 1.7.0 loads at 50 % and keeps
 //      it, a state saved by the first 1.8 builds (eight bytes of extra state, no Clipper) loads as any
-//      other, at 50 %, every program has 0 % but Stereo Rental (50 %), a state that cannot be loaded leaves it as it was;
+//      other, at 50 %, every program has 0 % but Stereo Rental and Wrong Switch (50 %), a state that cannot be loaded leaves it as it was;
 //   2. the sound: with NR off, HQ off, 1.7.0's to the bit, and the knob changes nothing at all; with
 //      NR in use at 50 % (as an old project) what differs from 1.7.0 and by how much;
 //   3. the encoder's distortion at 0 % on steady tones: at most 0.15 % at 1 kHz at NR reference
@@ -361,7 +361,7 @@ int main(int argc, char** argv)
             viaProg.e->dispatcher(viaProg.e, effSetProgram, 0, prog, nullptr, 0.0f);
             char nm[64] = {0}; viaProg.e->dispatcher(viaProg.e, effGetProgramNameIndexed, prog, 0, nm, 0.0f);
             const std::string n = nm;
-            progs = progs && viaProg.get(kClipper) == (n == "Stereo Rental" ? kClipperOld : n == "NR - Fuzz In The Gaps" ? 80.0f : n == "NR - Blown Encoder" ? 100.0f : 0.0f);
+            progs = progs && viaProg.get(kClipper) == (n == "Stereo Rental" || n == "Wrong Switch" ? kClipperOld : n == "NR - Fuzz In The Gaps" ? 80.0f : n == "NR - Blown Encoder" ? 100.0f : 0.0f);
         }
         AEffect* mpc = VSTPluginMain(hostCb);   // the MPC's load: sample rate, open, program 0
         mpc->dispatcher(mpc, effSetSampleRate, 0, 0, nullptr, 44100.0f);
@@ -369,7 +369,7 @@ int main(int argc, char** argv)
         mpc->dispatcher(mpc, effSetProgram, 0, 0, nullptr, 0.0f);
         const float fresh0 = static_cast<mpc::Plugin*>(mpc->object)->get(kClipper);
         mpc->dispatcher(mpc, effClose, 0, 0, nullptr, 0.0f);
-        check(progs && fresh0 == 0.0f, "every program puts Clipper at 0 % but Stereo Rental (50 %, its 1.7.0 sound) and the two NR programs of 1.8 (80 and 100 %), and a new instance the MPC puts on program 0 stays at 0 %");
+        check(progs && fresh0 == 0.0f, "every program puts Clipper at 0 % but Stereo Rental and Wrong Switch (50 %, their 1.7.0 sound) and the two NR programs of 1.8 (80 and 100 %), and a new instance the MPC puts on program 0 stays at 0 %");
         // a state that cannot be loaded leaves it as it was
         Fx keep(0); keep.set(kClipper, 61.0f);
         std::vector<uint8_t> cut = sNew; cut.resize(cut.size() / 2);

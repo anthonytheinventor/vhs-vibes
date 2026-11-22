@@ -124,7 +124,7 @@
 // the diodes the chips use, in place of a hard clamp, and a knob, Clipper (appended last): 0 % in a
 // new instance acts only on sudden jumps, as the chips do; 50 % is the amount of clipping of every
 // version before, and an older state puts the knob there; every program has it at 0 % but Stereo
-// Rental (50 %, its 1.7.0 sound; Wrong Switch, NR Rec, comes out a little cleaner); 100 % is plainly
+// Rental and Wrong Switch (50 %, their 1.7.0 sound) and the two NR programs of 1.8; 100 % is plainly
 // dirty (see nrClipLevel).
 // The one change to the sound of an older project: with NR in use the diodes' round
 // curve is not the clamp's (with HQ off too): at 50 %, a loud tone with bursts through NR Rec, Play
@@ -289,7 +289,7 @@ enum ParamIndex
                    //        and in every program.
     kClipper,      // %      (1.8, named "NR Clipper") how hard B-Type NR's overshoot suppressor works (see nrClipLevel): 0 % (a new
                    //        instance) acts only on sudden jumps, as the chips do; 50 % is the level of every
-                   //        version before 1.8 (where an older state loads); every program has 0 % but Stereo Rental (50 %);
+                   //        version before 1.8 (where an older state loads); every program has 0 % but Stereo Rental and Wrong Switch (50 %);
                    //        100 % well below it. A read-out in % alone. Nothing while B-Type NR is Off.
     kNumParams
 };
@@ -2840,6 +2840,16 @@ struct HiFiPath
     Stereo noiseB = {}, addP[3] = {}, detAdd = {};
     HalfBand noiseUp;
     HfShelf fmDeDet;
+    // With HQ the clicks are drawn once a pair of samples, and the expander's detectors hear each
+    // click and Head Buzz spike as two samples of half its size (see clickDet: clkNow, the clicks
+    // in this sample; clkNext, the second half for the next one; clkLeft: its calls to come; detRun:
+    // 0 fmDeDet at rest, 1 it runs for the hiss, 2 clickDet runs too, 3 it runs for a click's tail
+    // without hiss, for detTail control ticks more: tailTicks after a click, at least 6.5 times the
+    // de-emphasis' time constant, where what is left of the tail is under 0.01 dB of what the
+    // detectors hear of the click)
+    int   clkLeft = 0, detTail = 0, tailTicks = 0;
+    uint8_t detRun = 0;
+    Stereo clkNow = {}, clkNext = {};
 
     // doubled: the path runs at twice the session's rate (HQ)
     void prepare(float rate, bool doubled = false)
@@ -2878,6 +2888,7 @@ struct HiFiPath
         pw *= (kHfNoiseHz - 20.0) / steps / 3.0 * (2.0 / nsr) / 3.0;  // Simpson; white of [-1, 1) has the power 1/3 over sr / 2
         noiseUnit = (float)(kRefLevel * 0.70710678 * std::pow(10.0, -kHfSnrDb / 20.0) / std::sqrt(pw));
         clickUnit = kRefLevel * sr / kHfRefDevHz;                       // one cycle in one sample
+        tailTicks = (int)(kHfFmZero * 6.5f * sr / (float)kCtrl) + 2;   // (the first tick can come at once)
         residK = -kHfResidual * 0.5f * sq(kHfHoldSec * sr);             // x' T^2 / 2 as one sample, from a sample's step
         hsInc = kHfFieldHz / sr;
         smooth = 1.0f - std::exp(-(float)kCtrl / (0.007f * sr));
@@ -2930,7 +2941,12 @@ struct HiFiPath
         st[0].c = st[1].c = 1.0e9f;                                    // work the channel out again
         st[0].rateOk = st[1].rateOk = false;
         extras = s.hiss > 0.0f;
-        if (!extras) { fmDeDet.reset(); detAdd = addP[0] = addP[1] = addP[2] = splat(0.0f); }   // (they run only while there is hiss)
+        if (!extras)                                                   // (they run only while there is hiss,
+        {                                                              // or the clicks' tail: see clickDet)
+            addP[0] = addP[1] = addP[2] = splat(0.0f);
+            if (detRun < 2) { fmDeDet.reset(); detAdd = splat(0.0f); detRun = 0; }
+        }
+        else if (detRun != 2) detRun = 1;
     }
 
     void reset()
@@ -2941,6 +2957,7 @@ struct HiFiPath
         rmsDet.d = splat(sq(pRef / rmsCal));
         noiseLp.reset(); tape.reset(); noiseUp.reset(); fmDeDet.reset();
         noiseOdd = false; noiseB = detAdd = addP[0] = addP[1] = addP[2] = splat(0.0f);
+        clkLeft = detTail = 0; clkNow = clkNext = splat(0.0f); detRun = extras ? 1 : 0;
         rngLR.reseed(0x48f1a1u, 0x2c0ffeeu); rngC.reseed(0x1c11c4u);
         rngD.reseed(0xe7e47u); rngT.reseed(0x7a3c51u); rngO.reseed(0xd09b17u); rngW.reseed(0x3b1d5u);
         recS = recT; calS = calT;
@@ -2994,7 +3011,13 @@ struct HiFiPath
         // never stuck on a NaN; no denormals in long silence
         const Stereo dd = recDet.d + playDet.d + rmsDet.d;
         if (!(maxf(dd[0], dd[1]) < 1.0e6f && minf(dd[0], dd[1]) >= 0.0f && std::fabs(held[0] + held[1]) < 1.0e6f)) reset();
-        nrEmph.flush(); wRec.flush(); fmEmph.flush(); fmDe.flush(); wPlay.flush(); nrDe.flush(); if (up2) fmDeDet.flush();
+        nrEmph.flush(); wRec.flush(); fmEmph.flush(); fmDe.flush(); wPlay.flush(); nrDe.flush();
+        if (up2 && detRun != 0)                                        // (at rest it is all 0)
+        {
+            fmDeDet.flush();
+            // HQ: the end of a click's tail without hiss (see clickDet)
+            if (detRun == 3 && --detTail == 0) { fmDeDet.reset(); detAdd = splat(0.0f); detRun = 0; }
+        }
         { const Stereo t = splat(1.0e-20f), z = splat(0.0f);
           recDet.d = recDet.d < t ? z : recDet.d; playDet.d = playDet.d < t ? z : playDet.d; rmsDet.d = rmsDet.d < t * t ? z : rmsDet.d;
           held = vabs(held) < t ? z : held; }
@@ -3086,8 +3109,14 @@ struct HiFiPath
         if (dip) --dropLeft;
         const Carrier& k = st[dip ? 1 : 0];
         hsPh += hsInc;
-        const bool sw = hsPh >= 1.0f;
-        if (sw) { hsPh -= 1.0f; headSwitch(); }
+        bool sw = hsPh >= 1.0f;
+        if (sw)
+        {
+            // (HQ: with Head Buzz the switch waits for the first sample of a pair, see clickDet;
+            // n counts the path's samples from a reset, so an odd n is the first of a pair)
+            if (up && !(n & 1) && s.headBuzz > 0.0f && s.headGate > 0.0f) sw = false;
+            else { hsPh -= 1.0f; headSwitch(); }
+        }
         // the hi-fi detector: 0.3 ms under its threshold and the deck goes to the linear track
         if (k.low)
         {
@@ -3110,7 +3139,7 @@ struct HiFiPath
         if (holding)
         {
             relLeft = k.doc ? nRelease : relLeft - 1;
-            if constexpr (up) detAdd = addP[0] = addP[1] = addP[2] = splat(0.0f);   // (HQ: they start again after the hold, see below)
+            if constexpr (up) detAdd = addP[0] = addP[1] = addP[2] = clkNext = splat(0.0f);   // (HQ: they start again after the hold, see below)
         }
         else
         {
@@ -3129,13 +3158,15 @@ struct HiFiPath
                 noiseOdd = up && !noiseOdd;
                 t += dn * k.noise;
             }
-            if (k.clickThr != 0)
+            if (k.clickThr != 0 && (!up || (n & 1)))   // (HQ: once a pair, see clickDet)
             {
                 // a 2 pi phase slip: one cycle's area in one sample, either sign; each carrier its own
+                // (HQ: twice the chance of the path's rate, drawn once a pair)
+                const uint32_t thr = up ? (k.clickThr >= 0x80000000u ? 0xffffffffu : k.clickThr << 1) : k.clickThr;
                 const uint32_t uL = rngC.next(), uR = rngC.next();
                 const float a = clickUnit * s.clicks;
-                if (uL < k.clickThr) { z[0] += (uL & 1u) ? a : -a; ++clickCount; }
-                if (uR < k.clickThr) { z[1] += (uR & 1u) ? a : -a; ++clickCount; }
+                if (uL < thr) { const float v = (uL & 1u) ? a : -a; z[0] += v; ++clickCount; if constexpr (up) { clkNow[0] += v; clkHit(); } }
+                if (uR < thr) { const float v = (uR & 1u) ? a : -a; z[1] += v; ++clickCount; if constexpr (up) { clkNow[1] += v; clkHit(); } }
             }
             if (sw && s.headGate > 0.0f)
             {
@@ -3147,22 +3178,20 @@ struct HiFiPath
                 {
                     const float a = 0.5f * clickUnit * sq(s.headBuzz);
                     const float nl = rngC.nextBipolar(), nr = rngC.nextBipolar();   // (left first, whatever the compiler)
-                    z += stereo(nl, nr) * a;
+                    if constexpr (up) { const Stereo v = stereo(nl, nr) * a; z += v; clkNow += v; clkHit(); }
+                    else z += stereo(nl, nr) * a;   // (one expression, as it was: where the compiler fuses it)
                 }
             }
             if constexpr (up)
             {
-                // HQ: the saturator's place takes nothing off the top of the sound that goes through it,
+                // The saturator's place takes nothing off the top of the sound that goes through it,
                 // but kHqEq lifts back what the preamp's place took (see shapeSat). What the channel
                 // noise comes in after the preamp, so it is given that loss here (kHqD; it comes 1.5
                 // samples later, which nobody hears), and the expander's detector hears it without
                 // (detAdd: the difference, see playback), as it hears it without HQ. Given only the
                 // saturator place's mean of the first 1.8 builds, the hiss had its top lifted (1.6 dB
-                // at 16.5 kHz). The clicks and the head switch go in as they are: given kHqD too (and
-                // the detector the difference) they came out louder, not quieter (Head Buzz 100 with
-                // Hiss 35: +1.3 dB against HQ off, as they are +0.5). They are still 0.5 to 1 dB louder
-                // with HQ (the first 1.8 builds: 0.6 to 1.1), probably not for the top's lift: each is one
-                // sample at the rate the path runs at, and the expander's detector hears it so.
+                // at 16.5 kHz). The clicks and the head switch go in as they are (kHqEq's lift is
+                // 0.3 dB at 16 kHz, where the FM de-emphasis has taken them 8 dB down; see clickDet).
                 if (extras)
                 {
                     const Stereo d = hqD(u, addP[0], addP[1], addP[2]);
@@ -3177,6 +3206,31 @@ struct HiFiPath
         return z;
     }
 
+    // HQ: a click or Head Buzz's spike in this sample (clkNow, see clickDet)
+    void clkHit() { clkLeft = 3; detRun = 2; detTail = tailTicks; }
+    // HQ, from playback while detRun is 2: the clicks and Head Buzz's spike for the expander's
+    // detectors. Each is one sample in the sound, of the area it has without HQ, so the sound is HQ
+    // off's to 22 kHz. The detectors hear it as two samples of half its size (detAdd: the
+    // difference; clkNext: the second half), one sample at the session's rate, as they hear it
+    // without HQ (computed: within 0.05 dB for both). Up to 1.8.0 they heard the one sample, which
+    // after the weighting (W) moves the peak detector 0.4 dB more than without HQ and gives the RMS
+    // one (Breathing) 3 dB more energy; where the clicks are most of what they hear (in a pause)
+    // the expander opened further on them, and Crackle and Head Buzz came out 0.5 to 1 dB louder
+    // with HQ (Crackle 100 +1.0 dB, Head Buzz 100 +0.6 dB; with Breathing 50 up to +2.9 dB). The clicks
+    // are drawn once a pair, at the session's rate (see channel), and Head Buzz's switch is at the
+    // first sample of a pair, so they come as often as without HQ, and in the same order (until a
+    // head switch falls a session sample apart from HQ off's, as the phase sums round differently).
+    // It runs at the click's sample and the next (and without hiss once more, to clear detAdd);
+    // without hiss the detectors' de-emphasis (fmDeDet) runs on for tailTicks, then rests (see tick).
+    __attribute__((noinline)) void clickDet()
+    {
+        const Stereo half = 0.5f * clkNow, c = clkNext - half;
+        clkNext = half;
+        clkNow = splat(0.0f);
+        if (extras) detAdd += c; else detAdd = c;
+        if (--clkLeft == (extras ? 1 : 0)) detRun = extras ? 1 : 3;
+    }
+
     // The playback side, from the demodulator's output z. The expander's gain d / Dref, d within
     // +-30 dB, from its detector before this sample (as the compressor's).
     template <bool up = false> Stereo playback(Stereo z)
@@ -3187,7 +3241,12 @@ struct HiFiPath
         Stereo e = vmin(vmax(dp * pRefInv, splat(1.0f / kHfGainRange)), splat(kHfGainRange));
         if (slopeOn) { slS += slInc; e *= slS; }
         Stereo wi = a;
-        if constexpr (up) if (extras) wi = a + fmDeDet.inv(detAdd) * cal;   // (see channel)
+        if constexpr (up)
+            if (detRun)   // (see channel and clickDet)
+            {
+                if (__builtin_expect(detRun == 2, 0)) clickDet();
+                wi = a + fmDeDet.inv(detAdd) * cal;
+            }
         const Stereo w = wPlay.fwd(wi);
         playDet.step(vabs(w));
         if (rmsOn) rmsDet.step(w * w);
@@ -3357,7 +3416,7 @@ public:
         // engine Lite was, and a state with Lite or Full loads as On (see kHysteresis).
         addParam(choiceParam("hysteresis", "Hysteresis", {"Off", "On (CPU+)"}, 0));
         // 1.8: B-Type NR's overshoot suppressor (see nrClipLevel): 0 % in a new instance, 50 % (the level
-        // before it existed) in an older state; 0 % in every program but Stereo Rental
+        // before it existed) in an older state; 0 % in every program but Stereo Rental and Wrong Switch
         // (the name "NR Clipper": what the host lists, assigns to a Q-Link and automates; the skin's caption
         // stays CLIPPER under its NR header. A state keeps the id, so a state saved as "Clipper" loads the same.)
         addParam(floatParam ("clipper",    "NR Clipper",   0.0f, 100.0f, 0.0f, "%", 0));
@@ -5667,8 +5726,8 @@ private:
         std::vector<float> defaults;
         for (int i = 0; i < kNumParams; ++i) defaults.push_back(param(i).def);
         // (1.8) Every program has Clipper at 0 %, as a new instance (the MPC chooses program 0 itself
-        // when it loads the plugin), but Stereo Rental (NR On), which keeps 50 %, the level of every
-        // version before, and so its 1.7.0 sound. Wrong Switch (NR Rec) comes out a little cleaner.
+        // when it loads the plugin), but Stereo Rental (NR On) and Wrong Switch (NR Rec), the two programs with NR from
+        // before 1.8, which keep 50 %, the level of every version before, and so their 1.7.0 sound.
         auto program = [&](const char* name, std::initializer_list<std::pair<int, float>> changes)
         {
             std::vector<float> v = defaults;
@@ -5840,14 +5899,15 @@ private:
             {kWarp, 15}, {kFlutter, 15}, {kWow, 10}, {kFlutter2, 10}, {kLoCut, 60}, {kHiCut2, 9000},
             {kHum, 10}, {kHiss, 60}, {kCrackle, 5}, {kDropouts, 30},
             {kDrift, 20}, {kNr, 3},
-            {kClipper, kClipperOld} });   // (1.8) the one program at Clipper 50 %: it keeps its 1.7.0 sound (NR On)
+            {kClipper, kClipperOld} });   // (1.8) Clipper 50 %: it keeps its 1.7.0 sound (NR On)
         // The same kind of tape on a deck without the switch: recorded with noise reduction,
         // played without. Bright, airy, a little squashed, all of the hiss.
         program("Wrong Switch", {
             {kDrive, 15}, {kComp, 20}, {kHiCut, 11000},
             {kWarp, 10}, {kFlutter, 10}, {kWow, 5}, {kFlutter2, 5}, {kLoCut, 50}, {kHiCut2, 12000},
             {kHum, 5}, {kHiss, 50}, {kCrackle, 5},
-            {kNr, 1} });
+            {kNr, 1},
+            {kClipper, kClipperOld} });   // (1.8) Clipper 50 %: it keeps its 1.7.0 sound (NR Rec)
         // The tape model at its two speeds. SP: a rental played a little hot. The loud parts
         // lose their top and soften; the quiet parts stay clear.
         program("SP Tape", {

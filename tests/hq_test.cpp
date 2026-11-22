@@ -5,8 +5,9 @@
 // linear range, the latency the plugin wants to report and the dry copy follow the extra delay
 // in every combination, and switching while a tone plays does not click. And (1.8) what the
 // clippers inside HQ, the VHS tape curve, Slew, the NR decoder's clipper, the Phone and HQ's
-// half-band filters still let fold back, that Hi-Fi's hiss is as loud with HQ on as off, and that
-// the tones the clippers make keep their level with HQ on.
+// half-band filters still let fold back, that Hi-Fi's hiss is as loud with HQ on as off, that
+// the tones the clippers make keep their level with HQ on, and that Hi-Fi's clicks and Head Buzz
+// are as loud with HQ on as off.
 // Ends with PASS or FAIL.
 #include <atomic>
 #include <chrono>
@@ -459,6 +460,84 @@ int main()
             }
             std::snprintf(what, sizeof(what), "%s: %zu harmonics, the furthest %+.2f dB (at %.0f Hz), within 0.5", c.name, c.ref.size(), worst, worstK * 313.0);
             check(std::fabs(worst) <= 0.5, what);
+        }
+    }
+
+    std::printf("8. Hi-Fi's clicks and Head Buzz (1.8): as loud with HQ on as with HQ off, input silent, 20 Hz to 20 kHz\n");
+    {
+        // With HQ the path runs at twice the rate; up to 1.8.0 each click and Head Buzz spike was one
+        // sample there and the expander's detectors heard it so: in silence, where they are most of
+        // what the detectors hear, the expander opened further, and Crackle 100 came out 1.0 dB
+        // louder, Head Buzz 100 0.6 dB, and with Breathing 50 (the RMS detector) 2.9 dB. Also checked:
+        // the clicks come as often, and the peaks (each event's, averaged) are as high within 0.5 dB
+        // for the clicks, 0.75 dB for Head Buzz's spike (up to 1.8.0: 1.2 and 1.1 dB higher). With HQ
+        // they are 0.2 dB higher where the expander does not move (kHqEq's lift and the half-band
+        // filters), and the spike's up to 0.6 dB in a pause, where half of the expander's rise on each
+        // one comes half a session sample sooner than without HQ. The carrier's own wander is held
+        // still, as in 6. (With Crackle and Head Buzz both up the clicks' random course parts from
+        // HQ off's after a while, as the head switches fall a sample apart now and then: the two
+        // differ as two random courses do, about 0.25 dB either way over 30 s, so it is not here.)
+        auto power = [](const std::vector<float>& v, float sr)
+        {
+            const size_t N = 8192; std::vector<std::complex<double>> a(N); double ws = 0, acc = 0; long segs = 0;
+            for (size_t i = 0; i < N; ++i) { const double w = 0.5 - 0.5 * std::cos(kTwoPiD * (double)i / (double)N); ws += w * w; }
+            for (size_t s = 0; s + N <= v.size(); s += N / 2, ++segs)
+            {
+                for (size_t i = 0; i < N; ++i) a[i] = (double)v[s + i] * (0.5 - 0.5 * std::cos(kTwoPiD * (double)i / (double)N));
+                fft(a);
+                for (size_t k = 1; k < N / 2; ++k) { const double f = (double)k * sr / (double)N; if (f >= 20.0 && f <= 20000.0) acc += 2.0 * std::norm(a[k]) / (ws * (double)N); }
+            }
+            return 10.0 * std::log10(acc / (double)segs + 1e-30);
+        };
+        // the mean of each event's peak (dB): from the first sample within 20 dB of the loudest, 64 samples
+        auto eventPeak = [](const std::vector<float>& v)
+        {
+            double top = 0, sum = 0; long n = 0;
+            for (float x : v) top = std::fmax(top, std::fabs(x));
+            for (size_t i = 0; i < v.size();)
+            {
+                if (std::fabs(v[i]) <= 0.1 * top) { ++i; continue; }
+                double p = 0; const size_t e = std::min(v.size(), i + 64);
+                for (; i < e; ++i) p = std::fmax(p, std::fabs(v[i]));
+                sum += dB(p); ++n;
+            }
+            return n ? sum / n : -999.0;
+        };
+        struct C { const char* name; Ch ch; bool clicks; };
+        const C cs[] = { { "Crackle 100 %", { {kCrackle, 100} }, true },
+                         { "Crackle 75 %, Noise 100 %", { {kCrackle, 75}, {kNoise, 100} }, true },
+                         { "Head Buzz 100 %", { {kHeadBuzz, 100} }, false },
+                         { "Head Buzz 100 %, Breathing 50 %", { {kHeadBuzz, 100}, {kDeckOn, 1}, {kBreathing, 50} }, false },
+                         { "Crackle 100 %, Hiss 35 %", { {kCrackle, 100}, {kHiss, 35} }, true } };
+        for (const C& c : cs)
+        {
+            double lvl[2], pk[2], rate[2];
+            for (int hq = 0; hq < 2; ++hq)
+            {
+                Ch ch = { {kNoiseOn, 1}, {kNoise, 50}, {kSatOn, 1}, {kSatType, 2}, {kMicOn, 0}, {kHiss, 0}, {kCrackle, 0}, {kHeadBuzz, 0},
+                          {kHum, 0}, {kBuzz, 0}, {kWhistle, 0}, {kDrift, 0}, {kTracking, 0}, {kBreathing, 0}, {kDropouts, 0}, {kAgc, 0} };
+                ch.insert(ch.end(), c.ch.begin(), c.ch.end());
+                Fx fx(44100.0f, hq, ch);
+                auto silent = [](long) { return 0.0; };
+                fx.play(0.1, silent);
+                fx.vv()->hifiPath_.s.wanderDb = 0.0f;
+                fx.play(1.0, silent);
+                const uint32_t c0 = fx.vv()->hifiPath_.clickCount;
+                std::vector<float> out;
+                fx.play(20.0, silent, &out);
+                rate[hq] = (double)(fx.vv()->hifiPath_.clickCount - c0) / 40.0;   // a second, each channel
+                lvl[hq] = power(out, 44100.0f);
+                pk[hq] = eventPeak(out);
+            }
+            const double pkTol = c.clicks ? 0.5 : 0.75;
+            std::snprintf(what, sizeof(what), "%s: HQ off %.2f dBFS, HQ on %.2f dBFS (%+.2f dB, within 0.2); event peaks %+.2f dB (within %.2f)",
+                          c.name, lvl[0], lvl[1], lvl[1] - lvl[0], pk[1] - pk[0], pkTol);
+            check(std::fabs(lvl[1] - lvl[0]) <= 0.2 && std::fabs(pk[1] - pk[0]) <= pkTol, what);
+            if (c.clicks)
+            {
+                std::snprintf(what, sizeof(what), "%s: %.1f clicks a second with HQ off, %.1f with HQ on (within 1 %%)", c.name, rate[0], rate[1]);
+                check(std::fabs(rate[1] / rate[0] - 1.0) <= 0.01, what);
+            }
         }
     }
 

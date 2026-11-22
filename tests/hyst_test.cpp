@@ -298,9 +298,9 @@ int main(int argc, char** argv)
                 fx.e->dispatcher(fx.e, effSetProgram, 0, n, nullptr, 0.0f);
                 fx.e->dispatcher(fx.e, effSetProgram, 0, k, nullptr, 0.0f);
                 fx.e->dispatcher(fx.e, effGetProgramNameIndexed, k, 0, nm, 0.0f);
-                back = back && fx.get(kHysteresis) == 0.0f && fx.get(kClipper) == (std::strcmp(nm, "Stereo Rental") == 0 ? kClipperOld : 0.0f);
+                back = back && fx.get(kHysteresis) == 0.0f && fx.get(kClipper) == (std::strcmp(nm, "Stereo Rental") == 0 || std::strcmp(nm, "Wrong Switch") == 0 ? kClipperOld : 0.0f);
             }
-        check(back, "any of the 46 older programs chosen after any of the new ones puts Hysteresis Off and NR Clipper at 0 % (Stereo Rental 50 %)");
+        check(back, "any of the 46 older programs chosen after any of the new ones puts Hysteresis Off and NR Clipper at 0 % (Stereo Rental and Wrong Switch 50 %)");
         Fx a(0, 1);
         const std::vector<uint8_t> st = a.chunk();
         Fx b;
