@@ -13,7 +13,7 @@ need them.
 
 | | `audioMasterAutomate(index, value)` | `audioMasterUpdateDisplay` |
 |---|---|---|
-| What the MPC does (measured) | Returns in about 2 µs. About 30 ms later the screen thread asks for the names of the reported parameters. Nothing else. | Rebuilds the plugin's screen: asks for the current program, all program names (46 here), and the names, values and display texts of the parameters. About 12 ms of calls each time. |
+| What the MPC does (measured) | Returns in about 2 µs. About 30 ms later the screen thread asks for the names of the reported parameters. Nothing else. | Rebuilds the plugin's screen: asks for the current program, all program names (46 in the traced build), and the names, values and display texts of the parameters. About 12 ms of calls each time. |
 | Writes the value back with `setParameter` | No, not on this MPC. Other notes report that it does on other models, so a plugin should tolerate it. | No |
 | Updates film strips and meters (seen) | Yes | Yes |
 | Updates a read-out whose text changed while its value did not (seen) | No | Yes |

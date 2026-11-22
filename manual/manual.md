@@ -68,6 +68,7 @@ epigraph: Press it. What comes back is almost your song.
 - A hot pink cassette on the MPC's screen, with reels that turn when sound passes.
 - Every noise is synthesized: no samples, nothing to load.
 - Six parts are built from published figures: the tape of the VHS linear track, its head out of line (Azimuth), the FM sound of the Hi-Fi track, the noise reduction circuit of early stereo decks, the four modeled microphones of the INPUT page, and the record level control of an early VHS deck. The chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ opens them up.
+- With **Hysteresis** on, the VHS tape records through a Preisach model of how tape records, and the Bias knob becomes a real bias control. The same chapter has it too.
 - With **Visual Vibes** on, the picture on the screen shows what the sound is doing.
 - This manual describes version {{version}}.
 
@@ -142,7 +143,7 @@ The name printed above a control is sometimes shorter than the name the MPC uses
 
 The screens shown here have every control at its default.
 
-**Type** on the TAPE page also recolors controls. With Type on VHS, the knobs that work for the tape model turn mint green. With Type on Hi-Fi, the ten that work for the Hi-Fi track turn sunset orange, on whichever page they are. The lit Type button wears the same shade. The **Azimuth** knob on the DECK page is there only while Type is VHS.
+**Type** on the TAPE page also recolors controls. With Type on VHS, the knobs that work for the tape model turn mint green. With Type on Hi-Fi, the ten that work for the Hi-Fi track turn sunset orange, on whichever page they are. The lit Type button wears the same shade. The **Azimuth** knob and the **Hysteresis** switch on the DECK page are there only while Type is VHS.
 
 ## The Q-Links
 
@@ -166,7 +167,7 @@ Two extra read-only parameters, **Reel** and **Level**, drive the movement; the 
 
 ## The picture shows the sound
 
-With **Visual Vibes** on (DECK page, SCREEN block), the picture on the page sticker plays like a worn video tape of what the plugin is doing:
+With **Visual Vibes** on (DECK page, GLOBAL block), the picture on the page sticker plays like a worn video tape of what the plugin is doing:
 
 | On the picture | What moves it |
 |---|---|
@@ -230,6 +231,7 @@ Output | TAPE | level |
 - **NR is in two halves.** The record side sits between Tilt and Drive, the playback side just before Mono. Everything between them is the tape, and whatever the tape does there makes the playback side mistrack.
 - **Breathing is not a stage.** It makes the hiss rise and fall with the signal and holds the head buzz down in the pauses.
 - **Hi-Fi gathers the deck's faults into one place.** With Type on Hi-Fi and VIBE's power on, the Hi-Fi track in the Vibe box makes the hiss, crackle, head buzz, breathing, tracking, drift and dropouts itself, inside the track, and their own boxes further down rest. B-Type NR rests too. Everything else stays where it is.
+- **Hysteresis sits inside the VHS saturator** too, in place of its tape curve: after the record level and the pre-emphasis, before the de-emphasis.
 - **Azimuth sits inside the VHS saturator**, between the tape and the playback head, so the B-Type NR playback side hears what the tilted head lost.
 - **Mix blends the untouched input back in** at the end. The dry signal is delayed by the resting length of the two wobble delays so that it lines up with the tape path. At 100 % the dry path is not computed at all.
 
@@ -254,14 +256,14 @@ The **Type** switch in the VIBE block changes what the VIBE stage is, and with i
 
 | Knob | Type = Simple | Type = VHS | Type = Hi-Fi |
 |---|---|---|---|
-| ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. | **Cal.** Whether playback is set to the same level as the record side: right where the knob rests, -3 dB at the bottom, +3 dB at the top. The error comes out doubled and grows with the level, so loud and quiet parts move apart or together and the sound pumps. |
+| ^SPLIT^ | **Split.** The frequency at which the signal is divided into a low band and a high band. | **Bias.** How well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner. With Hysteresis on, from a quarter of the right bias to one and a half times it. | **Cal.** Whether playback is set to the same level as the record side: right where the knob rests, -3 dB at the bottom, +3 dB at the top. The error comes out doubled and grows with the level, so loud and quiet parts move apart or together and the sound pumps. |
 | ^LO SAT^ | **Lo Sat.** How hard the low band is clipped. Reads as the gain into its clipper, 0.0 to +20.0 dB. | **Rec Level.** The record level, from 10 dB under to 8 dB over the deck's reference level, which is at 56 %: there a tone at -8 dBFS has 3 % distortion, as on a real deck. Quiet sound comes back at the level it went in whatever the setting; what changes is how much of the loud sound the tape bends. | **Rec Level.** From -10 dB to +28 dB, 0 dB at 56 %. How hard the sound meets the Hi-Fi track's hard ceiling. Nothing bends below it; above it the peaks are cut flat. |
 | ^HI SAT^ | **Hi Sat.** How hard the high band is clipped. Reads as the gain into its clipper, 0.0 to +20.0 dB. | **Tape Speed.** The tape speed, from SP (33.35 mm/s) through LP (16.67 mm/s, at 63 % of the knob) to EP (11.12 mm/s). The slower, the sooner the highs give way and the lower the top of the band. | **Carrier.** How strong the FM signal off the tape is, 0 to -20 dB. Every dB down is a dB more hiss; from about -14 dB the deck falls to the linear track now and then, and from about -19 dB it hardly comes back. |
 | ^LOWS^ | Level of the low band into its clipper. | Trims the result below 1 kHz. | Trims the result below 1 kHz. |
 | ^HIGHS^ | Level of the high band into its clipper. | Trims the result above 1 kHz. | Trims the result above 1 kHz. |
 
 - **Simple** is the two-band saturator, a crossover with a soft clipper on each side. Up to version 1.6 this choice was called 2-Band.
-- **VHS** is a model of what the tape of a VHS deck's linear track does. Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds. The programs whose names begin with VHS are older programs with this saturator in place of the Simple one.
+- **VHS** is a model of what the tape of a VHS deck's linear track does. Quiet sound passes unchanged; loud sound loses its highs first and goes soft, the way slow tape does. The programs SP Tape and EP Tape show it at its two speeds. The programs whose names begin with VHS use it too: five are older programs with this saturator in place of the Simple one, two add Azimuth and six add Hysteresis.
 - **Hi-Fi** is the FM sound the rotating heads write under the picture. It does not saturate at all: it stays clean up to a hard ceiling. What gives it away is everything around the sound, below.
 
 ### What Hi-Fi takes over
@@ -369,7 +371,7 @@ On Modeled it sets how loud the sound is at the microphone, as if the source wer
 The Camcorder and the Boombox then have a record level control, so what comes out of them is the level they record at. On those two, Mic Gain changes how hard they work more than how loud they are.
 
 ::: page DECK
-toc: The machine's faults, B-Type NR and HQ
+toc: The machine's faults, Hysteresis, B-Type NR and HQ
 epigraph: The tape got older. So did the machine.
 :::
 
@@ -388,11 +390,44 @@ NR is B-type noise reduction. On the record side it lifts quiet highs by up to 1
 | ^PLAY^ | recorded without, played with it | Dull, the highs ducking in quiet passages. |
 | ^ON^ | recorded with it, played with it | On a clean tape it only removes hiss. The more the tape has lost in between (Hi Cut, Slew, Dropouts, Drift), the more the playback side mistracks, and the duller and more unsteady the top end gets. |
 
-The programs Wrong Switch (REC) and Stereo Rental (ON) are built on it. Switching NR fades it in or out over 8 ms. With Type on Hi-Fi and VIBE's power on, NR is ignored: it belongs to the linear track.
+The programs Wrong Switch (REC), Stereo Rental (ON), NR - Fuzz In The Gaps and NR - Blown Encoder (both REC) are built on it. Switching NR fades it in or out over 8 ms. With Type on Hi-Fi and VIBE's power on, NR is ignored: it belongs to the linear track.
 
 ::: note Where NR comes from
 It is a part-by-part model of the circuit early stereo VHS decks had on their linear tracks. The circuit, the datasheet figures it meets and why it mistracks are in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 :::
+
+## NR Clipper: grit in the side chain
+
+^CLIPPER^ sits beside the NR switch, in the NR block. It is a clipper on the NR side chain: the control path that decides how much the NR lifts and cuts. The audio itself does not pass through it. The clipper is a pair of silicon diodes, on the record side and on the playback side alike.
+
+| Setting | What it does |
+|---|---|
+| 0 % | Clean. The diodes only catch sudden jumps, as the chips do; a steady tone passes untouched. A new instance starts here. |
+| 50 % | The amount of every version before 1.8. A project saved with an older version loads here. |
+| Above 50 % | The diodes are driven hard, up to 30 times at 100 %. Quiet passages get dirty first, then loud ones too, and the sound gets brighter and louder. |
+
+Because it works on the side chain, the grit follows the music. It shows mostly on and around quiet passages, where the NR does the most, and changes with what goes in.
+
+- It does nothing while NR is ^OFF^, or with Type on Hi-Fi and VIBE's power on, where NR is ignored.
+- NR - Fuzz In The Gaps (80 %) and NR - Blown Encoder (100 %) are built on it. Stereo Rental sits at 50 %, its old sound; every other program is at 0 %.
+
+## Hysteresis: the tape's memory
+
+The LINEAR block holds **Hysteresis** while Type is VHS. Off, the VHS tape is the tape curve described on the TAPE page. On, the tape records through a Preisach model of AC-biased recording, built in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ. It models how tape records in general; no particular tape or deck stands behind it.
+
+With it on, ^BIAS^ is a real bias control, from a quarter of the right bias at the bottom to one and a half times it at the top. "right" is the bias the tape is set up for.
+
+| Bias | What you hear |
+|---|---|
+| Too little | Distortion, a gate-like loss of quiet sounds and a brighter top. Near the bottom a quiet tone hardly records at all, and reverb tails vanish into the hiss. |
+| Right | The tape as it is meant to run: about 3 % distortion at reference level, as with the tape curve. |
+| Too much | Duller and cleaner. |
+
+- ^TAPE SPEED^ changes the result: below half way the tape records as at SP, from there as at EP, and the change glides over about 10 ms. ^REC LEVEL^, the emphasis and the top of the band work as they do without it.
+- The ON button carries a small bar, for its cost: on an MPC One+ about 6.5 % of one core, against about 2.9 % with it off.
+- With it on the sound comes about 1 ms later (41.5 samples at 44.1 kHz). The plugin reports that to the host, and the dry signal for Mix is delayed to match.
+- Switching it crossfades over 10 ms. It needs VIBE's power on.
+- The six programs from VHS - Factory Aligned to VHS - Six Hour Starved use it. Every other program, a new instance and a project from an older version have it off.
 
 ## Azimuth: a tape from another deck
 
@@ -417,8 +452,10 @@ The treble cancels across the tilted head: first a dulling of the very top, then
 HQ runs the stages that distort (Drive, Slew, Comp, the VIBE stage) at twice the sample rate. Since 1.7 that includes the modeled microphones (Camcorder, Phone, Boombox) and the recording side of B-Type NR.
 
 - **Off:** bright sounds that hit those stages fold back into the midrange as tones that were never played. The plugin sounds as it did before HQ existed.
-- **On:** that is gone for highs at ordinary levels. Since 1.8 the clippers inside HQ also smooth each step they take. A full-level high tone that squares off in Drive, the Simple saturator or the Hi-Fi limiter folds back 17 to 36 dB quieter than with HQ off, and 16 dB quieter at 20 kHz. One that the VHS tape curve bends or that Slew turns into a triangle folds back 19 to 54 dB quieter. Where B-Type NR's playback side or the Phone microphone clips, the step is smoothed too.
-- On takes about a third more CPU, and over half more with Type Hi-Fi.
+- **On:** that is gone for highs at ordinary levels. Since 1.8 the clippers inside HQ also smooth each step they take: Drive, the Simple saturator, the Hi-Fi limiter, the VHS tape curve, Slew, B-Type NR and the Phone microphone. A full-level high tone that they square off folds back less than it did with HQ on in 1.7.
+- **The harmonics keep their level.** Those of Drive, the Simple saturator, Slew, the VHS tape curve and the Hi-Fi limiter stay within 0.2 dB of a reference run at 16 times the sample rate, up to 20 kHz, and loud high notes within about 1 dB.
+- On takes more CPU.
+- Hysteresis runs at twice the sample rate whether HQ is on or off.
 - Switching it fades the sound out and back in at the other rate.
 - HQ is on in a new instance. Choosing a program does not change it.
 
@@ -427,11 +464,11 @@ id: inside
 title: ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ
 jp: 内部
 word: INSIDE
-toc: How the VHS and Hi-Fi tracks, Azimuth, B-Type NR, the microphones and the AGC are modeled
+toc: How the VHS and Hi-Fi tracks, Hysteresis, Azimuth, B-Type NR, the microphones and the AGC are modeled
 epigraph: Somebody took the lid off and wrote down what was there.
 :::
 
-Six parts of VHS Vibes are built from what was published about the machines: a format's own figures, a tape recording handbook's formula, the datasheets of the chips inside Hi-Fi decks, a chip's circuit diagram, the datasheets, standards and measurements of four microphones, and a deck's service manual. This chapter says what each is made of, what was measured, and what had to be estimated.
+Six parts of VHS Vibes are built from what was published about the machines: a format's own figures, a tape recording handbook's formula, the datasheets of the chips inside Hi-Fi decks, a chip's circuit diagram, the datasheets, standards and measurements of four microphones, and a deck's service manual. A seventh, Hysteresis, is a physical model of how tape records. This chapter says what each is made of, what was measured, and what had to be estimated.
 
 ## The tape itself: Type = VHS
 
@@ -488,7 +525,7 @@ The figures hold at every sample rate from 44.1 to 192 kHz.
 
 - ^REC LEVEL^ is step 1. At 0 dB a tone at -8 dBFS sits exactly at the deck's reference level.
 - ^TAPE SPEED^ moves steps 2, 4 and 6 together, from SP through LP to EP.
-- ^BIAS^ at "right" does nothing. Toward too little, the tape's ceiling drops by up to 6 dB and the highs come up by up to 3 dB: bright and gritty. Toward too much, the highs lose headroom sooner and are cut by up to 6 dB: dull.
+- ^BIAS^ at "right" does nothing. Toward too little, the tape's ceiling drops by up to 6 dB and the highs come up by up to 3 dB: bright and gritty. Toward too much, the highs lose headroom sooner and are cut by up to 6 dB: dull. With Hysteresis on, step 3 and this shelf give way to the recorder of the next section, which makes the effects of the bias itself.
 
 ### What is estimated
 
@@ -500,6 +537,68 @@ Load **SP Tape** and play something with cymbals and a bass line. Turn ^REC LEVE
 
 ::: aside
 Made for pictures. It carried the music anyway.
+:::
+
+[[pagebreak]]
+
+## The tape's memory: Hysteresis
+
+The tape curve above is a fixed bend: the same level in always gives the same level out. Real tape has memory. Its coating is a crowd of tiny magnetic particles, each of which flips at a field of its own and stays flipped, so what a particle keeps depends on the fields it has already seen. A recorder works around that with **bias**: a strong, very high tone added to the sound, which swings the particles back and forth as the tape passes the head and fades out as the tape leaves it, leaving behind a magnetization that follows the sound. How well that works depends on how strong the bias is. **Hysteresis** on is a model of that process: how tape records in general, with no particular tape or deck behind it.
+
+### The model
+
+- **The particles** are described by a Preisach model: each particle has a switching field and an interaction field, spread around the coating's coercivity.
+- **The recording.** Each bit of tape arrives erased, crosses the field of the record head once, with the sound and the bias carrier together, and freezes as it leaves. The bias is simulated as the real carrier, at 62.5 kHz, through a 1.5 µm head gap.
+- **The depth.** The coating, 3.5 µm thick, is simulated at 12 depths, each with the weaker field that reaches it. For playback they are merged into three groups, each with its own delay and playback response.
+- **Offline.** That simulation is far too heavy to run live. It was run in advance for 15 bias settings from 25 to 150 % of right, for SP and for EP, and its results are stored as tables in the plugin: for each group, what the tape keeps for each record field.
+- **In the plugin.** The sound, with ^REC LEVEL^ and the pre-emphasis applied, is taken to twice the sample rate. Each group reads its table, with anti-aliasing (it reads the table's integral and averages the curve between samples, so the steps between them do not fold back), passes its playback response, and the three are added. A correction fitted to the simulation then takes off the highs the head's own field erases when it is driven hard. De-emphasis and the top of the band follow as without Hysteresis.
+
+There is no live hysteretic state. The memory is in the simulation, and the tables hold its results: the plugin looks up what the simulated tape kept and holds no magnetization of its own as it plays. Between the 15 bias settings it blends the two nearest tables; a moving ^BIAS^ knob glides, the whole range in half a second at most.
+
+### What happens as the bias changes
+
+- **Right** is set by a common rule: the bias at which a 6.3 kHz tone at -20 dB, in SP, has fallen 2 dB past its peak. There a 441 Hz tone at reference level comes out with 3 % third harmonic, the format's figure.
+- **Too little.** The bias no longer swings the particles hard enough. A quiet sound fails to flip them and hardly records: a dead zone that acts like a gate. The curve bends sooner, with odd harmonics, and the weaker bias erases less of the highs, so the top is brighter.
+- **Too much.** The bias swamps the signal near the gap and partly erases the highs it has just written: duller, and cleaner.
+- **SP and EP** have their own tables: at EP every tone is written onto a third as much tape, and the tape records it differently.
+
+### What comes out, measured
+
+The recorder at right bias, SP, through the record and playback emphasis. Gain is level out against level in.
+
+| Tone | Level against reference | Gain | Third harmonic | Fifth harmonic |
+|---|---|---|---|---|
+| 441 Hz | -20 dB | +0.01 dB | 0.079 % | 0.005 % |
+| 441 Hz | 0 dB | -0.71 dB | 2.93 % | 0.017 % |
+| 441 Hz | +8 dB | -4.12 dB | 11.4 % | 2.08 % |
+| 1 kHz | 0 dB | -1.13 dB | 2.95 % | 0.096 % |
+
+- In the whole plugin, at reference level: 441 Hz -0.74 dB and 2.91 %, 1 kHz -1.20 dB and 2.82 %; the same with HQ on within 0.05 dB.
+- ^BIAS^ swept from bottom to top in half a second under a 1 kHz tone at reference level: nothing new rises above -82 dBFS.
+- At the bottom of the knob, a 1 kHz tone under about -30 dBFS comes out some 33 dB down; by -10 dBFS it records.
+- Silence stays silent, and a tone and its negative come out as each other's negative.
+
+Against the offline simulation, tones from 100 Hz to 10 kHz and -20 to +6 dB against reference, the output level is off by at most / on average:
+
+| Speed | 25 % | 50 % | Right | 150 % |
+|---|---|---|---|---|
+| SP | 7.4 / 2.3 dB | 1.8 / 0.6 dB | 0.3 / 0.14 dB | 1.3 / 0.4 dB |
+| EP | 8.7 / 3.4 dB | 1.8 / 0.7 dB | 1.4 / 0.4 dB | 2.3 / 0.9 dB |
+
+### What is estimated
+
+- **The tape itself.** The coating's thickness, the spread of its particles' switching fields, the head gap and its spacing from the tape, and the bias frequency are chosen figures for a generic tape.
+- **Right bias** is set by the setup rule above, and the level by the format's 3 % at reference level.
+- **The correction** for the highs the head erases is fitted to the simulation.
+- **Held still.** The tables assume the sound holds still while a bit of tape freezes. That is exact for slow sound. Well below right bias it makes the single harmonics less exact than the overall level: their error against the simulation is 5 to 8 dB on average at 25 to 50 % of right, about 1 dB at right bias.
+- All the figures above compare the plugin with the simulation, on steady tones.
+
+::: note Hear it
+Load **VHS - Factory Aligned** and play something with quiet passages and reverb. Turn ^BIAS^ slowly down: the top brightens, grit comes in, and then the quiet parts start to break up and drop out. Load **VHS - Whisper Gate** for the bottom of the knob, then **VHS - Six Hour Starved** for the same fault at EP. Switch ^HYSTERESIS^ off and on to compare with the plain tape curve.
+:::
+
+::: aside
+It remembers every field it ever crossed. It keeps only the last one.
 :::
 
 [[pagebreak]]
@@ -672,7 +771,7 @@ The signal goes two ways. The main path passes it untouched. Beside it runs a si
 
 The side chain also listens to itself. Its output is rectified into a control voltage, and that voltage turns F down. As F conducts, the filter's corner slides upwards, so less and less passes: the louder the highs, the less is added, until at the circuit's reference level nothing is. This is the sliding band.
 
-The control voltage has two speeds. It follows the music with a time of about 100 ms, slow enough not to distort the sound. A sudden loud sound would get through boosted before that, so for a large jump the time drops to about 2 ms, and a clipper in the side chain holds the overshoot down for the instant in between.
+The control voltage has two speeds. It follows the music with a time of about 100 ms, slow enough not to distort the sound. A sudden loud sound would get through boosted before that, so for a large jump the time drops to about 2 ms, and a clipper in the side chain, a pair of silicon diodes, holds the overshoot down for the instant in between.
 
 The player is the same side chain turned around: connected in a loop, subtracting from the signal where the recorder added.
 
@@ -704,7 +803,19 @@ Other things measured on the model:
 - **Hiss** at 8 kHz, through the playback side alone, drops by 10.5 dB.
 - **A sudden jump** from quiet to reference level overshoots by 0.9 dB and has settled within 5 ms. After the loud sound stops, the full lift is back in about 155 ms.
 
-Two values are estimates: the level at which the fast smoothing takes over, and the level of the clipper. The reference level of the circuit is taken as -8 dBFS, the same level the VHS saturator takes as the deck's.
+Two values are estimates: the level at which the fast smoothing takes over, and the shape of the diodes' curve. The reference level of the circuit is taken as -8 dBFS, the same level the VHS saturator takes as the deck's.
+
+### The clipper: NR Clipper
+
+The ^CLIPPER^ knob sets where the diodes start to conduct, on the record side and the playback side alike.
+
+| Setting | Measured |
+|---|---|
+| 0 % | 1 kHz at the NR's reference level: under 0.001 % distortion. 10 kHz 10 dB over it: under 0.3 %, inside the chips' specification. A sudden jump is still caught. |
+| 50 % | The amount of every version before 1.8, which used a hard clamp: the third harmonic of 1 kHz at reference level within 0.3 dB of it, its hold on a jump within 0.01 dB. The diodes' knee is round, so it starts lower down: a tone 10 dB under reference level has 3.1 % where the clamp had 1.1 %. |
+| 100 % | The side chain driven 30 times harder into the diodes: a loud 1 kHz tone about 10 % distortion. Brighter and louder as well. |
+
+The clipper sits in the side chain, so what it does is shaped by the circuit around it: it is heard where the side chain is busiest, on quiet highs and the moments around them.
 
 ### Why it mistracks
 
@@ -972,7 +1083,7 @@ Every section of the machine has its own switch, so a part can be taken out with
 - **VIBE's power** off: Hi Cut stays in. With Type on Hi-Fi, the seven controls the Hi-Fi track had taken go back to their own stages, and B-Type NR works again.
 - **WOBBLE's power** off: the two filters of the WOBBLE page stay in.
 - **Noise** off: silences every noise, the Whistle, the head-switching buzz and the modeled microphones' own noise included. In Hi-Fi it also silences the FM channel's noise, clicks and head switch, and the linear track's hiss; the holds and the falls to the linear track stay, as they are part of the deck.
-- **Deck Power** off: B-Type NR, HQ, Azimuth, Animation and Visual Vibes are not affected. In Hi-Fi it switches off Breathing, Tracking and Drift there too; Dropouts is not part of the deck.
+- **Deck Power** off: B-Type NR, HQ, Azimuth, Hysteresis, Animation and Visual Vibes are not affected. In Hi-Fi it switches off Breathing, Tracking and Drift there too; Dropouts is not part of the deck.
 - **Animation** off: Visual Vibes shows nothing either.
 
 ::: chapter
@@ -988,8 +1099,9 @@ Choosing a program fades the sound out, starts the new tape and fades it in.
 
 [[programs]]
 
-## Four recipes
+## Five recipes
 
+- **A deck with the bias set wrong:** set Type to VHS, switch ^HYSTERESIS^ on and turn ^BIAS^ down. Or start from **VHS - Bias Drift**.
 - **A slow-speed (EP) tape:** set Hi Cut near 6 kHz, Lo Cut near 100 Hz and raise Hiss. Or set Type to VHS and turn TAPE SPEED to EP.
 - **A standard-speed (SP) tape:** Hi Cut about 10 kHz, Lo Cut about 50 Hz. Or set Type to VHS with TAPE SPEED at SP.
 - **A clean Hi-Fi sound:** start from **Hi-Fi - Clean Deck**. Or keep the wobbles and the noise low on any Type: the rotating heads have no wow or flutter to speak of.
@@ -1007,7 +1119,7 @@ epigraph: In pencil, on the inside of the sleeve.
 ## How it behaves
 
 - **Turning a wobble knob while sound plays.** A wobble depth or rate changes the plugin's own delay. A small move is followed at a limited pace, so the pitch bends by a couple of percent at most. After a big jump, once the knob rests, the sound crossfades to the new delay in 25 ms (a brief blur) and the bend is over.
-- **Timing.** The wobble delays hold the sound back by their resting length, a few milliseconds on most programs. That length is reported to the host as the plugin's latency, half a second after it stops changing, so a host that compensates keeps the track in time.
+- **Timing.** The wobble delays hold the sound back by their resting length, a few milliseconds on most programs. That length is reported to the host as the plugin's latency, half a second after it stops changing, so a host that compensates keeps the track in time. HQ and Hysteresis add their own delay to it, about 3 samples and about 1 ms.
 - **Skipped stages.** A stage whose amount is zero is skipped.
 
 ## What is taken from real machines
@@ -1023,7 +1135,7 @@ epigraph: In pencil, on the inside of the sleeve.
 
 These rows are what Head Buzz, Tracking, Breathing and the others do in Simple and VHS. No figures were found for their other times and depths, which are set by ear.
 
-What is published and what is estimated in **Type = VHS**, in **Azimuth**, in **Type = Hi-Fi** (which makes its own head buzz, tracking, breathing, drift and dropouts from the chips' figures), in **B-Type NR**, in the four modeled microphones of **Mic Type** and in the Modeled **AGC** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
+What is published and what is estimated in **Type = VHS**, in **Hysteresis**, in **Azimuth**, in **Type = Hi-Fi** (which makes its own head buzz, tracking, breathing, drift and dropouts from the chips' figures), in **B-Type NR**, in the four modeled microphones of **Mic Type** and in the Modeled **AGC** is said in the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ.
 
 ::: chapter
 id: compat
@@ -1034,15 +1146,16 @@ toc: Projects made with older versions
 epigraph: Nothing you recorded is lost. It only waits.
 :::
 
-**Projects made with an older version load with every setting in place, and projects saved with 1.3 to 1.7 sound as they did, with three changes made on purpose: HQ now reaches further, HQ is cleaner where it is driven hard, and Whistle is louder above 60 %.**
+**Projects made with an older version load with every setting in place, and projects saved with 1.3 to 1.7 sound as they did, with four changes made on purpose: HQ now reaches further, HQ is cleaner where it is driven hard, Whistle is louder above 60 %, and B-Type NR's clipper is a diode curve.**
 
-- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Type at Simple, Azimuth at 0', Visual Vibes off. Mic Model and AGC Model rest at Modeled in a new instance; a project saved before they existed opens with both at Simple.
-- No older program uses the newer controls: the five with the Mic on keep the Simple microphones, every program with the AGC up keeps the Simple AGC, and none of the 39 programs from before 1.7 uses Hi-Fi or Azimuth. They are unchanged.
+- New controls are only ever added after the existing ones, and each rests where the plugin sounds as it did without it: Scrape and Whistle at 0 %, B-Type NR at Off, Type at Simple, Azimuth at 0', Visual Vibes and Hysteresis off, NR Clipper at 50 %. Mic Model and AGC Model rest at Modeled in a new instance; a project saved before they existed opens with both at Simple. NR Clipper starts at 0 % in a new instance.
+- No older program uses the newer controls: the five with the Mic on keep the Simple microphones, every program with the AGC up keeps the Simple AGC, none of the 39 programs from before 1.7 uses Hi-Fi or Azimuth, and none of the 46 from before 1.8 turns Hysteresis on.
+- **B-Type NR's clipper** is a pair of silicon diodes in 1.8, a soft knee where 1.7 had a hard clamp. A project that uses NR loads with NR Clipper at 50 %, the 1.7 amount, and sounds slightly different, about 35 dB below the sound. Stereo Rental keeps 50 %; the other programs have NR Clipper at 0 %, so Wrong Switch is cleaner on steady tones than in 1.7 (set NR Clipper to 50 % for its 1.7 sound). With NR off nothing changes.
 - The newer programs come after Init and after each other, so every older program keeps its number.
 - **Type** gained a third position in 1.7. A project stores the choice itself, so VHS stays VHS. The one exception: automation of Type recorded in 1.5 or 1.6, which stores only a knob position, now reads the old VHS position as Hi-Fi, because the same travel is now shared by three positions. Set it again to VHS where that happens.
 - **HQ** is on in a new instance. A project keeps the HQ setting it was saved with; one saved before HQ existed opens with HQ off, so it sounds as it did.
 - **HQ reaches further in 1.7.** It now also covers the modeled microphones and the recording side of B-Type NR, which used to fold bright, loud sounds back into the midrange even with HQ on. A project that uses them with HQ on keeps its level and tone and loses those tones; the programs that use them stay within a third of a dB of 1.6 below 10 kHz. With HQ off, and wherever neither is in use, nothing changes.
-- **HQ is cleaner in 1.8.** With HQ on, the clippers smooth each step they take, and the filters around them are steeper. A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter, the VHS tape curve, Slew, B-Type NR or the Phone microphone hard loses fold-back tones, and the top octave of what those stages make changes slightly, by up to 3 dB between 14 and 17 kHz. Sounds that stay below the clipping keep their level and tone. With HQ on the sound is also 0.8 samples later, and the plugin tells the host. With HQ off nothing changes.
+- **HQ is cleaner in 1.8.** With HQ on, the clippers smooth each step they take, and the filters around them are steeper. A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter, the VHS tape curve, Slew, B-Type NR or the Phone microphone hard loses fold-back tones and keeps the level of its harmonics. Sounds that stay below the clipping keep their level and tone. With Type on Hi-Fi the hiss is now as loud with HQ on as with it off (in 1.7 it was 1.3 to 2 dB louder). With HQ on the sound is also about 1.7 samples later than in the previous version, and the plugin tells the host. With HQ off nothing changes.
 - **Whistle** is as it was up to 60 %. Above that it is louder than in 1.6, by 15 dB at 100 %.
 - **Mic Model** is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did.
 - **AGC Model** rests on Modeled, but every program with the AGC up uses Simple, Home Recording included. A project saved before 1.6 opens on Simple, so it sounds as it did.
@@ -1058,6 +1171,7 @@ epigraph: Nothing you recorded is lost. It only waits.
 | 1.5 | B-Type NR, Sat Type | Stereo Rental, Wrong Switch, SP Tape, EP Tape, and five older programs again with the VHS saturator: VHS - 3rd Gen Copy, VHS - Training Video, VHS - Six Hour Tape, VHS - Sticky Tape, VHS - Dirty Heads |
 | 1.6 | Mic Model: the four Mic Types built from published figures (Modeled), beside the ones before (Simple). AGC Model: the record level control of an early VHS deck (Modeled), beside the AGC before (Simple) | the five programs with the Mic on again, on the modeled microphones: Mic - Camcorder 89, Mic - Answer Machine, Mic - Wedding Video, Mic - Bootleg Concert, Mic - Tube TV |
 | 1.7 | Sat Type Hi-Fi: the FM track, taking over Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift and Dropouts; the first choice renamed Simple. Azimuth. Visual Vibes. Tape Speed names five more formats' speeds; Whistle louder above 60 %. The blocks SATURATOR, HI-FI TRACK, TRACKING (WOBBLE page) and DECK renamed VIBE, ALIGNMENT, WARP and AGC; the power switches of NOISE and WOBBLE first in their rows, Drift in ALIGNMENT | Hi-Fi - Clean Deck, Hi-Fi - Hot Signal, Hi-Fi - Worn Rental, Hi-Fi - Tracking Lost, Hi-Fi - Wrong Deck; two VHS programs with Azimuth: VHS - Borrowed Tape, VHS - Wrong Deck EP |
+| 1.8 | Hysteresis: the VHS tape recorded through a Preisach model, with Bias as a real bias control. NR Clipper: B-Type NR's side-chain clipper as a pair of diodes, with its own knob. Drive, Lo Sat and Hi Sat (Simple), Comp and Master read in real units. Every power switch dims the controls it turns off. The DECK page's bottom row is GLOBAL (Animation, Visual Vibes, HQ), LINEAR (Hysteresis) and NR (B-Type NR, Clipper); the blocks SCREEN and QUALITY are gone | six programs with Hysteresis: VHS - Factory Aligned, VHS - Bias Drift, VHS - Starved Bias, VHS - Whisper Gate, VHS - Hot And Starved, VHS - Six Hour Starved; two with NR Clipper: NR - Fuzz In The Gaps, NR - Blown Encoder |
 
 ::: chapter
 id: trouble
@@ -1084,12 +1198,14 @@ epigraph: The picture rolls. Somewhere a small wheel wants turning.
 | Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift or Dropouts behave differently, and are orange. | **Type** is on Hi-Fi with VIBE's power on: the Hi-Fi track has taken them over. See *What Hi-Fi takes over* on the TAPE page. |
 | B-Type NR does nothing. | **Type** is on Hi-Fi with VIBE's power on: NR belongs to the linear track and is ignored. |
 | Now and then the sound turns dull, quieter and mono for a moment. | In Hi-Fi: the deck has fallen to the linear track, because the signal off the tape got too weak. Raise **Carrier**, or lower Tracking, Drift or Dropouts. |
-| There is no Azimuth knob on the DECK page. | It is there only while **Type** is on VHS. |
+| There is no Azimuth knob or Hysteresis switch on the DECK page. | They are there only while **Type** is on VHS. |
+| CLIPPER does nothing. | **B-Type NR** is Off, or **Type** is on Hi-Fi with VIBE's power on, where NR is ignored. |
+| An NR program or project sounds a little different from 1.7. | B-Type NR's clipper is a diode curve in 1.8. Set **NR Clipper** to 50 % for the 1.7 amount. |
 | The picture on the sticker does not move with the sound. | **Visual Vibes** is off (it is off in a new instance), or **Animation** is off. |
 | Head Buzz, Whistle or Breathing cannot be heard. | Head Buzz and Whistle follow **Master** and the **Noise** switch. The Whistle is at 15.7 kHz; not everyone can hear it. Breathing shapes Hiss and Head Buzz, so it needs one of them turned up (in Hi-Fi it works on the music, best heard on drums). |
 | A new program did not change HQ, Animation or Visual Vibes. | Those three switches are not part of the programs. |
 | The reels stand still. | They turn only while sound comes in or the song is playing. Or **Animation** is off. |
-| The MPC is short of CPU. | Switch **HQ** off: on, it takes about a third more, and over half more with Type Hi-Fi. **Animation** off saves the work of updating the screen. |
+| The MPC is short of CPU. | Switch **Hysteresis** off, or **HQ**: both take more CPU when on. **Animation** off saves the work of updating the screen. |
 
 ::: chapter
 id: rewind

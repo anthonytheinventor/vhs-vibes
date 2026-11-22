@@ -70,7 +70,7 @@ listen: With the wobbles off the blend is clean. With them on, dry and wet drift
 what: Output level. The last stage.
 
 ## Saturator
-what: The VIBE block's POWER switch. It turns the VIBE stage on or off, whichever Type is chosen. Off, the controls Split, Lows, Lo Sat, Highs, Hi Sat, Type and Azimuth do nothing.
+what: The VIBE block's POWER switch. It turns the VIBE stage on or off, whichever Type is chosen. Off, the controls Split, Lows, Lo Sat, Highs, Hi Sat, Type, Azimuth and Hysteresis do nothing.
 note: Hi Cut is drawn in the same block but is a stage of its own: it stays in when VIBE's power is off. With Type on Hi-Fi, VIBE's power off also hands Hiss, Crackle, Head Buzz, Breathing, Tracking, Drift, Dropouts and B-Type NR back to their own stages: the plugin then sounds exactly as it does on Simple with VIBE's power off.
 
 ## Split
@@ -78,7 +78,7 @@ what: Its job depends on **Type** (see *The three knobs that change their name*)
 - **Simple**: the frequency at which the signal is divided into a low band and a high band.
 - **VHS**, captioned BIAS: how well the deck is set up for the tape. 2.5 kHz, where the knob rests, is right. Lower is too little bias: brighter, grittier, distorting sooner. Higher is too much: duller, the highs giving way sooner.
 - **Hi-Fi**, captioned CAL: whether the playback side is set to the same level as the record side. At 2.5 kHz, where the knob rests, it is right. Off it, the error comes out doubled and grows with the level, so the sound pumps.
-note: In VHS the read-out shows "right" at 2.5 kHz, a minus percentage for too little bias and a plus percentage for too much. In Hi-Fi it shows "right" at 2.5 kHz and the error in dB elsewhere, from -3.0 dB at the bottom to +3.0 dB at the top.
+note: In VHS the read-out shows "right" at 2.5 kHz, a minus percentage for too little bias and a plus percentage for too much. With **Hysteresis** on (DECK page) the knob is a real bias control: the bottom is a quarter of the right bias, the top one and a half times it (see *Hysteresis*, after the DECK page's controls). In Hi-Fi it shows "right" at 2.5 kHz and the error in dB elsewhere, from -3.0 dB at the bottom to +3.0 dB at the top.
 try: In Hi-Fi, Hi-Fi - Wrong Deck has it at the bottom.
 
 ## Lows
@@ -282,7 +282,7 @@ note: A new instance starts on Modeled. A project saved before version 1.6 opens
 
 ## Deck On
 what: Switches AGC, Drift, Tracking and Breathing off or on together, in every Type.
-note: NR, HQ, Azimuth, Animation and Visual Vibes are not affected; each has its own switch or rests at 0. The Init and Clean Widener programs switch the deck off.
+note: NR, NR Clipper, HQ, Azimuth, Hysteresis, Animation and Visual Vibes are not affected; each has its own switch or rests at 0. The Init and Clean Widener programs switch the deck off.
 
 ## AGC
 what: The recorder's automatic level control, in one of two kinds (**AGC Model**). The knob sets how much of it you hear: 100 % is the whole effect, 0 % off; on Modeled, 50 % is half of every change in dB.
@@ -339,8 +339,20 @@ note: Off in a new instance and in a project from an older version. It needs Ani
 ## HQ
 what: Runs the stages that distort (Drive, Slew, Comp, the VIBE stage, the modeled microphones and the recording side of B-Type NR) at twice the sample rate, so bright sounds that hit them do not fold back into the midrange as tones that were never played.
 listen: With HQ off, loud bright sounds grow extra, unrelated tones underneath. With it on, they are gone for highs at ordinary levels.
-note: On takes about a third more CPU, and over half more with Type Hi-Fi. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
+note: On takes more CPU. Switching it fades the sound out and back in. Choosing a program does not change it. More in the HQ section after this list.
+
+## Hysteresis
+what: With Type on **VHS**, records the tape through a model of tape hysteresis in place of the plain tape curve. **Off**: the tape as before. **On (CPU+)**: the Preisach model of the chapter ＩＮＳＩＤＥ　ＴＨＥ　ＭＡＣＨＩＮＥ. With it on, BIAS (the Split knob) becomes a real bias control, and TAPE SPEED also picks how the tape records: as at SP below half way, as at EP from there.
+listen: Turn BIAS down: the sound gets gritty, quiet sounds break up or vanish as if gated, and the top gets brighter. Turn it up: duller and cleaner.
+try: VHS - Factory Aligned has the bias right; VHS - Whisper Gate has almost none.
+note: On the DECK page only while Type is VHS; it needs VIBE's power on. The ON button carries a small bar: it costs CPU (on an MPC One+ about 6.5 % of one core, against about 2.9 % with it off). With it on the sound comes about 1 ms later, and the plugin tells the host. Switching crossfades over 10 ms. Off in a new instance, in an older project and in every program but the six from VHS - Factory Aligned to VHS - Six Hour Starved.
 
 ## B-Type NR
 what: B-type noise reduction, as on the linear tracks of early stereo decks. **Off**: none. **Rec**: recorded with it, played without. **Play**: recorded without, played with. **On**: both.
 note: The four positions and what each sounds like are in the B-Type NR section after this list. Switching fades it in or out over 8 ms. It belongs to the linear track, so with Type on Hi-Fi and VIBE's power on it is ignored.
+
+## NR Clipper
+what: A diode clipper on the NR side chain, the control path that decides how much the NR lifts and cuts. 0 % is clean: the diodes only catch sudden jumps. 50 % is the amount of every version before 1.8. Above 50 % the diodes are driven hard and it gets dirty.
+listen: The grit follows the music: it shows mostly on and around quiet passages, and changes with what goes in. Higher up, loud passages get dirty too, and the sound gets brighter and louder.
+try: NR - Fuzz In The Gaps uses 80 %, NR - Blown Encoder 100 %. Stereo Rental sits at 50 %.
+note: It does nothing while B-Type NR is Off, or while NR is ignored in Hi-Fi. 0 % in a new instance; a project saved with an older version loads at 50 %. More in the NR Clipper section after this list.

@@ -146,3 +146,27 @@ SP Tape recorded on another deck: the head is 6.5' out of line, so the highs fro
 
 ## VHS - Wrong Deck EP
 VHS - Six Hour Tape on the wrong deck: 7.5' out of line at EP puts the first notch at 5.1 kHz. The top is hollowed out, with a faint ghost of highs above it, and it comes and goes.
+
+## VHS - Factory Aligned
+Hysteresis on, with the bias right: an SP tape on a deck set up at the factory, recorded a little under reference level. Close to SP Tape.
+
+## VHS - Bias Drift
+Hysteresis on, the bias drifted a third of the way down: a brighter top and a little grit on the quiet parts.
+
+## VHS - Starved Bias
+Hysteresis on, the bias near the bottom: soft passages break up, loud ones come through.
+
+## VHS - Whisper Gate
+Hysteresis on, almost no bias: a quiet tone hardly records at all, so tails and reverb are cut off and the hiss is all that is left of them.
+
+## VHS - Hot And Starved
+Hysteresis on, too little bias and recorded hot: gritty quiet parts and squashed peaks.
+
+## VHS - Six Hour Starved
+VHS - Six Hour Tape with Hysteresis on and too little bias: at EP the highs dull themselves as well.
+
+## NR - Fuzz In The Gaps
+Recorded with noise reduction and played without, as in Wrong Switch but with less hiss, NR Clipper at 80 %: a bright fuzz that swells in the gaps and ducks under the loud hits.
+
+## NR - Blown Encoder
+NR Clipper at 100 %, recorded with noise reduction into a hot VHS tape: the harshest pairing.
