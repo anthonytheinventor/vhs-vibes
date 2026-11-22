@@ -91,10 +91,10 @@ An early stereo rental with noise reduction on both sides, and a tape that has a
 Recorded with noise reduction, played without: bright, airy, a little squashed, all of the hiss.
 
 ## SP Tape
-Sat Type = VHS at standard speed, recorded a little hot: loud parts lose their top and soften, quiet parts stay clear.
+The VHS tape model at standard speed, recorded a little hot: loud parts lose their top and soften, quiet parts stay clear.
 
 ## EP Tape
-Sat Type = VHS at the six-hour speed: the highs give way three times sooner and the top of the band is gone.
+The VHS tape model at the six-hour speed: the highs give way three times sooner and the top of the band is gone.
 
 ## VHS - 3rd Gen Copy
 3rd Gen Copy on the tape model: every pass recorded hot on a dubbing deck with too much bias. The loud parts go soft and the top is gone.
@@ -127,13 +127,13 @@ Bootleg Concert on the modeled microphone: the radio cassette's level control ho
 Tube TV on the modeled microphone: the boombox held up to the set, its level control lifting the hiss in every pause.
 
 ## Hi-Fi - Clean Deck
-Type = Hi-Fi. A good deck and a new tape: nothing but the FM channel's own faint hiss, where a real deck has it. No wobble: the rotating heads have none to speak of.
+The Hi-Fi track on a good deck with a new tape: only the FM channel's own faint hiss, at a real deck's level, and no wobble.
 
 ## Hi-Fi - Hot Signal
 Recorded 25 dB over, through a hotter, grittier input: every loud hit and held loud note flattens against the Hi-Fi track's hard ceiling.
 
 ## Hi-Fi - Worn Rental
-A tape that has been through a great many machines: the signal 12 dB down, a steady crackle of clicks, loud head switching, noise that swells with the music, and a moment on the hissy linear track every few seconds.
+A tape that has been through many machines: the signal 12 dB down, a steady crackle of clicks, loud head switching, noise that swells with the music, and a moment on the hissy linear track every few seconds.
 
 ## Hi-Fi - Tracking Lost
 The tracking knob is well off: a hard buzz at every head switch, bursts of clicks at the dips, and about once a second the dull, hissy mono linear track takes over.
@@ -142,10 +142,10 @@ The tracking knob is well off: a hard buzz at every head switch, bursts of click
 Recorded 10 dB hot on one deck, played on another whose playback side disagrees: quiet passages come well up, loud ones do not, and it pumps.
 
 ## VHS - Borrowed Tape
-SP Tape recorded on another deck: the head is 6.5' out of line, so the highs from about 8 kHz up are dulled and swish gently.
+SP Tape recorded on another deck: the head is 6.5' out of line, so the highs from about 8 kHz up dull and swish gently.
 
 ## VHS - Wrong Deck EP
-VHS - Six Hour Tape on the wrong deck: 7.5' out of line at EP puts the first notch at 5.1 kHz. The top is hollowed out, with a faint ghost of highs above it, and it comes and goes.
+VHS - Six Hour Tape on the wrong deck: 7.5' out of line at EP puts the first notch at 5.1 kHz. It hollows out the top, with a faint ghost of highs above it, and it comes and goes.
 
 ## VHS - Factory Aligned
 Hysteresis on, with the bias right: an SP tape on a deck set up at the factory, recorded a little under reference level. Close to SP Tape.
@@ -157,7 +157,7 @@ Hysteresis on, the bias drifted a third of the way down: a brighter top and a li
 Hysteresis on, the bias near the bottom: soft passages break up, loud ones come through.
 
 ## VHS - Whisper Gate
-Hysteresis on, almost no bias: a quiet tone hardly records at all, so tails and reverb are cut off and the hiss is all that is left of them.
+Hysteresis on, almost no bias: a quiet tone hardly records at all, so tails and reverb break off, leaving only the hiss.
 
 ## VHS - Hot And Starved
 Hysteresis on, too little bias and recorded hot: gritty quiet parts and squashed peaks.
@@ -166,7 +166,7 @@ Hysteresis on, too little bias and recorded hot: gritty quiet parts and squashed
 VHS - Six Hour Tape with Hysteresis on and too little bias: at EP the highs dull themselves as well.
 
 ## NR - Fuzz In The Gaps
-Recorded with noise reduction and played without, as in Wrong Switch but with less hiss, NR Clipper at 80 %: a bright fuzz that swells in the gaps and ducks under the loud hits.
+Wrong Switch with less hiss and NR Clipper at 80 %: a bright fuzz that swells in the gaps and ducks under the loud hits.
 
 ## NR - Blown Encoder
 NR Clipper at 100 %, recorded with noise reduction into a hot VHS tape: the harshest pairing.

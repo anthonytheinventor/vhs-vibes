@@ -425,8 +425,7 @@ automated and are best left alone. The Animation switch on the DECK page turns t
   its number.
 - Since 1.8 the clipper on B-Type NR's side chain is a diode curve with its own knob, NR Clipper. A project
   saved with an older version loads at 50 %, the 1.7 level, and one that uses NR sounds slightly different
-  from 1.7. Every program but Stereo Rental (50 %) and the two NR programs has it at 0 %, so Wrong Switch
-  is cleaner on steady tones than in 1.7; set NR Clipper to 50 % for its 1.7 sound. With NR off and
+  from 1.7. Wrong Switch and Stereo Rental, the two older programs that use NR, keep 50 %. With NR off and
   Hysteresis off, nothing changes.
 - One exception, accepted: Sat Type has three positions now, so automation of it recorded in 1.5 or 1.6,
   which stores only a knob position, reads the old VHS position as Hi-Fi. A project's own Sat Type setting stays as it was.
@@ -438,8 +437,9 @@ automated and are best left alone. The Animation switch on the DECK page turns t
 - Since 1.8 the clippers inside HQ smooth each step they take, and the filters around them are steeper.
   A project with HQ on that drives Drive, the Simple saturator, the Hi-Fi limiter, the VHS tape curve,
   Slew, B-Type NR or the Phone microphone hard loses fold-back tones and keeps the level of its harmonics.
-  Sounds that stay below the clipping keep their level and tone. With Sat Type on Hi-Fi and HQ on, the hiss
-  is now as loud as with HQ off (it was 1.3 to 2 dB louder). With HQ on the sound is also about 1.7 samples
+  Sounds that stay below the clipping keep their level and tone. With Sat Type on Hi-Fi and HQ on, the hiss,
+  Crackle and Head Buzz are now as loud as with HQ off (the hiss was 1.3 to 2 dB louder, the other two 0.5
+  to 1 dB). With HQ on the sound is also about 1.7 samples
   later than in the previous version, and the plugin tells the host. With HQ off nothing changes.
 - Mic Model is on Modeled in a new instance. A project keeps the Mic Model it was saved with; one
   saved before 1.6 opens on Simple, the microphones it was made with, so it sounds as it did. The

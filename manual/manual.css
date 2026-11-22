@@ -59,7 +59,7 @@ section.chapter > h2:first-of-type { margin-top: 2mm; }
 /* ---------------------------------------------------------------- cover */
 .cover { page: full; position: relative; width: 210mm; height: 297mm; overflow: hidden; background: var(--night); color: #fff; }
 .cover svg.scene { position: absolute; left: 0; top: 0; width: 210mm; height: 297mm; }
-.cover .scan { position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 1.1mm, rgba(0,0,0,.13) 1.1mm 1.5mm); }
+.cover .scan { position: absolute; inset: 0; background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAuaCAYAAABqs3bzAAAAVElEQVR42u3MoQ0AMAzAsKif7P8nB8erQQcEutadqXoLhUKhUCgUCoVCoVAoFAqFQqFQKBQKhUKhUCgUCoVCoVAoFAqFQqFQKBQKhUKhUCgUCvWDuqjlHitl0J1uAAAAAElFTkSuQmCC) 0 0 / 100% 100% no-repeat; }   /* scan lines, 1.1 mm clear and 0.4 mm at 13 % black: one stretched picture, since a repeating gradient is drawn as hundreds of translucent stripes and takes a PDF viewer a second */
 .cover .kana { position: absolute; left: 0; right: 0; top: 20mm; text-align: center; font: 8.6pt var(--f-gothic); letter-spacing: .12em; color: var(--cyan); }
 .cover .label { position: absolute; left: 30mm; top: 36mm; width: 150mm; height: 83mm; border-radius: 3.2mm; transform: rotate(-3deg);
   background: linear-gradient(var(--paper), #f4e2ff); box-shadow: 1.6mm 2.4mm 0 rgba(0, 240, 255, .55), 0 4mm 9mm rgba(0, 0, 0, .45); color: var(--ink); }
@@ -80,7 +80,7 @@ section.chapter > h2:first-of-type { margin-top: 2mm; }
 .opener { page: full; position: relative; width: 210mm; height: 297mm; overflow: hidden; color: #fff;
   background: linear-gradient(var(--night), var(--panel-top) 55%, var(--panel-bot)); }
 .opener svg.scene { position: absolute; left: 0; top: 0; width: 210mm; height: 192mm; }
-.opener .fade { position: absolute; left: 0; top: 150mm; width: 210mm; height: 44mm; background: linear-gradient(rgba(25, 9, 60, 0), rgba(27, 10, 64, 1)); }
+.opener .fade { position: absolute; left: 0; top: 150mm; width: 210mm; height: 44mm; background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAEACAYAAAByPhyYAAAAG0lEQVR42mOQ5nJgYGJgYGAcJUaJUWKUGFkEAHIcA2NBCiSAAAAAAElFTkSuQmCC) 0 0 / 100% 100% no-repeat; }   /* clear to #1b0a40, top to bottom: one stretched picture, cheaper in a PDF viewer than a translucent gradient */
 .opener .num { position: absolute; right: 16mm; top: 15mm; font: 11pt var(--f-gothic); letter-spacing: .1em; color: var(--paper); }
 .opener .word { position: absolute; left: 15mm; top: 11mm; font: italic bold 64pt/1 var(--f-head); color: #fff; text-shadow: 1.5mm 1.5mm 0 var(--pink); }
 .opener .full { position: absolute; left: 17mm; top: 40mm; font: 13pt var(--f-gothic); color: var(--cyan); letter-spacing: .28em; }
@@ -191,6 +191,8 @@ table.ql td.no { font: 8pt var(--f-gothic); color: var(--pink-lo); width: 22mm; 
    (WCAG ratios; zebra rows #271447, note boxes #24114d and table headers #3a1a78 all keep body
    text above 7:1 and small text above 4.5:1). */
 /* the one decoration: a faint neon horizon across the bottom margin, above the footer text */
+/* Below this rule the block uses solid colors, no blur and no alpha where it can: each is the
+   translucent color it replaced, worked out against the page (#170b33). */
 @page {
   background-color: #170b33;
   @bottom-left   { color: #b9a3e6; background: linear-gradient(90deg, rgba(255, 46, 151, 0), rgba(255, 46, 151, .5)) 0 4mm / 100% .3mm no-repeat; }
@@ -200,19 +202,20 @@ table.ql td.no { font: 8pt var(--f-gothic); color: var(--pink-lo); width: 22mm; 
 :root {
   --page: #170b33; --text: #e9e1f5; --bright: #fbf6ff; --pink-text: #ff9fd6; --pink-head: #ff8fce;
   --violet-text: #c4adf0; --soft-text: #cdbcec; --raised: #24114d;
-  --rule: rgba(196, 173, 240, .22);
+  --rule: #3d2f5d;
 }
 @media screen { html, body { background: var(--page); } }   /* print: @page paints it (a body background leaves a seam) */strong, h3 { color: var(--bright); }
-code { background: rgba(185, 103, 255, .20); color: #f6e9ff; }
+code { background: #371d5c; color: #f6e9ff; }
 ol li::marker { color: var(--pink-text); }
 h2 { color: var(--pink-head); }
 
 /* the chapter sticker: a thin neon edge and a glow instead of the white paper edge */
 /* (no outer ring: a shadow that reaches above the sticker is printed at the foot of the page before) */
-.banner { border-color: rgba(255, 143, 206, .55); box-shadow: 0 1.2mm 2.6mm rgba(255, 46, 151, .30); }
+.banner { border-color: #975488; box-shadow: 0 .9mm 0 #5d1651; }
+.opener .shot { box-shadow: 0 2mm 0 #0d0520; }
 
 /* screenshots and their captions */
-.shot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 .3mm rgba(196, 173, 240, .35); }
+.shot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 .3mm #544475; }
 .opener .shot::after { content: none; }
 figcaption { color: var(--soft-text); }
 .keys { color: var(--text); }
@@ -233,13 +236,13 @@ td:first-child { color: var(--bright); }
 table.programs td.no, table.ql td.no { color: var(--pink-text); }
 
 /* notes, asides, contents */
-.note { background: var(--raised); box-shadow: inset 0 0 0 .25mm rgba(196, 173, 240, .18); }
+.note { background: var(--raised); box-shadow: inset 0 0 0 .25mm #412d6a; }
 .note .nt { color: var(--pink-text); }
 .aside { color: #7ff3ff; }
 .toc .t { color: var(--bright); }
 .toc .t .jp { color: var(--violet-text); }
 .toc .w { color: #d6c8f0; }
-.toc .dots { border-bottom-color: rgba(196, 173, 240, .45); }
+.toc .dots { border-bottom-color: #655488; }
 .toc .p { color: var(--pink-text); }
 .toc a.sub .t { color: var(--violet-text); }
 
