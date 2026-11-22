@@ -100,8 +100,7 @@ spends 1,000 instructions per frame uses about 3 % of a core. Aim for a few perc
 - **Moving a lane into an integer register costs about 3 cycles** (model). Fetch two indices with one
   two-register move.
 - **Write the vector code yourself.** Clang does not vectorize float loops on 32-bit ARM without
-  fast-math flags, and GCC needs `-funsafe-math-optimizations`, because NEON's handling of denormals is
-  not IEEE-compliant.
+  fast-math flags, because NEON's handling of denormals is not IEEE-compliant.
 - **Use `vfmaq_f32` for a vector multiply-add.** The fused form is about 9 cycles against 11 for a
   multiply followed by an add (model), and compilers do not produce it from a vector expression on this
   target.
@@ -203,8 +202,8 @@ spends 1,000 instructions per frame uses about 3 % of a core. Aim for a few perc
 ## 10. Compiler notes
 
 - **Build flags:** `-mcpu=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=hard -O2`.
-- **Clang has no scheduling model for this core** and treats it as a Cortex-A9. GCC does have one. Either
-  way, measure instead of trusting the compiler's choices.
+- **Clang has no scheduling model for this core** and treats it as a Cortex-A9. Measure instead of
+  trusting the compiler's choices.
 - **Generic vector types** (`__attribute__((vector_size(...)))` or a small wrapper class) work well and
   keep the code portable to the 64-bit models. Check the generated code for hidden scalar divides.
 
