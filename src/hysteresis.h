@@ -286,8 +286,9 @@ struct Engine
         {
             const float *a = I.g[0][k][j], *c = I.g[0][k + 1][j], *a2 = I.g[1][k][j], *c2 = I.g[1][k + 1][j];
             float* g = Gi[j];
-            int i = 0;
-            for (; i + 4 <= kNh; i += 4)
+            // (set 1) the lower half and the middle (see mirrorRow), then the mirror, then the last point as
+            // before (the scalar expression)
+            for (int i = 0; i <= kNh / 2; i += 4)
             {
                 Quad qa, qc, qa2, qc2;
                 std::memcpy(&qa, a + i, sizeof(Quad)); std::memcpy(&qc, c + i, sizeof(Quad));
@@ -295,7 +296,8 @@ struct Engine
                 const Quad x = qa + fq * (qc - qa), y = qa2 + fq * (qc2 - qa2), gq = x + eq * (y - x);
                 std::memcpy(g + i, &gq, sizeof(Quad));
             }
-            for (; i < kNh; ++i) { const float x = a[i] + f * (c[i] - a[i]), y = a2[i] + f * (c2[i] - a2[i]); g[i] = x + es * (y - x); }
+            mirrorRow(g);
+            { constexpr int i = kNh - 1; const float x = a[i] + f * (c[i] - a[i]), y = a2[i] + f * (c2[i] - a2[i]); g[i] = x + es * (y - x); }
             tp[j][0] = kTSp[k][j]; tp[j][1] = kTSp[k + 1][j]; tp[j][2] = kTEp[k][j]; tp[j][3] = kTEp[k + 1][j];
             const double ds = (1.0 - f) * kD0Sp[k][j] + (double)f * kD0Sp[k + 1][j], de = (1.0 - f) * kD0Ep[k][j] + (double)f * kD0Ep[k + 1][j];
             taps(j, (1.0 - es) * ds + (double)es * de);
@@ -306,15 +308,35 @@ struct Engine
     {
         static_assert(kNh % 4 == 1, "the row: whole quads and one more point");
         const Quad fq = { f, f, f, f };
-        for (int i = 0; i + 4 <= kNh; i += 4)
+        for (int i = 0; i <= kNh / 2; i += 4)   // (set 1) points 0 to 243, then the mirror (see mirrorRow)
         {
             Quad qga, qgc;
             std::memcpy(&qga, ga + i, sizeof(Quad)); std::memcpy(&qgc, gc + i, sizeof(Quad));
             const Quad gq = lerp4(qga, qgc, fq);
             std::memcpy(g + i, &gq, sizeof(Quad));
         }
+        mirrorRow(g);
         constexpr int l = kNh - 1;
         g[l] = ga[l] + f * (gc[l] - ga[l]);
+    }
+    // (set 1) Every integral row is exactly even: the planes are exactly odd (T[mid - k] == -T[mid + k]),
+    // and Integrals builds both halves outwards from the middle with exactly negated operands, so
+    // g[mid - k] == g[mid + k] to the bit (tests check every row). A blend works out each point from that
+    // point's values alone, the same operations in every lane, so the blended row is even to the bit as
+    // well: blendG and setGlide blend points 0 to 243 (the lower half and the quad over the middle) and
+    // this copies 236 down to 1 into 244 up to 479, the values the blend would give there. The last point
+    // (480, the scalar expression, which may round differently from a lane) is still blended by itself.
+    static void mirrorRow(float* g)
+    {
+        constexpr int mid = kNh / 2;
+        static_assert(kNh == 2 * mid + 1 && mid % 4 == 0, "the middle on a quad's first point");
+        for (int i = mid + 4; i + 4 <= kNh - 1; i += 4)
+        {
+            Quad q;
+            std::memcpy(&q, g + (2 * mid - i - 3), sizeof(Quad));   // the points mirroring i .. i + 3, upwards
+            q = __builtin_shufflevector(q, q, 3, 2, 1, 0);
+            std::memcpy(g + i, &q, sizeof(Quad));
+        }
     }
     // a + f (c - a) four at a time (blendG), rounded as the compiler rounds the scalar
     // expression on this target: where the hardware has a fused multiply-add clang fuses the scalar one (one

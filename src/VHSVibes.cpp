@@ -458,6 +458,11 @@ inline Stereo vabs(Stereo a) { return __builtin_elementwise_abs(a); }
 inline Stereo vclamp(Stereo x, float limit) { return vmax(vmin(x, splat(limit)), splat(-limit)); }   // to -limit .. limit
 inline float  maxf(float a, float b) { return a > b ? a : b; }
 inline float  minf(float a, float b) { return a < b ? a : b; }
+// A square root without std::sqrt's errno check (the build keeps -fmath-errno, so std::sqrt is a vsqrt
+// followed by a compare and a call to sqrtf for a negative input). IEEE square root is correctly
+// rounded, so this is the same value to the bit, NaN for a negative input included: one bare vsqrt.f32
+// on the MPC. For the sample loop and the control tick.
+inline float  sqrtNE(float x) { return __builtin_elementwise_sqrt(x); }
 
 // Two Xorshift32 streams side by side (left, right), for noise that differs in the two channels:
 // each lane gives exactly what its own Xorshift32 would (the integer steps are the same, and
@@ -1664,6 +1669,16 @@ public:
         for (float& s : buf_) s = 0.0f;
         w_ = 0;
     }
+    // (set 1) A reset that empties only the newest `frames` samples (the end of the buffer: a reader
+    // reaches back there until it has as much new sound behind it as its delay) and rewinds the writer,
+    // which then overwrites everything else before any reader can reach it (see doReset). frames at or
+    // above the size: all of it, as reset(); 0: only the rewind.
+    void resetTail(int frames)
+    {
+        const size_t n = 2 * (size_t)(frames < 0 ? 0 : frames > mask_ + 1 ? mask_ + 1 : frames);
+        std::fill(buf_.end() - (std::ptrdiff_t)n, buf_.end(), 0.0f);
+        w_ = 0;
+    }
     void write(Stereo x)
     {
         std::memcpy(&buf_[(size_t)w_ * 2], &x, sizeof(x));
@@ -1754,6 +1769,8 @@ struct TapeSpeed
     int   filled = 0;         // ticks of sound written to the delay line since the last reset
     bool  still = false;      // no wobble and settled: the delay is a whole number of samples
                               // and is not moving, so the reader needs no interpolation
+    bool  xfading = false;    // jump != 0 (set and cleared with it, so the reader tests a flag,
+                              // not a float; in the padding after `still`: nothing after it moves)
 
     // Values that only change when a knob moves; update() refreshes them.
     float inDev1 = -1.0f, inRate1 = -1.0f, inDev2 = -1.0f, inRate2 = -1.0f, inSr = 0.0f;
@@ -1791,7 +1808,7 @@ struct TapeSpeed
         ph1 = ph2 = 0.0f;
         n1a = n1b = n2a = n2b = 0.0f;
         x = 0.0f; base = baseTarget; delay = baseTarget; inc = 0.0f; err = 0.0f;
-        jump = 0.0f; xf = 0.0f;
+        jump = 0.0f; xf = 0.0f; xfading = false;
         seenTarget = baseTarget; calm = 0; filled = 0;
         still = false;
     }
@@ -1811,7 +1828,7 @@ struct TapeSpeed
         const float d = baseTarget - base;
         if (std::fabs(d) < 0.01f) base = baseTarget;
         else if (std::fabs(d) > kJumpMin && calm >= calmTicks && x >= -(baseTarget - 4.0f)
-                 && (float)(filled * kCtrl) > baseTarget + x + 8.0f) { jump = d; xf = 0.0f; }
+                 && (float)(filled * kCtrl) > baseTarget + x + 8.0f) { jump = d; xf = 0.0f; xfading = true; }   // (|d| > kJumpMin: not 0)
         else base += clamp(0.003f * d, -kGlideStep, kGlideStep);
     }
 
@@ -1829,7 +1846,7 @@ struct TapeSpeed
     {
         const Stereo y = a + (b - a) * xf;
         xf += xfInc;
-        if (xf >= 1.0f) { delay += jump; base += jump; jump = 0.0f; xf = 0.0f; }
+        if (xf >= 1.0f) { delay += jump; base += jump; jump = 0.0f; xf = 0.0f; xfading = false; }
         return y;
     }
 
@@ -1891,7 +1908,7 @@ inline Stereo wobbleRead(const PairDelay& line, TapeSpeed& w, float extra)
 {
     w.delay += w.inc;
     const Stereo y = line.read(w.delay + extra);
-    return w.jump == 0.0f ? y : w.blend(y, line.read(w.delay + w.jump + extra));
+    return !w.xfading ? y : w.blend(y, line.read(w.delay + w.jump + extra));   // (xfading: jump != 0)
 }
 
 // Control values that are smoothed once per control tick and then held for 16 samples.
@@ -2267,10 +2284,16 @@ struct MicModel
         return sum;
     }
 
+    // (set 1) The Boombox's hiss and the Phone's line noise levels come from filters made at sr alone,
+    // and each takes a 50 ms impulse response (powerGain). The owner keeps the last of each here and
+    // passes it to set(): the same value, worked out once per rate instead of at every change of mic.
+    struct Cache { float hissSr = 0.0f, hiss = 0.0f, lineSr = 0.0f, line = 0.0f; };
+
     // sr: the session's rate. in: the rate the mic runs at up to its last stage that distorts
     // (front() below: twice sr with HQ, see the plugin's setMic); what comes after that is linear
     // and runs at sr (back()), so with HQ the response and the noise are the ones without it.
-    void set(int t, float sr, float in = 0.0f)
+    // cache: see Cache (none: worked out every time, as before)
+    void set(int t, float sr, float in = 0.0f, Cache* cache = nullptr)
     {
         if (in <= 0.0f) in = sr;
         type = t;
@@ -2301,9 +2324,14 @@ struct MicModel
             add({ 'h', 50.0f, 0.7071f, 0.0f }, sr);
             add({ 'l', 10000.0f, 0.7071f, 0.0f }, sr);
             normalise(2, 4, sr);
-            PairBiquad a = f[2], b = f[3];
-            a.reset(); b.reset();
-            hiss = noiseAmp(kTapeHissRms, powerGain([&](float x) { return b.process(a.process(splat(x)))[0]; }, sr));
+            if (cache != nullptr && cache->hissSr == sr) hiss = cache->hiss;
+            else
+            {
+                PairBiquad a = f[2], b = f[3];
+                a.reset(); b.reset();
+                hiss = noiseAmp(kTapeHissRms, powerGain([&](float x) { return b.process(a.process(splat(x)))[0]; }, sr));
+                if (cache != nullptr) { cache->hissSr = sr; cache->hiss = hiss; }
+            }
             alcAtk = 1.0 - std::exp(-1.0 / ((double)kAlcAttackSec * in));
             alcRel = std::exp(-1.0 / ((double)kAlcRecoverySec * in));
         }
@@ -2317,9 +2345,14 @@ struct MicModel
             for (const MicSec& s : kPhoneSecs) add(s, sr);
             normalise(0, n, sr);
             lineBp.setCoeffs(BiquadCoeffs::bandpass(sr, kLineBpHz, kLineBpQ));
-            Biquad bp = lineBp;
-            bp.reset();
-            line = noiseAmp(kLineNoiseRms, powerGain([&](float x) { return bp.process(x); }, sr));
+            if (cache != nullptr && cache->lineSr == sr) line = cache->line;
+            else
+            {
+                Biquad bp = lineBp;
+                bp.reset();
+                line = noiseAmp(kLineNoiseRms, powerGain([&](float x) { return bp.process(x); }, sr));
+                if (cache != nullptr) { cache->lineSr = sr; cache->line = line; }
+            }
             envAtk = 1.0f - std::exp(-1.0f / (0.001f * in));    // estimates (see kCarbonH2)
             envRel = 1.0f - std::exp(-1.0f / (0.050f * in));
         }
@@ -2440,7 +2473,7 @@ struct MicModel
                 // floor, so the floor is what maxf would have given)
                 const float r = env * (1.0f / kRefLevel);
                 float g = 1.0f;
-                if (!(r >= 1.0f)) g = r < kCarbonQuiet ? kCarbonFloor : maxf(std::sqrt(std::sqrt(r)), kCarbonFloor);
+                if (!(r >= 1.0f)) g = r < kCarbonQuiet ? kCarbonFloor : maxf(sqrtNE(sqrtNE(r)), kCarbonFloor);
                 if constexpr (hq)
                 {
                     const float p = m * g, q = clipP;
@@ -2761,6 +2794,11 @@ struct HfDetector
 
 struct HiFiPath
 {
+    // (set 1) The channel noise's scale (noiseUnit) depends on the noise's own rate alone (nsr in
+    // prepare: the session's rate with HQ on or off), and its sum takes some 800 double sines. The owner
+    // keeps the last one here and passes it to prepare, so an HQ switch (prepare at the other rate, the
+    // same nsr) does not sum it again; the value is the one the sum gives, stored as it was.
+    struct NoiseCache { float nsr = 0.0f, unit = 0.0f; };
     // What the knobs ask for (see VHSVibes::setHiFi): levels in dB, amounts 0..1.
     struct Settings
     {
@@ -2852,7 +2890,8 @@ struct HiFiPath
     Stereo clkNow = {}, clkNext = {};
 
     // doubled: the path runs at twice the session's rate (HQ)
-    void prepare(float rate, bool doubled = false)
+    // cache: see NoiseCache (none: worked out every time, as before)
+    void prepare(float rate, bool doubled = false, NoiseCache* cache = nullptr)
     {
         sr = rate;
         up2 = doubled;
@@ -2870,23 +2909,28 @@ struct HiFiPath
         const float nsr = up2 ? 0.5f * sr : sr;
         lpOn = nsr > 50000.0f;
         if (lpOn) noiseLp.setCoeffs(BiquadCoeffs::lowpass(nsr, kHfNoiseHz, 0.7071f));
-        double pw = 0.0;
-        const int steps = 400;
-        for (int i = 0; i <= steps; ++i)
+        if (cache != nullptr && cache->nsr == nsr) noiseUnit = cache->unit;   // (lpOn and noiseLp follow from nsr too)
+        else
         {
-            const double f = 20.0 + (kHfNoiseHz - 20.0) * i / steps, w = 6.283185307179586 * f / nsr;
-            double g = 4.0 * std::sin(0.5 * w) * std::sin(0.5 * w);
-            if (lpOn)
+            double pw = 0.0;
+            const int steps = 400;
+            for (int i = 0; i <= steps; ++i)
             {
-                const double c1 = std::cos(w), s1 = std::sin(w), c2 = std::cos(2 * w), s2 = std::sin(2 * w);
-                const double nr = noiseLp.b0 + noiseLp.b1 * c1 + noiseLp.b2 * c2, ni = -(noiseLp.b1 * s1 + noiseLp.b2 * s2);
-                const double dr = 1.0 + noiseLp.a1 * c1 + noiseLp.a2 * c2, di = -(noiseLp.a1 * s1 + noiseLp.a2 * s2);
-                g *= (nr * nr + ni * ni) / (dr * dr + di * di);
+                const double f = 20.0 + (kHfNoiseHz - 20.0) * i / steps, w = 6.283185307179586 * f / nsr;
+                double g = 4.0 * std::sin(0.5 * w) * std::sin(0.5 * w);
+                if (lpOn)
+                {
+                    const double c1 = std::cos(w), s1 = std::sin(w), c2 = std::cos(2 * w), s2 = std::sin(2 * w);
+                    const double nr = noiseLp.b0 + noiseLp.b1 * c1 + noiseLp.b2 * c2, ni = -(noiseLp.b1 * s1 + noiseLp.b2 * s2);
+                    const double dr = 1.0 + noiseLp.a1 * c1 + noiseLp.a2 * c2, di = -(noiseLp.a1 * s1 + noiseLp.a2 * s2);
+                    g *= (nr * nr + ni * ni) / (dr * dr + di * di);
+                }
+                pw += g * (i == 0 || i == steps ? 1.0 : (i & 1) ? 4.0 : 2.0);
             }
-            pw += g * (i == 0 || i == steps ? 1.0 : (i & 1) ? 4.0 : 2.0);
+            pw *= (kHfNoiseHz - 20.0) / steps / 3.0 * (2.0 / nsr) / 3.0;  // Simpson; white of [-1, 1) has the power 1/3 over sr / 2
+            noiseUnit = (float)(kRefLevel * 0.70710678 * std::pow(10.0, -kHfSnrDb / 20.0) / std::sqrt(pw));
+            if (cache != nullptr) { cache->nsr = nsr; cache->unit = noiseUnit; }
         }
-        pw *= (kHfNoiseHz - 20.0) / steps / 3.0 * (2.0 / nsr) / 3.0;  // Simpson; white of [-1, 1) has the power 1/3 over sr / 2
-        noiseUnit = (float)(kRefLevel * 0.70710678 * std::pow(10.0, -kHfSnrDb / 20.0) / std::sqrt(pw));
         clickUnit = kRefLevel * sr / kHfRefDevHz;                       // one cycle in one sample
         tailTicks = (int)(kHfFmZero * 6.5f * sr / (float)kCtrl) + 2;   // (the first tick can come at once)
         residK = -kHfResidual * 0.5f * sq(kHfHoldSec * sr);             // x' T^2 / 2 as one sample, from a sample's step
@@ -2999,7 +3043,7 @@ struct HiFiPath
         k.clickThr = 0;
         if (s.clicks > 0.0f && cnr < 16.0f)                            // above 16 dB: under one click a century
         {
-            const float rate = kHfBandHz * (0.5f / 1.7320508f) * std::erfc(std::sqrt(std::pow(10.0f, 0.1f * cnr)));
+            const float rate = kHfBandHz * (0.5f / 1.7320508f) * std::erfc(sqrtNE(std::pow(10.0f, 0.1f * cnr)));
             const double p = (double)rate / sr * 4294967296.0;
             k.clickThr = p >= 4294967295.0 ? 0xffffffffu : (uint32_t)p;
         }
@@ -3035,7 +3079,7 @@ struct HiFiPath
         if (rmsOn)
         {
             rmsS = rmsTo;
-            rmsTo = stereo(std::sqrt(rmsDet.d[0]), std::sqrt(rmsDet.d[1])) * rmsCal;
+            rmsTo = stereo(sqrtNE(rmsDet.d[0]), sqrtNE(rmsDet.d[1])) * rmsCal;
             rmsInc = (rmsTo - rmsS) * kCtrlInv;
         }
         // Cal's slope error: the expander's gain e becomes e^(1 + calSlope); the extra factor (a power,
@@ -3570,7 +3614,7 @@ private:
         envAttack_  = 1.0f - std::exp(-1.0f / (0.003f * nlSr_));   // the compressor detector
         envRelease_ = 1.0f - std::exp(-1.0f / (0.150f * nlSr_));
         compSmooth_ = hq_ ? 0.01005f : 0.02f;                      // and its gain smoothing, per sample
-        if (hifiPath_.sr != nlSr_ || hifiPath_.up2 != hq_) hifiPath_.prepare(nlSr_, hq_);   // Sat Type = Hi-Fi runs in the saturator's place
+        if (hifiPath_.sr != nlSr_ || hifiPath_.up2 != hq_) hifiPath_.prepare(nlSr_, hq_, &hfNoise_);   // Sat Type = Hi-Fi runs in the saturator's place
         nrEnc_.prepare(nlSr_, false);                              // the NR encoder runs inside too (see process)
         BiquadCoeffs eq;                                           // the same at every rate (see kHqEq)
         eq.b0 = kHqEq[0]; eq.b1 = kHqEq[1]; eq.b2 = kHqEq[2]; eq.a1 = kHqEq[3]; eq.a2 = kHqEq[4];
@@ -3612,11 +3656,12 @@ private:
     // (hyEmph_) the emphasis without TapeSat's bias term (1 - 0.3 bias: too much bias costing the highs
     // headroom, which the recorder makes itself). The playback side takes the new values `lag` samples
     // later (Stage::lag), or at once.
-    __attribute__((noinline)) void hyTapeSet(int lag)
+    // (hiSat, split: Hi Sat's plain value and Split's normalised one, as the caller read them: see readParams)
+    __attribute__((noinline)) void hyTapeSet(int lag, float hiSat, float split)
     {
         hys::Stage& s = *hy_;
-        const float speed = 0.01f * get(kHiSat);
-        s.bpTo = hys::biasPercent(tapeBias(getNormalised(kSplit)));
+        const float speed = 0.01f * hiSat;
+        s.bpTo = hys::biasPercent(tapeBias(split));
         s.wantEp = speed >= 0.5f ? 1 : 0;
         if (hyEmph_)
         {
@@ -3639,7 +3684,7 @@ private:
     {
         const auto pct = [this](int i) { return get(i) * 0.01f; };
         tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(getNormalised(kSplit)));
-        hyTapeSet(lag);
+        hyTapeSet(lag, get(kHiSat), getNormalised(kSplit));
     }
     // The recorder from rest at the speed asked for, the tables at the bias now. f1: in at once (no
     // crossfade from the curve: nothing is heard yet); hold: control ticks the Saturator waits (it is
@@ -3768,11 +3813,7 @@ private:
         setQuality();
         hbUp_.reset(); hbDown_.reset(); hbDryUp_.reset(); hbDryDown_.reset(); hqEq_.reset(); hqDryEq_.reset();
         fadeOut_ = 0; resetNextTick_ = false;
-        // All four lines are emptied, not only rewound: in the first moments after a reset the
-        // readers reach back past what has been written since (the resting length, the swing,
-        // the dry copy's crossfade a knob move can start), and the filters after them carry
-        // whatever they read on into the fade-in. Left in place, the old sound would be heard.
-        wf1Delay_.reset(); wf2Delay_.reset(); choDelay_.reset(); dryDelay_.reset();
+        // (the four delay lines: below, once their delays are known)
         simple_.reset(); resetMic();
         lpfA_.reset(); lpfB_.reset(); hiCut2_.reset();
         tiltLp_ = slew_ = splitLp_ = loCutLp_ = hissLp_ = click_ = drvX_ = satX_ = nrClipP_ = nrDecP_ = slewX_ = slewC_ = dryM_[0] = dryM_[1] = splat(0.0f);
@@ -3804,6 +3845,7 @@ private:
         nrEncMix_ = nrEncOn_ ? 1.0f : 0.0f; nrDecMix_ = nrDecOn_ ? 1.0f : 0.0f;
         nrEncRun_ = nrEncOn_; nrDecRun_ = nrDecOn_;
         linAmt_ = linTarget_ = 0.0f;
+        linRun_ = staticOn_ = false; monoOn_ = true;   // (as they stand now; the first sample's tick sets them again)
         hissDyn_ = 1.0f;
         headAmp_ = tgt_[cHead];
         for (int i = 0; i < kNumCtl; ++i) cur_[i] = tgt_[i];
@@ -3826,6 +3868,27 @@ private:
         choBase_ = choDelayTarget_;
         choD_[0].snap(choBase_); choD_[1].snap(choBase_);
         choActive_ = rampT_[rChorus] > 0.0f;
+        // The delay lines. In the first moments after a reset the readers reach back past what has been
+        // written since, and the filters after them carry whatever they read on into the fade-in, so
+        // what they can reach must be empty; the rest is overwritten before any reader gets there, so
+        // (set 1) only that part is cleared, not all 224 KB. Every writer starts again at 0.
+        //  - A wobble line's reader starts at its resting delay (baseTarget, set just above) and reads
+        //    up to 3 samples further back for the interpolation, and 2 more for Scrape's shake. Its
+        //    delay then moves by less than a sample per sample (the swing by at most 0.15, a glide by
+        //    kGlideStep per tick), so it never falls behind faster than the writer moves on; a
+        //    crossfade to a far resting delay starts only once the line holds that much new sound
+        //    and 8 samples more (TapeSpeed::followBase): the newest baseTarget + kTailRoom samples.
+        //  - The chorus reads at most its base delay and depth (0.004 sr) back plus 3, and its base
+        //    glides by kGlideStep per tick. Not running, it is not read at all: switched on later it
+        //    waits (choHold_) until its line has filled, as it always has mid-play.
+        //  - The dry copy, kept for Mix below 100 %, starts with a crossfade allowed at once (dryFill_)
+        //    that can reach both wobbles' new lengths: emptied whole while it runs. Not running, it is
+        //    not read; switched in later it waits (dryHold_) as it always has.
+        constexpr int kTailRoom = 32;
+        wf1Delay_.resetTail((int)std::ceil(wf1_.baseTarget) + kTailRoom);
+        wf2Delay_.resetTail((int)std::ceil(wf2_.baseTarget) + kTailRoom);
+        choDelay_.resetTail(choActive_ ? (int)std::ceil(choBase_ + 0.004f * sr_) + kTailRoom : 0);
+        dryDelay_.resetTail(dryActive_ ? kTapeDelaySamples : 0);
         micRun_ = rampT_[rMic] > 0.0f; micHold_ = 0;
         hifiRun_ = hifiType_ && rampT_[rSat] > 0.0f;   // (Hi-Fi: from rest, see controlTick)
         hifiPath_.reset();
@@ -4233,7 +4296,8 @@ private:
             // sound that goes round VHS or Hi-Fi (their emphasis and their curve or limiter would make
             // it wrong: added after them, it gave up to 18 dB more fold-back than without it).
             // (VHS heard: shape2's tape2, which does both samples at once; never here)
-            if (satMix > 0.0f && hifiRun_)
+            const bool satOn = satMix > 0.0f;   // (one float compare for the two tests below)
+            if (satOn && hifiRun_)
             {
                 x = hifiShape<true>(x, satMix);
                 const Stereo m = satX_;
@@ -4242,7 +4306,7 @@ private:
             }
             const Stereo x1 = satX_;
             satX_ = x;
-            if (satMix > 0.0f && !hifiRun_)
+            if (satOn && !hifiRun_)
             {
                 // both bands' clippers as one 4-lane mean; a band whose clipper is off has a blend of
                 // 0 there. Their last two samples are taken from the sound when the stage comes back in.
@@ -4555,7 +4619,7 @@ public:
             // ----- deck: tracking, the backup track --------------------------
             // linAmt_ jumps to 1 while a mistracking Hi-Fi deck falls back to its linear track,
             // which is dull and thin (and mono, see fbMono_ below).
-            if (linAmt_ > 0.0f || linTarget_ > 0.0f)
+            if (linRun_)   // linAmt_ > 0 || linTarget_ > 0, as controlTick left them (see there)
             {
                 linAmt_ += 0.01f * (linTarget_ - linAmt_);
                 Stereo y = fbLp_.process(x);
@@ -4587,7 +4651,7 @@ public:
                 else hsHeld_ = x;
             }
             // static while the Hi-Fi carrier drops out (staticL_ is 0 when only the right one does)
-            if (staticAmp_ > 0.0f)
+            if (staticOn_)   // staticAmp_ > 0 (it changes only in controlTick)
                 x += stereo(staticRng_.nextBipolar() * staticL_, staticRng_.nextBipolar()) * staticAmp_;
 
             // ----- line whistle ----------------------------------------------
@@ -4618,7 +4682,9 @@ public:
             {
                 if (nrDecSeed_) { nrDec_.seed(x); nrDecSeed_ = false; nrDecP_ = splat(0.0f); }
                 Stereo plain;
-                if constexpr (hq) plain = nrDec_.decode<true, hy ? 1 : 0>(x, &nrDecP_);
+                // (copy 2: the HQ copy with Sat Type VHS gets one of its own too, so decode<true, 0> has
+                // one caller again and is written into the loop; the arithmetic is the same in every copy)
+                if constexpr (hq) plain = nrDec_.decode<true, hy ? 1 : vhs ? 2 : 0>(x, &nrDecP_);
                 else plain = nrDec_.decode<false, hy ? 1 : 0>(x);
                 if (nrDecMix_ == 1.0f && nrDecOn_) x = plain;
                 else
@@ -4629,9 +4695,14 @@ public:
                 }
             }
             if (whistleLate) x += whistle;
-            const float monoAmt = maxf(monoMix, fbMono_);
-            if (monoAmt > 0.0f) x += (splat(0.5f * (x[0] + x[1])) - x) * monoAmt;
-            if (mix < 1.0f && dryActive_)
+            // (monoOn_: the Mono ramp or fbMono_ may be above 0 before the next tick; when it is false
+            // monoAmt would not be above 0 at any sample until then, see controlTick)
+            if (monoOn_)
+            {
+                const float monoAmt = maxf(monoMix, fbMono_);
+                if (monoAmt > 0.0f) x += (splat(0.5f * (x[0] + x[1])) - x) * monoAmt;
+            }
+            if (dryActive_ && mix < 1.0f)   // (the bool first: false at Mix 100 %)
             {
                 // dry / wet: the dry signal waits as long as the tape path does at rest
                 // (a whole number of samples when nothing wobbles: no interpolation then)
@@ -4947,13 +5018,22 @@ private:
     static constexpr char kUid[5] = "AYlM";
 
     // ----- parameters -> targets and filter coefficients ------------------------
+    // (set 1) What readParams and setHiFi read: the values process() took in under its check that no
+    // program or state load began or ended meanwhile (lastNorm_, which doReset fills the same way just
+    // before its readParams), not the atomics again, which a load beginning after that check could already
+    // have changed. The plain value as get() makes it (getBool, getInt likewise); with no load under way
+    // they are the same values, so nothing changes but that window.
+    float pv(int i) const { return param(i).toPlain(lastNorm_[i]); }
+    bool  pvBool(int i) const { return pv(i) >= 0.5f; }
+    int   pvInt(int i) const { return (int)std::lround(pv(i)); }
+
     // Called with the groups whose parameters moved (gAll from reset()). All the pow / exp / sin
     // / cos work of the plugin is in here, so a group that did not change costs nothing.
     void readParams(uint32_t groups)
     {
         ctlBusy_ = rampBusy_ = true;   // it may write any tgt_ / rampT_: the smoothing has work (see controlTick)
         const float sr = sr_;
-        auto pct = [this](int i) { return get(i) * 0.01f; };
+        auto pct = [this](int i) { return pv(i) * 0.01f; };
 
         // Sat Type = Hi-Fi (1.7). The type itself changes as Sat Type always has (at a restart, or in
         // place while the Saturator is off and silent). "Hi-Fi on" is the type with the Saturator on:
@@ -4962,26 +5042,26 @@ private:
         // NR is ignored. With the Saturator off the plugin is as it is in the other types.
         if (groups == gAll)
         {
-            const bool hifi = getInt(kSatType) == 2;
+            const bool hifi = pvInt(kSatType) == 2;
             if (hifi != hifiType_) redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
             hifiType_ = hifi;
         }
         {
-            const bool on = hifiType_ && getBool(kSatOn);
+            const bool on = hifiType_ && pvBool(kSatOn);
             if (on != hifiOn_) { hifiOn_ = on; groups |= gRamps | gSat | gNoise | gDeck | gNr; }
         }
 
         if (groups & gRamps)
         {
-            rampT_[rOut]    = dbToGain(get(kOutput));
-            rampT_[rMono]   = getBool(kMono) ? 1.0f : 0.0f;
-            rampT_[rChorus] = getBool(kChorusOn) ? pct(kChoMix) : 0.0f;
-            micOn_          = getBool(kMicOn);
+            rampT_[rOut]    = dbToGain(pv(kOutput));
+            rampT_[rMono]   = pvBool(kMono) ? 1.0f : 0.0f;
+            rampT_[rChorus] = pvBool(kChorusOn) ? pct(kChoMix) : 0.0f;
+            micOn_          = pvBool(kMicOn);
             rampT_[rMic]    = micOn_ && !micSwap_ ? 1.0f : 0.0f;   // (out while it changes type: see gMic)
-            rampT_[rSat]    = getBool(kSatOn) ? 1.0f : 0.0f;
+            rampT_[rSat]    = pvBool(kSatOn) ? 1.0f : 0.0f;
             rampT_[rMix]    = pct(kMix);
             dropAmount_     = hifiOn_ ? 0.0f : pct(kDropouts);
-            animate_.store(getBool(kAnimate), std::memory_order_relaxed);
+            animate_.store(pvBool(kAnimate), std::memory_order_relaxed);
         }
         if (groups & gPreamp)
         {
@@ -5005,8 +5085,8 @@ private:
         }
         if (groups & gSat)
         {
-            tgt_[cLowsG]  = dbToGain(get(kLows));
-            tgt_[cHighsG] = dbToGain(get(kHighs));
+            tgt_[cLowsG]  = dbToGain(pv(kLows));
+            tgt_[cHighsG] = dbToGain(pv(kHighs));
             setDrive(pct(kLoSat), kSatExtraGain, cLoG, cLoMk, cLoMix);
             setDrive(pct(kHiSat), kSatExtraGain, cHiG, cHiMk, cHiMix);
             // The type itself only changes at a restart (a switch of it fades out first), or in
@@ -5014,7 +5094,7 @@ private:
             // keeps its own settings.
             if (groups == gAll)
             {
-                const bool tape = getInt(kSatType) == 1;
+                const bool tape = pvInt(kSatType) == 1;
                 if (tape != tape_) redrawDue_.store(true);     // the three read-outs change: have the screen drawn again
                 tape_ = tape;
             }
@@ -5024,19 +5104,19 @@ private:
                 // its 3 %, at 56 %). Hi Sat: tape speed. Split: bias, right at its default
                 // (2.5 kHz), too little below, too much above. Lows and Highs trim the two
                 // halves of the result around 1 kHz.
-                tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(getNormalised(kSplit)));
+                tapeSat_.set(nlSr_, pct(kLoSat), pct(kHiSat), tapeBias(lastNorm_[kSplit]));
                 splitCoeff_ = lpCoeff(1000.0f, nlSr_);
-                if (__builtin_expect(hyEmph_ || hyAny_, 0)) hyTapeSet(hyEmph_ ? hyLag() : 0);   // (1.8) what the hysteresis recorder takes from the three knobs
+                if (__builtin_expect(hyEmph_ || hyAny_, 0)) hyTapeSet(hyEmph_ ? hyLag() : 0, pv(kHiSat), lastNorm_[kSplit]);   // (1.8) what the hysteresis recorder takes from the three knobs
             }
             else if (hifiType_) splitCoeff_ = lpCoeff(1000.0f, nlSr_);   // Hi-Fi: Lows and Highs around 1 kHz, as in VHS mode
-            else splitCoeff_ = lpCoeff(get(kSplit), nlSr_);   // the 2-band crossover
+            else splitCoeff_ = lpCoeff(pv(kSplit), nlSr_);   // the 2-band crossover
         }
         // Azimuth: the tilt, its wander, and the tape speed it is read at (Hi Sat, as the tape has it)
-        if (groups & (gSat | gAz)) az_.set(nlSr_, hq_ ? 2 * kCtrl : kCtrl, get(kAzimuth), getNormalised(kAzimuth), pct(kHiSat));
+        if (groups & (gSat | gAz)) az_.set(nlSr_, hq_ ? 2 * kCtrl : kCtrl, pv(kAzimuth), lastNorm_[kAzimuth], pct(kHiSat));
         if (groups & gHiCut)
         {
             // 4-pole Butterworth high cut = two biquads with these Qs
-            const float hiCut = get(kHiCut);
+            const float hiCut = pv(kHiCut);
             lpfA_.setCoeffs(BiquadCoeffs::lowpass(sr, hiCut, 0.5412f));
             lpfB_.setCoeffs(BiquadCoeffs::lowpass(sr, hiCut, 1.3066f));
         }
@@ -5044,28 +5124,28 @@ private:
         {
             // depths are peak pitch error (squared for fine control at the low end)
             dev1Slow_ = kWarpDev     * sq(pct(kWarp));
-            rate1Slow_ = get(kRpm) * (1.0f / 60.0f);
+            rate1Slow_ = pv(kRpm) * (1.0f / 60.0f);
             shape1_   = pct(kShape);
             dev1Fast_ = kFlutterDev  * sq(pct(kFlutter));
-            rate1Fast_ = get(kFlutRate);
+            rate1Fast_ = pv(kFlutRate);
             dev2Slow_ = kWowDev      * sq(pct(kWow));
-            rate2Slow_ = get(kWowRate);
+            rate2Slow_ = pv(kWowRate);
             dev2Fast_ = kFlutter2Dev * sq(pct(kFlutter2));
-            rate2Fast_ = get(kFlut2Rate);
-            tgt_[cWobbleOn] = getBool(kWobbleOn) ? 1.0f : 0.0f;
+            rate2Fast_ = pv(kFlut2Rate);
+            tgt_[cWobbleOn] = pvBool(kWobbleOn) ? 1.0f : 0.0f;
             // scrape: how far the read position is shaken. The noise it scales stays inside
             // +-2, and the wobble delay is never shorter than 3 samples, so 1 is the limit here.
             tgt_[cScrape] = sq(pct(kScrape)) * tgt_[cWobbleOn];
         }
         if (groups & gCuts)
         {
-            loCutCoeff_ = lpCoeff(get(kLoCut), sr);
-            hiCut2_.setCoeffs(BiquadCoeffs::lowpass(sr, get(kHiCut2), 0.7071f));
+            loCutCoeff_ = lpCoeff(pv(kLoCut), sr);
+            hiCut2_.setCoeffs(BiquadCoeffs::lowpass(sr, pv(kHiCut2), 0.7071f));
         }
         if (groups & gNoise)
         {
             // master is nominal (x1) at 50 %, +12 dB at 100 %
-            const float master = getBool(kNoiseOn) ? kNoiseMaster * sq(pct(kNoise)) : 0.0f;
+            const float master = pvBool(kNoiseOn) ? kNoiseMaster * sq(pct(kNoise)) : 0.0f;
             tgt_[cHum]     = sq(pct(kHum))      * 0.12f * master;
             tgt_[cBuzz]    = sq(pct(kBuzz))     * 0.10f * master;
             // (Hi-Fi on: the FM path makes these three; their stages here rest, but for the hiss of the
@@ -5080,21 +5160,21 @@ private:
             if (pct(kWhistle) > 0.6f) tgt_[cWhistle] *= dbToGain(15.0f * (pct(kWhistle) - 0.6f) / 0.4f);
             const float clicksPerSec = 2.0f + 60.0f * pct(kCrackle);
             crackleThresh_ = (uint32_t)(clicksPerSec / sr * 4294967296.0f);
-            noisePre_ = getInt(kNoisePos) == 1;
-            tgt_[cMicNoise] = getBool(kNoiseOn) ? 1.0f : 0.0f;   // the mic's own noise: the switch only (see MicModel)
+            noisePre_ = pvInt(kNoisePos) == 1;
+            tgt_[cMicNoise] = pvBool(kNoiseOn) ? 1.0f : 0.0f;   // the mic's own noise: the switch only (see MicModel)
 
             // head switching: how long the signal is held at each switch, in samples. It follows
             // the Head Buzz knob and the noise master too, but not as the rasp does: in a straight
             // line with the knob (the rasp goes with its square), and with the master only up to
             // 50 %, where it reaches its full length (the rasp goes on rising, to +12 dB at 100 %).
-            const float headHold = getBool(kNoiseOn) && !hifiOn_ ? pct(kHeadBuzz) * minf(2.0f * pct(kNoise), 1.0f) : 0.0f;
+            const float headHold = pvBool(kNoiseOn) && !hifiOn_ ? pct(kHeadBuzz) * minf(2.0f * pct(kNoise), 1.0f) : 0.0f;
             hsLen_[0] = headHold * 6.0f;
             hsLen_[1] = headHold * 3.75f;   // the two heads are not quite alike
         }
         if (groups & gChorus)
         {
-            choSpeed_ = get(kChoSpeed);
-            choDelayTarget_ = clamp(get(kChoDelay) * 0.001f * sr, 4.0f, (float)kChorusDelaySamples - 8.0f);
+            choSpeed_ = pv(kChoSpeed);
+            choDelayTarget_ = clamp(pv(kChoDelay) * 0.001f * sr, 4.0f, (float)kChorusDelaySamples - 8.0f);
             choWidth_ = pct(kChoWidth);
         }
         if (groups & gMic)
@@ -5103,22 +5183,30 @@ private:
             // running sound (a click at each position a Q-Link passes). So the mic fades out
             // first, the new one goes in while it is out, and it fades back in from rest (see
             // controlTick). At a reset, or while the mic is off and silent, it goes in at once.
-            micWant_ = clamp(getInt(kMicType), 0, 3) + 4 * clamp(getInt(kMicModel), 0, 1);
-            if (groups == gAll || (!micSwap_ && rampT_[rMic] == 0.0f && ramp_[rMic].v == 0.0f)) { micSwap_ = false; setMic(micWant_); }
+            micWant_ = clamp(pvInt(kMicType), 0, 3) + 4 * clamp(pvInt(kMicModel), 0, 1);
+            if (groups == gAll || (!micSwap_ && rampT_[rMic] == 0.0f && ramp_[rMic].v == 0.0f))
+            {
+                micSwap_ = false;
+                // The mic that is in again (only Mic Gain moved, or Type came back): setMic would make the
+                // same filters (the rate and HQ change only at a reset, which comes here with gAll), so only
+                // what MicModel::set does to a running model is done, its clipper from rest.
+                if (groups == gAll || micWant_ != micType_) setMic(micWant_);
+                else if (!micSimple_) { mic_.clipP = 0.0f; mic_.clipOver = false; }
+            }
             else micSwap_ = micWant_ != micType_;   // (turned back to the type that is in: no fade)
             rampT_[rMic] = micOn_ && !micSwap_ ? 1.0f : 0.0f;
-            tgt_[cMicGain] = dbToGain(get(kMicGain));
+            tgt_[cMicGain] = dbToGain(pv(kMicGain));
         }
         if (groups & gDeck)
         {
-            const bool deck = getBool(kDeckOn);
+            const bool deck = pvBool(kDeckOn);
             tgt_[cAgc]    = deck ? pct(kAgc) : 0.0f;
             tgt_[cDrift]  = deck && !hifiOn_ ? pct(kDrift) : 0.0f;       // (Hi-Fi on: these three are the FM path's)
             tgt_[cBreath] = deck && !hifiOn_ ? pct(kBreathing) : 0.0f;
             trackErr_     = deck && !hifiOn_ ? pct(kTracking) : 0.0f;
             // AGC Model: at a reset straight in; a switch while sound plays goes through
             // controlTick (the new one settles unheard first, then a crossfade)
-            const bool wantM = getInt(kAgcModel) == 1;
+            const bool wantM = pvInt(kAgcModel) == 1;
             if (groups == gAll) { agcB_ = agcBTo_ = wantM ? 1.0f : 0.0f; agcBInc_ = 0.0f; agcSettle_ = 0; }
             else if (wantM != agcWantM_) agcSettle_ = wantM ? agcSettleTicks_ : agcSettleSimpleTicks_;
             agcWantM_ = wantM;
@@ -5127,7 +5215,7 @@ private:
         {
             // a side that is switched in starts from rest (unless it was still fading out)
             // and fades in; one that is switched out fades out (see process)
-            const int mode = hifiOn_ ? 0 : getInt(kNr);                  // ignored while Hi-Fi is on (it is the linear track's)
+            const int mode = hifiOn_ ? 0 : pvInt(kNr);                  // ignored while Hi-Fi is on (it is the linear track's)
             const bool enc = mode == 1 || mode == 3, dec = mode >= 2;
             if (enc && !nrEncOn_ && nrEncMix_ == 0.0f) { nrEnc_.reset(); nrEncSeed_ = true; }
             if (dec && !nrDecOn_ && nrDecMix_ == 0.0f) { nrDec_.reset(); nrDecSeed_ = true; }
@@ -5140,7 +5228,7 @@ private:
         }
         if (hifiType_ && (groups & (gRamps | gSat | gNoise | gDeck))) setHiFi();
         // (1.8) Hysteresis: the switch, and whether the recorder's copy of the sample loop is needed
-        if (groups & gHyst) hyMode_ = getInt(kHysteresis);
+        if (groups & gHyst) hyMode_ = pvInt(kHysteresis);
         if ((groups & (gRamps | gSat | gHyst)) && (hyMode_ != 0 || hyAny_)) hyUpdate();   // (Off and out: nothing to do)
     }
 
@@ -5154,14 +5242,14 @@ private:
     // and the linear track (the deck's behaviour, not noise) stay.
     void setHiFi()
     {
-        const auto pct = [this](int i) { return get(i) * 0.01f; };
-        const bool noise = getBool(kNoiseOn), deck = getBool(kDeckOn);
+        const auto pct = [this](int i) { return pv(i) * 0.01f; };
+        const bool noise = pvBool(kNoiseOn), deck = pvBool(kDeckOn);
         const float master = noise ? kNoiseMaster * sq(pct(kNoise)) : 0.0f;
         const float gate = noise ? minf(2.0f * pct(kNoise), 1.0f) : 0.0f;
         HiFiPath::Settings s;
         s.recDb       = hifiRecDb(pct(kLoSat));
         s.carrierDb   = kHfCarrierMinDb * pct(kHiSat);
-        s.calDb       = kHfCalDb * tapeBias(getNormalised(kSplit));
+        s.calDb       = kHfCalDb * tapeBias(lastNorm_[kSplit]);
         s.calSlope    = kHfCalSlope / kHfCalDb * s.calDb;
         s.hiss        = noise ? kHfHissGain * 4.0f * pct(kHiss) * pct(kNoise) : 0.0f;
         s.noiseTop    = dbToGain(kHfSnrDb - kHfNoiseTopDb);
@@ -5192,7 +5280,7 @@ private:
     {
         micSimple_ = mic < 4;
         micHq_ = hq_ && !micSimple_ && mic != 4 + MicModel::kDynamic;
-        if (micSimple_) simple_.set(mic, sr_); else mic_.set(mic - 4, sr_, micHq_ ? 2.0f * sr_ : sr_);
+        if (micSimple_) simple_.set(mic, sr_); else mic_.set(mic - 4, sr_, micHq_ ? 2.0f * sr_ : sr_, &micCache_);
         micType_ = mic;
     }
     // The model from rest, with its half-band filters.
@@ -5322,7 +5410,7 @@ private:
 
         // compressor: 4:1 above the threshold. (t ^ 0.75 with two square roots)
         const float thr = cur_[cThresh];
-        if (env_ > thr) { const float s = std::sqrt(thr / env_); compTarget_ = s * std::sqrt(s); }
+        if (env_ > thr) { const float s = sqrtNE(thr / env_); compTarget_ = s * sqrtNE(s); }   // (sqrtNE: the same roots, no errno check)
         else compTarget_ = 1.0f;
 
         // wobble: the switch fades both stages in and out
@@ -5506,6 +5594,16 @@ private:
         }
         fbMono_ += 0.25f * ((fallback ? 1.0f : 0.0f) - fbMono_);
         if (fbMono_ < 1.0e-4f) fbMono_ = 0.0f;
+        // The sample loop's tests for the next 16 samples, as flags (a float compare per sample saved
+        // each), set after the last write of what they look at. linAmt_ moves inside the loop too, but
+        // only towards linTarget_: with linTarget_ 0 it is 0 or at least 1e-4 here (just above), and 16
+        // steps of 1 % leave it above 0, so linAmt_ > 0 || linTarget_ > 0 holds at every sample until the
+        // next tick exactly when it holds now. staticAmp_ and fbMono_ change only in this function. The
+        // Mono ramp moves from v by inc (nothing else writes it before the next tick): with v <= 0, no
+        // step and fbMono_ <= 0, maxf(monoMix, fbMono_) > 0 is false at every one of those samples.
+        linRun_ = linAmt_ > 0.0f || linTarget_ > 0.0f;
+        staticOn_ = staticAmp_ > 0.0f;
+        monoOn_ = !(ramp_[rMono].v <= 0.0f && ramp_[rMono].inc == 0.0f && fbMono_ <= 0.0f);
         hsOn_ = hsLen_[0] > 0.0f && !fallback;   // no Hi-Fi heads in play on the linear track
         if (!hsOn_) { hsLeft_ = 0; hsPhase_ = 0.0f; }   // an interrupted hold must not carry on later,
                                                         // and the next switch is a whole field away
@@ -6158,6 +6256,7 @@ private:
     int   dryHold_ = 0, choHold_ = 0;                     // ticks Mix / the chorus wait for their delay to fill
     int   fadeOut_ = 0;                                   // ticks left of the fade-out before a reset
     bool  resetNextTick_ = false;                         // the fade-out is at its end: ask for the reset at the next tick
+    bool  linRun_ = false, staticOn_ = false;             // the sample loop's backup-track and static tests (see controlTick; in the padding)
 
     // what the screen shows (audio thread)
     bool  playing_ = false;
@@ -6248,6 +6347,7 @@ private:
     float hsLen_[2] = {0, 0}, hsFrac_ = 0, hsPhase_ = 0, hsInc_ = 0;
     int   hsLeft_ = 0;
     bool  hsFlip_ = false, hsOn_ = false;
+    bool  monoOn_ = true;                                     // the sample loop's Mono test may hold (see controlTick; in the padding)
     int   fbState_ = 0, fbTicks_ = 0, fbLinearTicks_ = 0;     // 0 idle, 1 static, 2 on the linear track, 3 static,
                                                               // 4 static in the right channel only
     float fbStatic_ = 0, staticAmp_ = 0, staticL_ = 1.0f, fbMono_ = 0;
@@ -6332,6 +6432,12 @@ private:
     // (see paramsRoom_)
     float lastNorm_[kNumParams] = {};   // parameter values readParams() last saw
     int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 turns per minute, shown in Hz (see formatValue)
+
+    // Values that depend on the sample rate alone, kept from the last time they were worked out (each is
+    // the value that work gives, so nothing changes but the time an HQ switch or a mic change takes).
+    // After every other member, which keep their places.
+    HiFiPath::NoiseCache hfNoise_;      // the Hi-Fi channel noise's scale (see HiFiPath::prepare)
+    MicModel::Cache micCache_;          // the Boombox's and the Phone's noise levels (see MicModel::set)
 };
 
 // The framework's dispatcher with five additions:
