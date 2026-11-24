@@ -17,6 +17,8 @@ Every figure below carries its origin:
 - **(inferred)**: reasoning from the above that has not been measured.
 
 "Frame" means one sample period at 44.1 kHz, all channels. "Sample" is used for the oversampled rate.
+Figures introduced with "in one plugin" show the scale of an effect in one code base. Use them to judge
+whether a check is worth running, never as targets.
 
 See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/building.md` and
 `framework/mpc_plugin.h` for the host's behavior and the framework this guide assumes.
@@ -32,6 +34,31 @@ See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/buildi
    switches count as rebuilds: under a random-parameter bench they set the worst block (section 14).
 6. Optional stages compiled out when they are off.
 7. Only then the micro-tuning below.
+
+## Choosing what to change
+
+The order below is a recommendation; the measurements behind it are in the sections it cites.
+
+1. **Decide first whether the output may change.** If a release must match the previous one bit for
+   bit, only bit-exact changes qualify: hoisting, caches, flags set per tick, clearing only reachable
+   state, mirrored exact symmetry, the square-root builtin, inlining and member layout (sections 3, 7,
+   8, 10). These change the bits and need the owner's decision: reciprocal estimates, a reordered or
+   vectorized sum, fused against non-fused multiply-add, a new or removed floor, a detector moved to
+   another rate, a different oversampling factor (sections 4, 5, 11, 12).
+2. **Then fix the worst block.** One block over the limit is a dropout, whatever the average. Resets,
+   rebuilds and stage start-ups come before any frame-loop work (sections 8, 14).
+3. **Then the high-percentile block under moving controls,** which is what a bench with random
+   parameters reports (section 14).
+4. **Then the steady cost per frame,** which matters most when several instances run.
+5. **Where speed and sound conflict,** prefer the change whose error is bounded and below the noise
+   the stage already has. An estimate with a relative error under 1e-5 is acceptable on a new path;
+   keep the exact operation where the result feeds a small difference or a long feedback path
+   (section 4). Gliding one copy's coefficients in place of a two-copy crossfade changes how a
+   transition sounds, never the steady sound (section 8).
+6. **Stop** when the worst block is under the limit with margin, the steady cost is a few percent of
+   a core, and the next candidate saves under about 2 % of the instructions per frame: a saving of that
+   size did not show on the device (section 2). Stop earlier if the next change would cost
+   bit-identity that the release needs.
 
 ## 1. Know the machine
 
@@ -53,6 +80,36 @@ and the frequency did not change under load or after idling (device). A 128-fram
 about 4.67 million processor cycles. One percent of that block is about 46,700 cycles, or roughly 365
 cycles per frame, at any block size. A stereo effect that spends 1,000 instructions per frame uses about
 3 % of a core, assuming about one instruction per cycle (inferred).
+
+**Costs at a glance.** Cycles on the device, with the section that explains each. "Every" is how often
+a new independent operation can start. One percent of a block is about 365 cycles per frame.
+
+| Operation | Latency | Every | Section |
+|---|---|---|---|
+| NEON float multiply, two or four lanes | 4 | 1 (two lanes), 2 (four) | 5 |
+| NEON float add, two or four lanes | 5 | 1 (two lanes), 2 (four) | 5 |
+| NEON `vmla.f32` or `vfma.f32`, four lanes | 4 via the accumulator, 8 via the multiplicand | 2 | 5 |
+| NEON `vmin` or `vmax`, four lanes | 5 | 2 | 3 |
+| Scalar float multiply | 6 (5 with FZ set) | | 5, 11 |
+| Scalar float add | 5 | | 5 |
+| Scalar compare, flag transfer and conditional move | 9 | | 3 |
+| Mispredicted branch | about 12 | | 4 |
+| Float divide, full mantissa | 18 | 16 | 4 |
+| Float square root, full mantissa | 17 | 15 | 4 |
+| Float divide or root with a few-bit result | 9 | 7 | 4 |
+| Double divide | 32 | 30 | 3 |
+| Four divides from a vector `/` | | 64 | 4 |
+| Four square roots; four roots with divides | | 60; 124 | 4 |
+| Reciprocal estimate and one Newton step, four lanes | 17 | 6 | 4 |
+| Reciprocal square-root estimate and one step, four lanes | 21 | 8 | 4 |
+| Integer divide | 8 to 19, by quotient size | same | 4 |
+| NEON-to-core register move | 7 for a round trip | 4 | 5 |
+| Random read within 24 KB; at 32 KB | 4; 10 | | 7 |
+| Random read at 64 KB; 256 to 512 KB; 1 MB and beyond | 23; 32 to 44; 130 to 200 | | 7 |
+| Sequential read per 64-byte line: L1; L2; main memory | 7; 14 to 18; 22 | | 7 |
+| Scalar load across a cache line | 7 | 2.2 | 7 |
+| 81-entry table with interpolation; rational tanh, per four lanes | 45; 34 | | 4 |
+| `clock_gettime` | about 760 | | 2 |
 
 **Targets.** Aim for a few percent of one core per instance on average. Keep the worst block of the whole
 plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. One community catalog's bench is looser on
@@ -92,8 +149,83 @@ at most 50 % (documented, bench source). Several instances multiply these figure
   ARM when one lane held a NaN (section 3). For a change that relies on a bound, also run a control that
   breaks the bound slightly; it must fail.
 
-**A timing recipe.** Time every `process()` call into a preallocated buffer; write it out only after
-processing has stopped.
+**A counting and bench harness.** One small program includes the plugin's source, drives it the way a
+host does and marks each block. It serves three jobs: instruction counts per block under the emulator,
+bit-identity checks (write `oL` and `oR` to a file and compare two builds), and the random-parameter
+bench of section 14 when run on the device. Add your own events (a program change at a given block, a
+mode switch) inside the block loop.
+
+```cpp
+// drive.cpp: includes the plugin's source and drives it the way a host does.
+//   drive [k]   k = parameters set to random values before each block (0 = steady state)
+#include SRC
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <time.h>
+#include <vector>
+
+extern "C" __attribute__((noinline, used)) void icMark(int b) { asm volatile("" :: "r"(b) : "memory"); }
+extern "C" __attribute__((noinline, used)) void icEnd(int b)  { asm volatile("" :: "r"(b) : "memory"); }
+static VstIntPtr hostCb(AEffect*, VstInt32 op, VstInt32, VstIntPtr, void*, float) { return op == audioMasterVersion ? 2400 : 0; }
+static int64_t nowNs() { timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return int64_t(t.tv_sec) * 1000000000 + t.tv_nsec; }
+
+int main(int argc, char** argv)
+{
+    enum { N = 128, Blocks = 4000, Warm = 200 };
+    const int k = argc > 1 ? atoi(argv[1]) : 0;
+    AEffect* e = VSTPluginMain(hostCb);
+    e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
+    e->dispatcher(e, effSetBlockSize, 0, N, nullptr, 0.0f);
+    e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
+    static float L[N], R[N], oL[N], oR[N];
+    float* in[2] = { L, R };
+    float* out[2] = { oL, oR };
+    std::vector<int64_t> ns(Blocks);
+    unsigned seed = 12345;
+    for (int b = 0; b < Blocks; ++b)
+    {
+        for (int i = 0; i < k; ++i)
+        {
+            const int p = rand_r(&seed) % e->numParams;
+            e->setParameter(e, p, rand_r(&seed) / (float)RAND_MAX);
+        }
+        for (int i = 0; i < N; ++i) L[i] = R[i] = rand_r(&seed) / (float)RAND_MAX - 0.5f;
+        const int64_t t0 = nowNs();
+        icMark(b);
+        e->processReplacing(e, in, out, N);
+        icEnd(b);
+        ns[b] = nowNs() - t0;
+    }
+    std::sort(ns.begin() + Warm, ns.end());
+    const double block = N * 1e9 / 44100.0, n = Blocks - Warm;
+    double sum = 0.0;
+    for (int b = Warm; b < Blocks; ++b) sum += (double)ns[b];
+    std::printf("mean %.2f %%  p99 %.2f %%  worst %.2f %% of a %d-frame block\n", 100.0 * sum / n / block,
+                100.0 * (double)ns[Warm + (int)(n * 0.99)] / block, 100.0 * (double)ns[Blocks - 1] / block, N);
+    return 0;
+}
+```
+
+Build it static for arm32, then count the instructions between the two marks of every block
+(checked with qemu 8.2 on an SDK example plugin; older qemu spells `-one-insn-per-tb` as `-singlestep`):
+
+```
+zig c++ -O2 -std=c++17 -pthread -target arm-linux-musleabihf -mcpu=cortex_a17 -static \
+  -I<sdk>/framework -I<project>/src '-DSRC="MyPlugin.cpp"' drive.cpp -o drive
+M=$(nm drive | awk '$3 == "icMark" { print $1 }'); E=$(nm drive | awk '$3 == "icEnd" { print $1 }')
+qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout drive 2>/dev/null | grep -F "Trace 0:" \
+  | grep -n -e "/00000000$M/" -e "/00000000$E/" | cut -d: -f1 \
+  | awk 'NR % 2 == 1 { p = $1 } NR % 2 == 0 { print (NR - 2) / 2, $1 - p - 1 }' > counts.txt
+```
+
+`counts.txt` holds one line per block: its index and its instruction count. Divide a steady block by
+the frame count for instructions per frame; for an event, read the largest block after it. The printed
+timing line means nothing under the emulator. For a total over the whole run, qemu's `libinsn.so`
+plugin (`qemu-arm -plugin <path>/libinsn.so -d plugin drive`) is faster.
+
+**A timing recipe for inside the host.** Time every `process()` call into a preallocated buffer; write
+it out only after processing has stopped.
 
 ```cpp
 #include <stdint.h>
@@ -405,6 +537,9 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 
 ## 9. Instruments and polyphony
 
+The measurements in this guide come from an effect. This section has no timings of its own: its items
+are documented or inferred, and the costs in section 1 apply per voice.
+
 - **The worst block is every voice sounding plus a burst of note-ons.** Cost per voice times the maximum
   voice count is the figure to budget.
 - **Skip idle voices and steal without allocating.** Stop processing a voice once its envelope is done
@@ -556,7 +691,29 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 
   `-Rpass-missed=loop-vectorize` reports only loops the vectorizer tried; add
   `-Rpass-analysis=loop-vectorize` to see why it gave up. Code written with vector types (section 6)
-  gives it nothing to report. In the hot functions, look for:
+  gives it nothing to report. This scan prints, for every function of 100 instructions or more, the
+  counts of the patterns listed below it (checked on an SDK example plugin):
+
+  ```awk
+  /^[A-Za-z_][A-Za-z0-9_.$]*:/ { f = $1; next }
+  f == "" || $1 ~ /^[.@]/ || NF == 0 { next }
+  { n[f]++ }
+  $1 ~ /^(vdiv|vsqrt)\./ { div[f]++ }
+  $1 ~ /\.f64$/ && $1 !~ /^vmov/ { dbl[f]++ }
+  $1 ~ /^bl?$/ && $2 ~ /^(sin|cos|tan|exp|pow|log|tanh|floor|ceil|round|lrint|fmin|fmax|sqrt)[fl]?$|^__aeabi_/ { lib[f]++ }
+  $1 == "vmrs" { cmp[f]++ }
+  /Spill/ { sp[f]++ }
+  /Reload/ { rl[f]++ }
+  END { for (f in n) if (n[f] >= 100)
+          printf "%s insns %d div/sqrt %d f64 %d libcalls %d compares %d spills %d reloads %d\n",
+                 f, n[f], div[f], dbl[f], lib[f], cmp[f], sp[f], rl[f] }
+  ```
+
+  ```
+  awk -f scan.awk out.s | sort -k3 -n -r | head -20 | c++filt
+  ```
+
+  In the hot functions, look for:
   - `vdiv.f32` and `vsqrt.f32` (divides and roots), and `vrecpe`/`vrsqrte` where you expected them;
   - `.f64` arithmetic: `vadd`, `vsub`, `vmul`, `vmla`, `vfma`, `vdiv`, `vcmp` or `vcvt` with `.f64`
     (double creep). A two-lane float vector lives in one d register, so its copies show as
@@ -579,9 +736,18 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 
 Community catalogs may run a CPU bench on submitted plugins. A common design sets several randomly
 chosen parameters to random values on every block, then passes or fails the plugin on two limits: one
-for a high-percentile block and one for the worst block. Build the same test yourself: a host loop that
-randomizes a few parameters per block, records every block's time and reports both figures. About that
-kind of test:
+for a high-percentile block and one for the worst block. The harness in section 2 is that test: build
+it as shown there, copy the one static file to the device and run it on one core with the number of
+parameters to randomize per block.
+
+```
+taskset 2 ./drive 4        # four random parameters per block, pinned to core 1
+taskset 2 ./drive 0        # steady state, for comparison
+```
+
+It prints the mean, the 99th percentile and the worst block as percent of a 128-frame block. Run old
+and new builds alternately (section 2). The worst block of an ordinary-priority process includes
+preemption spikes, so compare several runs. About that kind of test:
 
 - **Switching cost dominates.** Every mode switch flips many times a second, and each flip lands on the
   previous one's crossfade. A feature that is cheap when left alone can fail on what it costs to turn on.
@@ -603,7 +769,9 @@ kind of test:
 ## 15. What changes on the 64-bit MPCs
 
 The SDK describes the 64-bit models (MPC Live III, MPC XL and later) as Cortex-A55/A76 class and builds
-for `cortex_a55`, the lowest common core (documented). Their chip is not otherwise described here.
+for `cortex_a55`, the lowest common core (documented). Their chip is not otherwise described here, and
+nothing below was timed on one: the items are documented or seen in compiler output. No cycle count in
+this guide carries over.
 
 Rules that reverse:
 
