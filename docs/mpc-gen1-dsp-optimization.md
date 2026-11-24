@@ -1,14 +1,14 @@
 # Writing fast DSP for first-generation MPC hardware
 
-A guide for plugin developers targeting the 32-bit standalone MPCs. These machines have a fraction of a
-laptop's processing power, and a plugin shares one audio block with the user's whole project. Code that
-is comfortable on a desktop can cause dropouts here.
+For plugin developers targeting the 32-bit standalone MPCs. These have a fraction of a laptop's
+processing power, and a plugin shares one audio block with the user's whole project, so code that is
+comfortable on a desktop can cause dropouts here.
 
 Every figure below carries its origin:
 
-- **(device)**: timed on an MPC One+, either while optimizing a real effect plugin or in a
-  micro-benchmark of single instructions, pinned to one core and calibrated against a chain of integer
-  adds (one cycle each), so time taken by other threads on that core cancels out.
+- **(device)**: timed on an MPC One+, while optimizing a real effect plugin or in a micro-benchmark of
+  single instructions pinned to one core and calibrated against a chain of integer adds (one cycle
+  each), so time taken by other threads on that core cancels out.
 - **(counted)**: executed instructions counted under an emulator while optimizing the same plugin.
 - **(compiled)**: seen in assembly built with the SDK's own flags (Clang 22 as bundled with zig 0.17,
   arm32 `-mcpu=cortex_a17 -O2` unless stated).
@@ -18,7 +18,7 @@ Every figure below carries its origin:
 "Frame" means one sample period at 44.1 kHz, all channels. "Sample" is used for the oversampled rate.
 
 See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/building.md` and
-`framework/mpc_plugin.h`. They cover the host's behavior and the framework this guide assumes.
+`framework/mpc_plugin.h` for the host's behavior and the framework this guide assumes.
 
 ## Biggest wins first
 
@@ -58,15 +58,15 @@ plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances m
 
 ## 2. Measure before you optimize
 
-- **Count instructions for precision.** Build for ARM and run the plugin under an emulator that counts
-  executed instructions (qemu with a counting plugin). The count is exact and repeatable, so it can prove
-  that a change did not slow a path down, to a fraction of an instruction per frame.
-- **Counts do not see time.** A divide is one instruction and 18 cycles (device). A table read that
-  misses the cache is one instruction and up to about 200 cycles (device). So is a mispredicted branch,
-  about 12 cycles (device). In practice:
+- **Count instructions for precision.** Run the ARM build under an emulator that counts executed
+  instructions (qemu with a counting plugin). The count is exact and repeatable, so it can prove that a
+  change did not slow a path, to a fraction of an instruction per frame.
+- **Counts do not see time.** Each of these is one instruction: a divide takes 18 cycles, a
+  mispredicted branch about 12, and a table read that misses the cache up to about 200 (all device). In
+  practice:
   - Replacing 14 scalar divides per frame with reciprocal estimates added 28 instructions per frame
-    (counted) and made the plugin faster on the device (device).
-  - An 81-entry lookup table cost more on the device than its count suggested. A closed-form curve was
+    (counted) yet made the plugin faster on the device (device).
+  - An 81-entry lookup table cost more on the device than its count suggested; a closed-form curve was
     faster (device).
   - Code that reads a lot of table memory got about 10 % fewer instructions done per cycle than code
     that computes (device, against counts).
@@ -78,7 +78,7 @@ plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances m
   switch, several controls at once) and look at the heaviest blocks.
 - **Test control moves at the smallest block size.** Bugs in control handling hide at 128 frames and
   appear at 32.
-- **Desktop timings are a first estimate.** The SDK's host simulator times the desktop build. The
+- **Desktop timings are a first estimate.** The SDK's host simulator times the desktop build; the
   cookbook's rough factor to the A17 is 15 to 25 (documented).
 - **A timing bench cannot see a small steady saving.** Eight changes to one effect plugin cut its steady
   instructions by 1 to 2.4 % per frame (counted), and its idle mean and 99th percentile read 2.9 % and
@@ -89,7 +89,7 @@ plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances m
   ARM when one lane held a NaN (section 3). For a change that relies on a bound, also run a control that
   breaks the bound slightly; it must fail.
 
-**A timing recipe.** Time every `process()` call into a preallocated buffer, and write it out only after
+**A timing recipe.** Time every `process()` call into a preallocated buffer; write it out only after
 processing has stopped.
 
 ```cpp
@@ -124,8 +124,8 @@ struct BlockLog                                   // a member of the plugin, so 
 - Time an empty `process()` the same way and subtract it. `clock_gettime` is a system call on the
   device and costs about 0.5 µs, some 760 cycles (device). With the recipe compiled unchanged, an empty
   `process()` read 583 ns, 0.02 % of a 128-frame block (device): good for whole blocks, too coarse for
-  small sections. If you can, record the core frequency
-  (`/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq`) from a non-audio thread.
+  small sections. If you can, record the core frequency from a non-audio thread
+  (`/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq`).
 - The MPC's own CPU meter is a coarse cross-check. Reading the ARM cycle counter from user space raised
   an illegal-instruction signal (device).
 
@@ -136,9 +136,9 @@ struct BlockLog                                   // a member of the plugin, so 
   since the compiler could prove the float result unchanged. Do not rely on that: write `0.1f`.
 - **Keep `double` out of the frame loop.** NEON has no double lanes on ARMv7, and a double divide takes
   32 cycles, with a new one every 30, against 18 and 16 for float (device). `std::sin(x * 2.0 * pi)`
-  with a float `x` called the double `sin` (compiled). Build with `-Wdouble-promotion` to see implicit
-  promotions. It does not see the rest: an explicit `(double)x` and arithmetic between `double` members
-  raised no warning (compiled), and in one plugin all 64 of its warnings were in set-up code (compiled).
+  with a float `x` called the double `sin` (compiled). `-Wdouble-promotion` shows only implicit
+  promotions: an explicit `(double)x` and arithmetic between `double` members raised no warning
+  (compiled), and in one plugin all 64 of its warnings were in set-up code (compiled).
   Confirm with the assembly of the hot functions (section 13).
 - **ARMv7 has no rounding instruction.** `floorf` and `lrintf` compiled to library calls, even with
   `-fno-math-errno` (compiled). Use a truncating convert with a correction:
@@ -154,8 +154,8 @@ struct BlockLog                                   // a member of the plugin, so 
 
 - **ARMv7 has no scalar float min or max.** `fminf` compiled to a library call. `std::clamp` and
   `a < b ? a : b` compiled to `vcmp`, a flag transfer (`vmrs`) and a conditional move, once per bound
-  (compiled). Branchless scalar code still pays the compare and transfer: each compare, transfer and
-  conditional move took 9 cycles (device). Clamp in vectors with `vminq_f32` and `vmaxq_f32`: 5 cycles
+  (compiled). Though branchless, each compare, transfer and conditional move took 9 cycles (device).
+  Clamp in vectors with `vminq_f32` and `vmaxq_f32`: 5 cycles
   of latency, and a new four-lane one every 2 cycles (device).
 - **NEON min and max propagate NaN; a compare-and-select does not.** `vmaxq_f32` and `vminq_f32` return
   NaN when either input is NaN (documented, ARM), while `a > b ? a : b` returns one of its inputs. In one
@@ -180,23 +180,15 @@ struct BlockLog                                   // a member of the plugin, so 
   (`vrecpsq_f32`) gives about 1.5e-5 relative error, which is inaudible in most audio math. Use
   `vrsqrteq_f32` and `vrsqrtsq_f32` for 1/sqrt. Take two Newton steps where the result feeds a small
   difference. One estimate plus one Newton step has a latency of 17 cycles, against 18 for one divide,
-  but it handles four lanes and a new vector can start every 6 cycles; the four scalar divides that a
-  vector `/` compiles to take 64 (device). That is about 10 times faster per vector. For 1/sqrt, the
-  estimate and one step take 21 cycles and one vector per 8, against 56 for four square roots with
-  divides, or 28 for four square roots alone (device). A single isolated divide can stay a plain divide.
+  but handles four lanes, and a new vector can start every 6 cycles, against 64 for the four scalar
+  divides a vector `/` compiles to (device): about 10 times faster per vector. For 1/sqrt, the estimate
+  and one step take 21 cycles and one vector per 8, against 56 for four square roots with divides, or 28
+  for four square roots alone (device). A single isolated divide can stay a plain divide.
 - **Estimates change the output bits.** A divide and a square root are correctly rounded (documented,
-  IEEE 754); an estimate is not, even after Newton steps. On a path that must
-  stay bit-identical to an earlier release, a divide stays a divide, and a root can only become another
-  correctly rounded root (the builtin in section 3). Use estimates on new paths, or where a release may
-  change the sound slightly.
-
-  ```c
-  static inline float32x4_t recip(float32x4_t x)   // x must not be zero or tiny
-  {
-      float32x4_t r = vrecpeq_f32(x);
-      return vmulq_f32(r, vrecpsq_f32(x, r));      // one Newton step
-  }
-  ```
+  IEEE 754); an estimate is not, even after Newton steps. On a path that must stay bit-identical to an
+  earlier release, a divide stays a divide, and a root can only become another correctly rounded root
+  (the builtin in section 3). Use estimates on new paths, or where a release may change the sound
+  slightly. Section 6 has a `recip()` with one Newton step and a portable fallback.
 
 - **Guard the input of every estimate.** For the reciprocal, zero and denormal inputs give infinity,
   inputs above about 1e38 give 0, and negative inputs are fine. For the reciprocal square root, negative
@@ -204,7 +196,7 @@ struct BlockLog                                   // a member of the plugin, so 
   Newton step multiplies x by the estimate. Forming sqrt(x) as x times rsqrt(x) gives NaN at x = 0 too
   (all checked under an emulator). Clamp the input away from zero, and away from negatives for rsqrt,
   before the estimate.
-- **Hoist divides out of the frame loop.** A coefficient that changes once per block is divided once per
+- **Hoist divides out of the frame loop.** Divide a coefficient that changes once per block once per
   block.
 - **No `exp`, `pow`, `tanh`, `sin` or `log` per frame.** Compute them when a parameter changes, or
   replace them with a polynomial or rational shape that behaves the same where it matters.
@@ -228,7 +220,7 @@ struct BlockLog                                   // a member of the plugin, so 
 - **Two channels are two lanes.** Treat a stereo frame as one vector everywhere. Running a mono path
   twice is the slowest way to process stereo.
 - **Fill four lanes when the work is there** (two channels times two samples, for example in
-  oversampled code). The gain is half the instructions. The arithmetic itself is no faster per lane: a
+  oversampled code). This halves the instructions, though the arithmetic is no faster per lane: a
   four-lane float operation runs as two halves. A two-lane add or multiply can start every cycle, a
   four-lane one every 2 cycles; either way a NEON multiply takes 4 cycles and an add 5, against 6 and 5
   for scalar code (device). Do not add shuffles just to reach four lanes.
@@ -308,17 +300,16 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 - **Assume the L1 is cold at the start of each block.** The host and other plugins ran on the core in
   between (inferred). The MPC app pins a real-time audio worker to each of the four cores, so a plugin
   can run on any of them, and the app's own threads took about 8 to 14 % of each core while the
-  micro-benchmark ran (device).
-  Compact state pays off on every block.
+  micro-benchmark ran (device). Compact state pays off on every block.
 - **Mind the 8 KB spacing.** The L1 is 4-way with 8 KB per way. At exactly 8 KB spacing up to four
   streams always fit; with five or more, an access rose from 4 cycles to about 9 to 26 in most
   placements, and in one placement only at six or eight streams (device). At 4 KB spacing eight streams
   usually fit and twelve never did (device). The placement dependence is consistent with a physically
   indexed cache, so the program cannot control conflicts exactly. **Offset parallel delay lines by one
   cache line:** at 8 KB + 64 bytes or 4 KB + 64 bytes, twelve streams never conflicted (device).
-  Power-of-two `std::vector` delay lines allocated one after another start a few bytes apart modulo 4 KB (inferred);
-  allocate them as one block, each 64 × k bytes past a 4 KB boundary. Their accesses are sequential, so
-  the cost is probably smaller than the random-read figures above (inferred).
+  Power-of-two `std::vector` delay lines allocated one after another start a few bytes apart modulo
+  4 KB (inferred); allocate them as one block, each 64 × k bytes past a 4 KB boundary. Their accesses
+  are sequential, so the cost is probably smaller than the random-read figures above (inferred).
 - **Unaligned loads cost little.** A 128-bit `vld1q` at 8-byte alignment cost nothing measurable, even
   across a cache line or page boundary; at a 4-byte offset it managed one load per 2.3 cycles against
   1.75 (device). A scalar `ldr` across a line takes 7 cycles instead of 4, one per 2.2 cycles instead of
@@ -341,17 +332,17 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 ## 8. Blocks, controls and threads
 
 - **Never rebuild in one block.** Recomputing a table or starting an expensive stage inside one block
-  produces a spike. Split the work across several blocks, or run it at a fixed, short cadence while a
-  control moves.
+  makes a spike. Split the work across blocks, or run it at a fixed, short cadence while a control
+  moves.
 - **Resets and switches are rebuilds.** A mode switch, program change or state load that clears state,
   redesigns filters and recomputes constants is one block of rebuild work, and under a random-parameter
   bench it sets the worst block (section 14). Three rules cut it without changing a bit:
   - *Clear only what a reader can reach.* After a reset a delay line's writer restarts and its reader
     sits at the resting delay. If the delay cannot grow faster than one sample per sample, only the last
     (largest resting delay plus the interpolation margin) entries before the write position can be read
-    before they are overwritten (inferred). Prove the bound in a test build: fill the uncleared part with
-    NaN at every reset and check that the output is unchanged and free of NaN, then clear a few entries too
-    few and check that NaN appears.
+    before they are overwritten (inferred). Prove the bound in a test build: fill the uncleared part
+    with NaN at every reset and check that the output is unchanged and free of NaN, then clear a few
+    entries too few and check that NaN appears.
   - *Compute per-rate constants once per rate.* A value that depends on the sample rate alone, such as a
     noise power summed over a 50 ms impulse response or an integral over 800 sines, belongs in a cache
     filled once per rate.
@@ -399,17 +390,17 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 - **Skip idle voices and steal without allocating.** Stop processing a voice once its envelope is done
   and its output is below a level gate (the SDK's `ADSR` has `isActive()`). Keep voice state in a fixed
   array (the SDK's `VoiceAllocator<N>`).
-- **Voices can be lanes.** Four voices of mono state make one vector. This is an alternative to stereo
-  as lanes, and it fills all four lanes (inferred).
+- **Voices can be lanes.** Four voices of mono state make one vector: an alternative to stereo as
+  lanes that fills all four lanes (inferred).
 - **Mind event splits.** Instruments get MIDI with sample-accurate offsets (documented). Splitting the
   block at each offset adds a loop start per event, which adds up when many events land in one block
   (inferred).
 
 ## 10. Code shape
 
-- **Skip stages at compile time.** Make the frame loop a template with one flag per optional stage, and
-  choose the right instantiation once per block. A stage that is off then costs nothing. Checking "is
-  this stage on" from memory in every frame cost up to 19 instructions per frame (counted).
+- **Skip stages at compile time.** Make the frame loop a template with one flag per optional stage and
+  choose the instantiation once per block, so a stage that is off costs nothing. Checking "is this
+  stage on" from memory in every frame cost up to 19 instructions per frame (counted).
 - **Test control-rate state with bools.** A test such as `amount > 0.0f` on state that changes only in
   the control tick costs a `vcmp`, a `vmrs` and a branch in every frame. Set a `bool` once per tick and
   test that. In one plugin this removed 4 to 7 scalar `vcmp` per loop copy (compiled), with identical
@@ -516,8 +507,8 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   section holds the linear stages that follow at 2x as well. Moving them out needs a second down-filter
   for the other branch; count both versions before choosing (inferred).
 - **Keep the reported latency constant.** The host reads latency once at load (documented). Do not let
-  it depend on an oversampling switch. Compensate internally for paths that change it: report the largest
-  latency any setting can have, and delay the shorter paths to match. The framework's `setLatency` signals
+  it depend on an oversampling switch: report the largest latency any setting can have, and delay the
+  shorter paths to match. The framework's `setLatency` signals
   a change to the host (documented, framework source), but whether the MPC acts on it is unknown
   (section 16), so a plugin should not rely on it.
 
@@ -568,8 +559,8 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 Community catalogs may run a CPU bench on submitted plugins. A common design sets several randomly
 chosen parameters to random values on every block, then passes or fails the plugin on two limits: one
 for a high-percentile block and one for the worst block. Build the same test yourself: a host loop that
-randomizes a few parameters per block, records every block's time and reports both figures. Things to
-know about that kind of test:
+randomizes a few parameters per block, records every block's time and reports both figures. About that
+kind of test:
 
 - **Switching cost dominates.** Every mode switch flips many times a second, and each flip lands on the
   previous one's crossfade. A feature that is cheap when left alone can fail on what it costs to turn on.
@@ -614,8 +605,7 @@ targets.
 These were not measured, so measure them before relying on them: the FPU mode the MPC host sets on its
 audio threads (the SDK documents FZ on for the 32-bit models; not observed here); whether the MPC
 compensates for, or re-reads, a plugin's reported latency; whether the L1 really is cold at the start of
-each block; whether the other 32-bit models
-run at the same clock as the MPC One+ measured here; the cost of a well-predicted scalar float compare
+each block; whether the other 32-bit models run at the same clock as the MPC One+ measured here; the cost of a well-predicted scalar float compare
 whose result feeds only a branch (the 9 cycles in section 3 are a latency on a chain, and whether
 `vmrs APSR_nzcv` stalls the floating-point pipeline is not known); instruction timings the
 micro-benchmark did not cover; and everything about the 64-bit models' hardware.
