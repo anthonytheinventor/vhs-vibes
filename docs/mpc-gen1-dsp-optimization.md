@@ -592,8 +592,11 @@ are documented or inferred, and the costs in section 1 apply per voice.
   with FZ clear, a new thread inherits FZ from the thread that created it, set or clear, `fork` keeps
   it and `exec` clears it (device). The host may have set it.
 - **Only arithmetic flushes.** Loads, stores, moves and bit-selects pass a denormal through unchanged.
-- **The mode on each platform.** On the 32-bit MPCs the host runs with flush-to-zero on; on the 64-bit
-  MPCs it does not (both documented by the SDK, not observed here). The SDK framework's
+- **The mode on each platform.** On the 32-bit MPCs the host runs with flush-to-zero on (documented by
+  the SDK). Read at the plugin's entry point on an MPC One+, before any framework code ran, FPSCR had
+  FZ set, default-NaN mode clear and round-to-nearest, the same on every one of 10,000 blocks, all on
+  one audio thread (device). On the 64-bit MPCs the host does not flush (documented by the SDK, not
+  observed here). The SDK framework's
   `ScopedDenormalsOff` sets FZ on ARM, and FTZ with DAZ on x86, around every `process()` call on every
   platform (documented). Outside the framework, set the mode yourself.
 - **Set the mode inside `process()` and restore it before returning.** It is thread state that belongs
@@ -793,8 +796,8 @@ targets.
 
 ## 16. Known unknowns
 
-These were not measured, so measure them before relying on them: the FPU mode the MPC host sets on its
-audio threads (the SDK documents FZ on for the 32-bit models; not observed here); whether the MPC
+These were not measured, so measure them before relying on them: the FPU mode the host sets on the
+64-bit models, and on 32-bit models other than the MPC One+ (section 11); whether the MPC
 compensates for, or re-reads, a plugin's reported latency; whether the L1 really is cold at the start of
 each block; whether the other 32-bit models run at the same clock as the MPC One+ measured here; the cost of a well-predicted scalar float compare
 whose result feeds only a branch (the 9 cycles in section 3 are a latency on a chain, and whether
