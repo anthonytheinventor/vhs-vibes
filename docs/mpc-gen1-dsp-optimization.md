@@ -6,16 +6,13 @@ is comfortable on a desktop can cause dropouts here.
 
 Every figure below carries its origin:
 
-- **(device)**: timed on an MPC One+ while optimizing a real effect plugin.
+- **(device)**: timed on an MPC One+, either while optimizing a real effect plugin or in a
+  micro-benchmark of single instructions, pinned to one core and calibrated against a chain of integer
+  adds (one cycle each), so time taken by other threads on that core cancels out.
 - **(counted)**: executed instructions counted under an emulator while optimizing the same plugin.
 - **(compiled)**: seen in assembly built with the SDK's own flags (Clang 22 as bundled with zig 0.17,
   arm32 `-mcpu=cortex_a17 -O2` unless stated).
 - **(documented)**: stated by ARM, the chip's datasheet, the compiler's source or the SDK's docs.
-- **(reported)**: widely reported for these units, but not in any datasheet.
-- **(model)**: from GCC's published scheduling tables for this core. They are used here only because
-  they are the one public per-instruction description of this processor; they describe the hardware.
-  ARM publishes no optimization guide for this core. The plugin is still compiled with Clang, and
-  Clang's own model for this core is its Cortex-A9 one.
 - **(inferred)**: reasoning from the above that has not been measured.
 
 "Frame" means one sample period at 44.1 kHz, all channels. "Sample" is used for the oversampled rate.
@@ -25,7 +22,8 @@ See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/buildi
 
 ## Biggest wins first
 
-1. No divide, square root or transcendental function per frame that could run per block.
+1. No divide, square root or transcendental function per frame that could run per block; reciprocal
+   estimates for the divides that remain.
 2. Stereo processed as one vector.
 3. No `double` and no library math calls in the frame loop.
 4. The data touched per block fits in the 32 KB L1 data cache.
@@ -37,7 +35,7 @@ See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/buildi
 
 | | |
 |---|---|
-| Chip | Rockchip RK3288: four identical cores, rated to 1.8 GHz (documented), 1.6 GHz here (reported) |
+| Chip | Rockchip RK3288: four identical cores, rated to 1.8 GHz (documented), 1.608 GHz here (device) |
 | Core | Cortex-A17. The silicon reports Cortex-A12 (part 0xC0D in `/proc/cpuinfo`); renamed, same speed |
 | Instruction set | 32-bit ARMv7-A with NEON and VFPv4, fused multiply-add, hardware integer divide |
 | Pipeline | out of order, two instructions per cycle, about 11 stages |
@@ -48,10 +46,11 @@ See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/buildi
 Applies to the 32-bit products: MPC X, Live, Live II, One, One+, Key 61, Key 37 and Force (the
 products whose plugins load the `file32` binary).
 
-**The budget.** A 128-frame block lasts 2902 µs. At the reported 1.6 GHz that is about 4.6 million
-processor cycles. One percent of that block is about 46,000 cycles, or roughly 360 cycles per frame, at
-any block size. A stereo effect that spends 1,000 instructions per frame uses about 3 % of a core,
-assuming about one instruction per cycle (inferred).
+**The budget.** All four cores ran at a fixed 1.608 GHz on an MPC One+: the governor is `performance`,
+and the frequency did not change under load or after idling (device). A 128-frame block lasts 2902 µs,
+about 4.67 million processor cycles. One percent of that block is about 46,700 cycles, or roughly 365
+cycles per frame, at any block size. A stereo effect that spends 1,000 instructions per frame uses about
+3 % of a core, assuming about one instruction per cycle (inferred).
 
 **Targets.** Aim for a few percent of one core per instance on average. Keep the worst block of the whole
 plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances multiply both figures.
@@ -61,8 +60,9 @@ plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances m
 - **Count instructions for precision.** Build for ARM and run the plugin under an emulator that counts
   executed instructions (qemu with a counting plugin). The count is exact and repeatable, so it can prove
   that a change did not slow a path down, to a fraction of an instruction per frame.
-- **Counts do not see time.** A divide is one instruction and about 18 cycles (model). A table read that
-  misses the cache is one instruction. So is a mispredicted branch. In practice:
+- **Counts do not see time.** A divide is one instruction and 18 cycles (device). A table read that
+  misses the cache is one instruction and up to about 200 cycles (device). So is a mispredicted branch,
+  about 12 cycles (device). In practice:
   - Replacing 14 scalar divides per frame with reciprocal estimates added 28 instructions per frame
     (counted) and made the plugin faster on the device (device).
   - An 81-entry lookup table cost more on the device than its count suggested. A closed-form curve was
@@ -108,13 +108,17 @@ struct BlockLog                                   // a member of the plugin, so 
 
 - Percent of the block is `ns * 44100 / (frames * 1e7)`. Report the median, the 99th percentile and the
   maximum over thousands of blocks, after discarding a few seconds of warm-up.
+- Judge the maximum only inside the host's real-time audio thread. In an ordinary-priority test process,
+  the worst single block was a preemption spike of about a quarter of a millisecond (device).
 - Write the buffer to a file in the destructor, which runs on the UI thread after the host has stopped
   processing. Keep the project, the block size and the playback state fixed between runs.
-- Time an empty `process()` the same way and subtract it, since the clock read itself costs time. If you
-  can, record the core frequency (`/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq`) from a
-  non-audio thread, so drift between sessions can be traced.
-- The MPC's own CPU meter is a coarse cross-check. The ARM cycle counter is normally not readable from
-  user space (inferred).
+- Time an empty `process()` the same way and subtract it. `clock_gettime` is a system call on the
+  device and costs about 0.5 µs, some 760 cycles (device). With the recipe compiled unchanged, an empty
+  `process()` read 583 ns, 0.02 % of a 128-frame block (device): good for whole blocks, too coarse for
+  small sections. If you can, record the core frequency
+  (`/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq`) from a non-audio thread.
+- The MPC's own CPU meter is a coarse cross-check. Reading the ARM cycle counter from user space raised
+  an illegal-instruction signal (device).
 
 ## 3. Float hygiene
 
@@ -122,8 +126,9 @@ struct BlockLog                                   // a member of the plugin, so 
   multiply and a convert back (compiled). `x * 0.5` and `x / 3.0` stayed single precision (compiled),
   since the compiler could prove the float result unchanged. Do not rely on that: write `0.1f`.
 - **Keep `double` out of the frame loop.** NEON has no double lanes on ARMv7, and a double divide takes
-  about 32 cycles against 18 for float (model). `std::sin(x * 2.0 * pi)` with a float `x` called the
-  double `sin` (compiled). Build with `-Wdouble-promotion` to see every promotion.
+  32 cycles, with a new one every 30, against 18 and 16 for float (device). `std::sin(x * 2.0 * pi)`
+  with a float `x` called the double `sin` (compiled). Build with `-Wdouble-promotion` to see every
+  promotion.
 - **ARMv7 has no rounding instruction.** `floorf` and `lrintf` compiled to library calls, even with
   `-fno-math-errno` (compiled). Use a truncating convert with a correction:
 
@@ -138,8 +143,9 @@ struct BlockLog                                   // a member of the plugin, so 
 
 - **ARMv7 has no scalar float min or max.** `fminf` compiled to a library call. `std::clamp` and
   `a < b ? a : b` compiled to `vcmp`, a flag transfer (`vmrs`) and a conditional move, once per bound
-  (compiled). Branchless scalar code still pays the compare and transfer, about 9 cycles (model). Clamp
-  in vectors with `vminq_f32` and `vmaxq_f32`.
+  (compiled). Branchless scalar code still pays the compare and transfer: each compare, transfer and
+  conditional move took 9 cycles (device). Clamp in vectors with `vminq_f32` and `vmaxq_f32`: 5 cycles
+  of latency, and a new four-lane one every 2 cycles (device).
 - **`sqrtf` carries an error check.** With Clang's default `-fmath-errno`, `sqrtf(x)` compiled to
   `vsqrt.f32`, a compare and a branch to the library `sqrtf` (compiled). `-fno-math-errno` leaves the
   bare `vsqrt.f32`. The SDK build does not pass that flag; `__builtin_elementwise_sqrt(x)` also gave a
@@ -149,14 +155,18 @@ struct BlockLog                                   // a member of the plugin, so 
 
 - **There is no vector divide and no vector square root** on ARMv7 NEON (documented). Writing `/` on a
   vector type compiled to four scalar `vdiv.f32` (compiled).
-- **The divider handles one value at a time.** A float divide or square root takes about 18 cycles and
-  blocks the divider for 10 (model). Many divides per frame queue up behind each other.
+- **The divider handles one value at a time.** A float divide takes 18 cycles, and a new one can start
+  only every 16 (device). A float square root takes about 17 with a full mantissa, less for simple
+  values (9 for 1.0), and a new one starts every 15 (device). Many divides per frame queue up behind
+  each other.
 - **Use reciprocal estimates for bulk divides.** `vrecpeq_f32` followed by one Newton step
   (`vrecpsq_f32`) gives about 1.5e-5 relative error, which is inaudible in most audio math. Use
   `vrsqrteq_f32` and `vrsqrtsq_f32` for 1/sqrt. Take two Newton steps where the result feeds a small
-  difference. One estimate plus one Newton step has about the same latency as one divide (model). It
-  wins because it handles four lanes and its units are pipelined, while the divider accepts one value
-  every 10 cycles. A single isolated divide can stay a plain divide.
+  difference. One estimate plus one Newton step has a latency of 17 cycles, against 18 for one divide,
+  but it handles four lanes and a new vector can start every 6 cycles; the four scalar divides that a
+  vector `/` compiles to take 64 (device). That is about 10 times faster per vector. For 1/sqrt, the
+  estimate and one step take 21 cycles and one vector per 8, against 56 for four square roots with
+  divides, or 28 for four square roots alone (device). A single isolated divide can stay a plain divide.
 
   ```c
   static inline float32x4_t recip(float32x4_t x)   // x must not be zero or tiny
@@ -176,16 +186,20 @@ struct BlockLog                                   // a member of the plugin, so 
   block.
 - **No `exp`, `pow`, `tanh`, `sin` or `log` per frame.** Compute them when a parameter changes, or
   replace them with a polynomial or rational shape that behaves the same where it matters.
-- **Avoid branches on float compares in the frame loop.** A scalar float compare takes about 9 cycles
-  before its branch can resolve (model). Use `vminq_f32`, `vmaxq_f32` and `vbslq_f32`.
+- **Avoid branches on float compares in the frame loop.** A scalar float compare must pass its flags to
+  the integer core: a compare, transfer and conditional move took 9 cycles (device), and a mispredicted
+  branch costs about 12 more (device). Use `vminq_f32`, `vmaxq_f32` and `vbslq_f32`.
 - **Prefer a closed form to a lookup table for a smooth curve.** A short formula stays in registers and
-  vectorizes. A table costs index math, a clamp and memory reads.
+  vectorizes. A table costs index math, a clamp and memory reads. With both hot in L1, an 81-entry
+  table with linear interpolation took 45 cycles per four-lane vector, and a rational tanh with a
+  reciprocal estimate took 34 (device).
 - **Keep an exactly linear region if the curve has one.** If most frames fall where a saturator is a
   straight line, test once per vector and skip the curve.
 - **Start an iterative solve from the previous frame's answer.** Audio moves smoothly, so two Newton
   steps usually suffice. Cap the step count so the cost is bounded.
 - **Integer divide is one instruction.** With the SDK's `-mcpu=cortex_a17`, `a / b` on `int` compiled
-  to `sdiv` (compiled), about 20 cycles (model). See section 13 for the flag.
+  to `sdiv` (compiled). Its time depends on the data: 8 cycles for 1000 / 7, 12 for a 15-bit quotient,
+  19 for a 29-bit one, and the next divide waits as long (device). See section 13 for the flag.
 
 ## 5. NEON
 
@@ -193,11 +207,15 @@ struct BlockLog                                   // a member of the plugin, so 
   twice is the slowest way to process stereo.
 - **Fill four lanes when the work is there** (two channels times two samples, for example in
   oversampled code). The gain is half the instructions. The arithmetic itself is no faster per lane: a
-  four-lane float operation runs as two halves (model). Do not add shuffles just to reach four lanes.
+  four-lane float operation runs as two halves. A two-lane add or multiply can start every cycle, a
+  four-lane one every 2 cycles; either way a NEON multiply takes 4 cycles and an add 5, against 6 and 5
+  for scalar code (device). Do not add shuffles just to reach four lanes.
 - **There are no gathers.** A table read per lane is a scalar load per lane. Vectorize the index math
   and the interpolation around the reads.
-- **Moving a lane into an integer register is slow.** It occupies the transfer unit for 3 cycles, with
-  a latency of 2 to 4 (model). Fetch two indices with one two-register move.
+- **Moving a lane into an integer register is slow.** A NEON-to-core move can start only every 4
+  cycles, whether it moves one lane or a whole d register into two core registers (`vmov r, r, d`)
+  (device). Fetch two indices with one two-register move: it is twice as fast per index. Moves the other
+  way start every cycle, and a round trip takes 7 cycles (device).
 - **Write the vector code yourself.** Clang does not vectorize float loops on 32-bit ARM unless every
   fast-math flag is on, because NEON is not IEEE-compliant (documented, LLVM source). A plain
   multiply-add loop was not vectorized, even with `-fno-math-errno -ffp-contract=fast` (compiled).
@@ -206,8 +224,10 @@ struct BlockLog                                   // a member of the plugin, so 
   rounds differently.
 - **Clang never fuses a vector multiply-add on this target** (documented, LLVM source). A vector
   `a * b + c`, and also `vaddq_f32(vmulq_f32(a, b), c)`, compiled to one non-fused `vmla.f32`; `vfmaq_f32`
-  compiled to one `vfma.f32` (compiled). Both are a single instruction, so a speed difference is
-  unproven. Time it on the device before you claim one.
+  compiled to one `vfma.f32` (compiled). The two run at the same speed: 4 cycles through the
+  accumulator, 8 through the multiplicand, one four-lane op every 2 cycles (device). A separate `vmul`
+  and `vadd` took 5 and 9 cycles and half the throughput (device). Write `vfmaq_f32` only for its
+  rounding.
 - **Clang does fuse scalar expressions.** A scalar `a * b + c` in one expression compiled to the fused
   `vfma.f32`. The same math split into two statements compiled to the non-fused `vmla.f32` (compiled).
   So a vector body and its scalar tail can round differently: the pragma-vectorized loop above used
@@ -257,17 +277,26 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   FIR history is 512 bytes. One second of stereo float delay is about 345 KB, a third of the shared L2;
   only the lines a delay reads and writes in one block count toward that block (inferred).
 - **Past it, reads hit the 1 MB L2,** which is shared with the other three cores and everything else in
-  the project. Slower, and less predictable.
+  the project. A random read takes 4 cycles within 24 KB, about 23 at 64 KB, 32 to 44 at 256 to 512 KB
+  and 130 to 200 (90 to 140 ns, TLB misses included) from main memory at 1 MB and beyond (device): an
+  L2 hit costs 6 to 11 times an L1 hit. The hardware prefetcher follows sequential reads, so they stay
+  cheap: per 64-byte line, about 7 cycles in L1, 14 to 18 in L2 and 22 at 4 to 16 MB (device).
 - **Assume the L1 is cold at the start of each block.** The host and other plugins ran on the core in
-  between (inferred). Compact state pays off on every block.
-- **Mind the 8 KB spacing.** The L1 is 4-way with 8 KB per way, so buffers that sit a multiple of 8 KB
-  apart can compete for the same cache sets. More than four streams at that spacing evict each other. If
-  the L1 is physically indexed, as reported, one bit of the set index comes from the physical address,
-  and the program cannot control the conflicts exactly (inferred). Offsetting parallel delay lines by a
-  cache line or two still helps (inferred from the documented geometry).
-- **Align vector data to 16 bytes** so a 128-bit load never splits across two cache lines. **Align hot
-  tables to 64 bytes** so they occupy the fewest lines: a 256-byte table then touches 4 lines instead of
-  up to 5.
+  between (inferred). The MPC app pins a real-time audio worker to each of the four cores, so a plugin
+  can run on any of them, and the app's own threads took about 8 to 14 % of each core while the
+  micro-benchmark ran (device).
+  Compact state pays off on every block.
+- **Mind the 8 KB spacing.** The L1 is 4-way with 8 KB per way. At exactly 8 KB spacing up to four
+  streams always fit; with five or more, an access rose from 4 cycles to about 9 to 26 in most
+  placements, and in one placement only at six or eight streams (device). At 4 KB spacing eight streams
+  usually fit and twelve never did (device). The placement dependence is consistent with a physically
+  indexed cache, so the program cannot control conflicts exactly. **Offset parallel delay lines by one
+  cache line:** at 8 KB + 64 bytes or 4 KB + 64 bytes, twelve streams never conflicted (device).
+- **Unaligned loads cost little.** A 128-bit `vld1q` at 8-byte alignment cost nothing measurable, even
+  across a cache line or page boundary; at a 4-byte offset it managed one load per 2.3 cycles against
+  1.75 (device). A scalar `ldr` across a line takes 7 cycles instead of 4, one per 2.2 cycles instead of
+  per cycle (device). Aligning vector data to 16 bytes is free, so do it anyway. **Align hot tables to 64
+  bytes** so they occupy the fewest lines: a 256-byte table then touches 4 lines instead of up to 5.
 - **Prefetch hints do not help** small tables or a filter's history. They are already in L1.
 - **Precompute off the audio thread.** Build tables in the constructor or `prepare()`. A parameter change
   should blend or select ready-made data.
@@ -334,8 +363,9 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 
 - **NEON arithmetic always flushes denormals to zero** on 32-bit ARM, whatever the mode bit says
   (documented).
-- **Scalar float code honors the FZ bit in FPSCR.** Do not assume its state. A new thread inherits it
-  from the thread that created it (documented, Linux source), and the host may have set it.
+- **Scalar float code honors the FZ bit in FPSCR.** Do not assume its state. A fresh process starts
+  with FZ clear, a new thread inherits FZ from the thread that created it, set or clear, `fork` keeps
+  it and `exec` clears it (device). The host may have set it.
 - **Only arithmetic flushes.** Loads, stores, moves and bit-selects pass a denormal through unchanged.
 - **The mode on each platform.** On the 32-bit MPCs the host runs with flush-to-zero on; on the 64-bit
   MPCs it does not (both documented by the SDK, not observed here). The SDK framework's
@@ -362,9 +392,14 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   ```
 
   This compiled to `vmrs`, `orr`, `vmsr`, `bl renderBlock`, `vmsr`, in that order (compiled).
-- **No public figure gives the cost of a scalar denormal on this core.** For decaying scalar state
-  (filter and envelope tails), a tiny floor or your own FZ setting is cheap insurance where the mode is
-  not known (inferred).
+- **Denormal adds and multiplies cost no time on this core.** With FZ off, scalar VFP multiply and add
+  chains with denormal operands and results ran at the same speed as with normal values, and so did a
+  one-pole filter stuck at a denormal value (device). Setting FZ made a scalar multiply 1 cycle shorter
+  (6 to 5), whatever the values (device). Divide and square root were not measured.
+- **Flush anyway, for consistency.** With FZ set, scalar code flushes like NEON, so a scalar tail and a
+  vector body agree. Denormals may be slow on other processors, such as the desktop x86 test build and
+  possibly the 64-bit MPCs (not measured here). Where the mode is not known, give decaying scalar state
+  (filter and envelope tails) a tiny floor.
 - **Never rely on a compiler flag to set the FPU mode.** Whether `-ffast-math` sets it in a shared library
   depends on the toolchain and its version; the zig the SDK uses ships no start-up file for it. Set the
   mode explicitly.
@@ -380,9 +415,11 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 - **The antiderivative method needs a memoryless curve.** For a stage with memory, restructure it so the
   nonlinear part has none, then anti-alias that part.
 - **The antiderivative quotient loses precision** when consecutive inputs are close or values are large.
-  Below a threshold, use the curve at the midpoint of the two inputs, f((x[n] + x[n-1]) / 2), and scale
-  the threshold with the size of the input. Evaluating at the current input alone shifts the output by
-  half a sample whenever the fallback triggers.
+  Below a threshold, use the curve at the midpoint of the two inputs, f((x[n] + x[n-1]) / 2): its error
+  shrinks with the square of the input step, the current input's only linearly, and on a 1 kHz sine at
+  half scale it was about 500 times closer (checked numerically). The current input alone also shifts
+  the output by half a sample. Scale the threshold with the size of the input: at the same step, the
+  float quotient's error near 4.0 was about 1000 times that near 0.1 (checked numerically).
 - **Design the filter that follows with the anti-aliasing in the loop,** so its half-sample delay and
   high-frequency droop are corrected once.
 - **Run level detectors at the rate their time constants assume.** A detector whose coefficients are set
@@ -449,8 +486,11 @@ Rules that reverse:
 - There are 32 vector registers. Only the low 64 bits of v8 to v15 are saved by the callee (documented).
 - Clang vectorized the plain multiply-add loop from section 5 by itself and used the fused `fmla`
   (compiled, `-mcpu=cortex_a55`).
-- Float reductions (sums) still need the loop pragma, reassociation flags or manual vectorization
-  (inferred).
+- Float reductions (sums) still need the loop pragma, reassociation flags or manual vectorization.
+  Without the pragma, Clang loaded whole vectors but added the lanes one at a time, in order, so the sum
+  gained nothing, although its vectorization remark said the loop was vectorized. With
+  `#pragma clang loop vectorize(enable)` it kept vector accumulators, and a fused `fmla` for a dot
+  product (compiled, `-mcpu=cortex_a55`). The remark alone is not proof: read the assembly.
 
 Rules that carry over: no gathers, the cache budget, spreading work across blocks, no doubled stages,
 compile-time stage switches and measuring the worst block. Budget for the Cortex-A55, the core the SDK
@@ -458,12 +498,12 @@ targets.
 
 ## 16. Known unknowns
 
-No public source gives these for this core, so measure them before relying on them: the core clock in
-the shipping units and whether it scales under load; the branch misprediction penalty; the penalty for an
-unaligned load or one that splits two cache lines; L2 latency and the hardware prefetcher's behavior; the
-cost of a denormal operand in scalar VFP code; whether the L1 data cache is physically indexed; whether
-`vfmaq_f32` and `vmla` math differ in speed; the cost of `clock_gettime` on the device; and whether the
-MPC compensates for, or re-reads, a plugin's reported latency.
+These were not measured, so measure them before relying on them: the FPU mode the MPC host sets on its
+audio threads (the SDK documents FZ on for the 32-bit models; not observed here); whether the MPC
+compensates for, or re-reads, a plugin's reported latency; whether the L1 really is cold at the start of
+each block; the cost of a denormal in a scalar divide or square root; whether the other 32-bit models
+run at the same clock as the MPC One+ measured here; instruction timings the micro-benchmark did not
+cover; and everything about the 64-bit models' hardware.
 
 ## 17. Checklist
 
@@ -475,7 +515,7 @@ MPC compensates for, or re-reads, a plugin's reported latency.
 - [ ] Steady-state data touched per block fits in 32 KB.
 - [ ] No table rebuild or stage start-up inside a single block; optional stages cost nothing when off.
 - [ ] Frame counts from 32 to 512 handled, including vector tails.
-- [ ] Decaying scalar state cannot go denormal; FPU mode set or confirmed.
+- [ ] FPU mode set or confirmed, so scalar and vector paths flush alike.
 - [ ] Reported latency constant for the life of the instance.
 - [ ] Instruments: worst block checked with every voice sounding.
 - [ ] Worst block checked during knob sweeps and mode switches, at 32-frame and 128-frame blocks.
