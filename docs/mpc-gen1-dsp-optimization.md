@@ -744,13 +744,33 @@ it as shown there, copy the one static file to the device and run it on one core
 parameters to randomize per block.
 
 ```
-taskset 2 ./drive 4        # four random parameters per block, pinned to core 1
-taskset 2 ./drive 0        # steady state, for comparison
+for m in 1 2 4 8; do taskset $m ./drive 0; done     # steady state on each core in turn
+taskset 4 ./drive 4        # four random parameters per block, on the quietest core found
+taskset 4 ./drive 0        # steady state, for comparison
 ```
 
 It prints the mean, the 99th percentile and the worst block as percent of a 128-frame block. Run old
-and new builds alternately (section 2). The worst block of an ordinary-priority process includes
-preemption spikes, so compare several runs. About that kind of test:
+and new builds alternately (section 2).
+
+**Pick the core first.** The MPC app keeps running beside the harness, and its own threads preempt an
+ordinary-priority process on the cores they use. An SDK example delay, steady state, with the app idle
+and one plugin loaded, gave these figures, each the same to within 0.05 points over three runs
+(device):
+
+| Core (mask) | Mean | 99th percentile | Worst block |
+|---|---|---|---|
+| 0 (1) | 0.68 % | 1.6 % | 43 to 45 % |
+| 1 (2) | 0.66 % | 3.7 % | 8 to 9 % |
+| 2 (4) | 0.62 % | 1.0 % | 2.5 to 3.3 % |
+| 3 (8) | 0.71 % | 4.1 % | 11 to 12 % |
+
+On core 1 the slow blocks came in pairs about every 125 blocks, close to 3 ms apart, each about five
+times the usual time (device). That is the pattern of a periodic thread of the app on the same core,
+such as its audio thread (inferred). Which core is quiet may differ with
+the project loaded, so test all four each session and use the one with the lowest 99th percentile.
+The mean barely moves between cores; the percentile and the worst block are only meaningful on the
+quiet one, and even there the worst block varies from run to run, so compare several runs. About that
+kind of test:
 
 - **Switching cost dominates.** Every mode switch flips many times a second, and each flip lands on the
   previous one's crossfade. A feature that is cheap when left alone can fail on what it costs to turn on.
