@@ -38,7 +38,9 @@ Work in this order and keep a short log of every measurement.
    assembly. Use the scripts below. Record the numbers before changing anything.
 2. **Find where the cost is.** Read the scan for the hot functions: divides and square roots, double
    math, library calls, scalar compares, spills and reloads (reference section 13). Read the largest
-   blocks in `counts.txt` for rebuilds and resets (sections 8 and 14).
+   blocks in `counts.txt` for rebuilds and resets (sections 8 and 14), and run `profile.sh` to see
+   which functions a costly block spent its extra instructions in. Size the candidate from that
+   figure, not from a guess.
 3. **Pick one change,** in the order of "Choosing what to change" in the reference: worst block first,
    then the high percentile under moving controls, then the steady cost. Estimate the saving from the
    cost table in section 1 before writing code. If the estimate is under about 2 % of the instructions
@@ -72,7 +74,8 @@ is not on the path, set `ZIG="python3 -m ziglang"` with the SDK's zig environmen
 
 | File | Use |
 |---|---|
-| `scripts/count.sh <sdk> <plugin.cpp> [k] [blocks] [out]` | Instructions per block for the arm32 build under the emulator. `k` is the number of parameters set to random values before each block (0 = steady state). Prints the median per frame and the largest block; writes `counts.txt`. |
+| `scripts/count.sh <sdk> <plugin.cpp> [k] [blocks] [out]` | Instructions per block for the arm32 build under the emulator. `k` is the number of parameters set to random values before each block (0 = steady state). Prints the median, the 90th and 99th percentiles per frame and the largest block; writes `counts.txt`. Runs 400 blocks in steady state and 1000 with `k` above 0; the first 200 are warm-up. With 1000 blocks a heavy plugin takes several minutes, so run it in the background. |
+| `scripts/profile.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block]` | Runs `count.sh`, then attributes every instruction of the largest block (or the block number given) and of the median block to a function, and prints the 20 largest side by side with the difference. Inlined code counts under the function it was inlined into. Takes about as long again as the count. |
 | `scripts/scan.sh <sdk> <plugin.cpp> [out]` | Compiles to arm32 assembly with the SDK's flags and prints, per function, the counts of the costly patterns. Leaves `out.s` for reading. |
 | `scripts/drive.cpp` | The harness both use: includes the plugin's source and drives it like a host. Copy it and add your own events (a program change at block 300, a mode switch) inside the block loop to measure them. To compare two builds bit for bit, write `oL` and `oR` to a file and compare the files. Run on a device, the same program is a random-parameter CPU bench: `taskset 4 ./drive 4`. Try each core first and use the quietest (reference section 14). |
 | `scripts/scan.awk` | The pattern counter behind `scan.sh`. |

@@ -13,5 +13,6 @@ ZIG=${ZIG:-zig}
 mkdir -p "$OUT"
 $ZIG c++ -target arm-linux-gnueabihf.2.31 -mcpu=cortex_a17 -std=c++17 -O2 -fPIC \
   -fvisibility=hidden -fvisibility-inlines-hidden -ffunction-sections -fdata-sections \
+  -Wno-unused-command-line-argument \
   -I"$SDK/framework" -I"$(dirname "$SRC")" -S -o "$OUT/out.s" "$SRC"
 awk -f "$HERE/scan.awk" "$OUT/out.s" | sort -k3 -n -r | head -20 | c++filt
