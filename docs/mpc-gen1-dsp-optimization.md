@@ -54,7 +54,9 @@ cycles per frame, at any block size. A stereo effect that spends 1,000 instructi
 3 % of a core, assuming about one instruction per cycle (inferred).
 
 **Targets.** Aim for a few percent of one core per instance on average. Keep the worst block of the whole
-plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances multiply both figures.
+plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. One community catalog's bench is looser on
+the worst block: it passes a plugin whose 99th-percentile block is at most 15 % and whose worst block is
+at most 50 % (documented, bench source). Several instances multiply these figures.
 
 ## 2. Measure before you optimize
 
@@ -172,18 +174,20 @@ struct BlockLog                                   // a member of the plugin, so 
 
 - **There is no vector divide and no vector square root** on ARMv7 NEON (documented). Writing `/` on a
   vector type compiled to four scalar `vdiv.f32` (compiled).
-- **The divider handles one value at a time.** A float divide takes 18 cycles, and a new one can start
-  only every 16 (device). A float square root takes about 17 with a full mantissa, less for simple
-  values (9 for 1.0), and a new one starts every 15 (device). Many divides per frame queue up behind
-  each other.
+- **The divider handles one value at a time.** With full-mantissa operands a float divide takes 18
+  cycles and a new one can start only every 16; a float square root takes about 17 and a new one starts
+  every 15 (device). Both are faster when the result has few mantissa bits (1.0, one power of two divided by another, the root
+  of 4 or 16): 9 cycles, one every 7 (device). Budget for the full-mantissa figures; audio data has them. Many divides per frame queue up
+  behind each other.
 - **Use reciprocal estimates for bulk divides.** `vrecpeq_f32` followed by one Newton step
   (`vrecpsq_f32`) gives about 1.5e-5 relative error, which is inaudible in most audio math. Use
   `vrsqrteq_f32` and `vrsqrtsq_f32` for 1/sqrt. Take two Newton steps where the result feeds a small
   difference. One estimate plus one Newton step has a latency of 17 cycles, against 18 for one divide,
   but handles four lanes, and a new vector can start every 6 cycles, against 64 for the four scalar
   divides a vector `/` compiles to (device): about 10 times faster per vector. For 1/sqrt, the estimate
-  and one step take 21 cycles and one vector per 8, against 56 for four square roots with divides, or 28
-  for four square roots alone (device). A single isolated divide can stay a plain divide.
+  and one step take 21 cycles and one vector per 8, against 124 for four square roots with divides, or 60
+  for four square roots alone, all with full-mantissa inputs (device). A single isolated divide can stay
+  a plain divide.
 - **Estimates change the output bits.** A divide and a square root are correctly rounded (documented,
   IEEE 754); an estimate is not, even after Newton steps. On a path that must stay bit-identical to an
   earlier release, a divide stays a divide, and a root can only become another correctly rounded root
@@ -223,7 +227,7 @@ struct BlockLog                                   // a member of the plugin, so 
   oversampled code). This halves the instructions, though the arithmetic is no faster per lane: a
   four-lane float operation runs as two halves. A two-lane add or multiply can start every cycle, a
   four-lane one every 2 cycles; either way a NEON multiply takes 4 cycles and an add 5, against 6 and 5
-  for scalar code (device). Do not add shuffles just to reach four lanes.
+  for scalar code with flush-to-zero off, or 5 and 5 with it on (device, section 11). Do not add shuffles just to reach four lanes.
 - **There are no gathers.** A table read per lane is a scalar load per lane. Vectorize the index math
   and the interpolation around the reads.
 - **Moving a lane into an integer register is slow.** A NEON-to-core move can start only every 4
@@ -294,7 +298,7 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   only the lines a delay reads and writes in one block count toward that block (inferred).
 - **Past it, reads hit the 1 MB L2,** which is shared with the other three cores and everything else in
   the project. A random read takes 4 cycles within 24 KB, about 23 at 64 KB, 32 to 44 at 256 to 512 KB
-  and 130 to 200 (90 to 140 ns, TLB misses included) from main memory at 1 MB and beyond (device): an
+  and 130 to 200 (80 to 125 ns, TLB misses included) from main memory at 1 MB and beyond (device): an
   L2 hit costs 6 to 11 times an L1 hit. The hardware prefetcher follows sequential reads, so they stay
   cheap: per 64-byte line, about 7 cycles in L1, 14 to 18 in L2 and 22 at 4 to 16 MB (device).
 - **Assume the L1 is cold at the start of each block.** The host and other plugins ran on the core in
@@ -376,9 +380,10 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   again. A second read can see a later write, such as part of a preset load that a check at the start of
   the block had ruled out (inferred).
 - **The per-block read is a pointer chase.** The SDK framework stores each value as a separately
-  allocated `std::atomic<float>` behind a vector of pointers (documented, framework source): 60
-  parameters are 60 dependent loads over scattered, cold cache lines, a fixed cost that weighs most at
-  32-frame blocks (inferred). Read them in one pass and let only changed values do work.
+  allocated `std::atomic<float>` behind a vector of pointers (documented, framework source): each
+  parameter is a pointer load followed by a value load. The 60 pairs do not depend on each other, so the
+  core overlaps them; the cost is 60 scattered, probably cold cache lines, a fixed cost that weighs most
+  at 32-frame blocks (inferred). Read them in one pass and let only changed values do work.
 - **Keep the audio thread real-time.** No allocation, locks, logging or file access in `process()`.
   Audio threads on some products have a 1 MB stack (documented), so put large arrays on the heap,
   allocated in `prepare()`. Swap heavy state (tables, samples) in with a lock-free handoff.
@@ -567,7 +572,9 @@ kind of test:
 - **The bench lands on resets often.** If it sets k of N parameters per block, each is picked in k/N of
   the blocks, and a switch with m positions changes on (m − 1)/m of its picks, for uniform random values
   (inferred). At 4 of 60, a two-position switch flips in 4/60 × 1/2 ≈ 3.3 % of blocks, and two such
-  switches that each reset the plugin put a reset in about 6.5 % of blocks (inferred). That is far above
+  switches that each reset the plugin put a reset in about 6.5 % of blocks (inferred). A bench mode that
+  sets every parameter on every block (one community bench has it as an option) flips a two-position switch in half
+  the blocks, so reset cost weighs far more there (documented, bench source). Either rate is far above
   the 1 % of blocks the 99th percentile leaves out, so a design that fades out and then resets turns its
   reset cost into the bench's high-percentile and worst-block figures. In one effect plugin, cheaper
   resets and rebuilds (section 8) lowered the sweep's worst block from 21.5, 19.7 and 21.1 % to 17.3,
