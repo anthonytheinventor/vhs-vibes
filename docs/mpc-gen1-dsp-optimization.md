@@ -13,6 +13,7 @@ Every figure below carries its origin:
 - **(compiled)**: seen in assembly built with the SDK's own flags (Clang 22 as bundled with zig 0.17,
   arm32 `-mcpu=cortex_a17 -O2` unless stated).
 - **(documented)**: stated by ARM, the chip's datasheet, the compiler's source or the SDK's docs.
+- **(checked)**: confirmed by a test run on the stated platform, or by a numeric sweep.
 - **(inferred)**: reasoning from the above that has not been measured.
 
 "Frame" means one sample period at 44.1 kHz, all channels. "Sample" is used for the oversampled rate.
@@ -26,7 +27,7 @@ See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/buildi
    estimates for the divides that remain, where the output need not match an earlier release bit for bit.
 2. Stereo processed as one vector.
 3. No `double` and no library math calls in the frame loop.
-4. The data touched per block fits in the 32 KB L1 data cache.
+4. The data touched per block fits in about 24 KB, inside the 32 KB L1 data cache.
 5. No table rebuild, stage start-up or doubled stage inside one block. Resets, program changes and mode
    switches count as rebuilds: under a random-parameter bench they set the worst block (section 14).
 6. Optional stages compiled out when they are off.
@@ -62,7 +63,7 @@ at most 50 % (documented, bench source). Several instances multiply these figure
 
 - **Count instructions for precision.** Run the ARM build under an emulator that counts executed
   instructions (qemu with a counting plugin). The count is exact and repeatable, so it can prove that a
-  change did not slow a path, to a fraction of an instruction per frame.
+  change did not add instructions to a path, to a fraction of an instruction per frame.
 - **Counts do not see time.** Each of these is one instruction: a divide takes 18 cycles, a
   mispredicted branch about 12, and a table read that misses the cache up to about 200 (all device). In
   practice:
@@ -128,8 +129,9 @@ struct BlockLog                                   // a member of the plugin, so 
   `process()` read 583 ns, 0.02 % of a 128-frame block (device): good for whole blocks, too coarse for
   small sections. If you can, record the core frequency from a non-audio thread
   (`/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq`).
-- The MPC's own CPU meter is a coarse cross-check. Reading the ARM cycle counter from user space raised
-  an illegal-instruction signal (device).
+- The MPC's own CPU meter is a coarse cross-check. Reading the ARM cycle counter (`PMCCNTR`) from user
+  space raised an illegal-instruction signal; the virtual timer count (`CNTVCT`) was readable, and its
+  frequency register (`CNTFRQ`) held no usable value (device).
 
 ## 3. Float hygiene
 
@@ -142,11 +144,15 @@ struct BlockLog                                   // a member of the plugin, so 
   promotions: an explicit `(double)x` and arithmetic between `double` members raised no warning
   (compiled), and in one plugin all 64 of its warnings were in set-up code (compiled).
   Confirm with the assembly of the hot functions (section 13).
-- **ARMv7 has no rounding instruction.** `floorf` and `lrintf` compiled to library calls, even with
-  `-fno-math-errno` (compiled). Use a truncating convert with a correction:
+- **ARMv7 cannot round a float to a whole-number float, and NEON cannot round at all.** `floorf` and
+  `lrintf` compiled to library calls, even with `-fno-math-errno` (compiled). The scalar
+  `vcvtr.s32.f32` does round to an integer in the current rounding mode; Clang did not emit it for
+  `lrintf` (compiled). The `vrint` instructions arrived with ARMv8 (documented). Use a truncating
+  convert with a correction:
 
   ```c
-  static inline float32x4_t floor4(float32x4_t x)    // |x| below 2^31
+  // |x| below 2^31. NaN and negative denormals give 0; -0 gives +0.
+  static inline float32x4_t floor4(float32x4_t x)
   {
       float32x4_t t = vcvtq_f32_s32(vcvtq_s32_f32(x)); // truncate toward zero
       uint32x4_t up = vcgtq_f32(t, x);                 // truncation rounded up
@@ -180,7 +186,7 @@ struct BlockLog                                   // a member of the plugin, so 
   of 4 or 16): 9 cycles, one every 7 (device). Budget for the full-mantissa figures; audio data has them. Many divides per frame queue up
   behind each other.
 - **Use reciprocal estimates for bulk divides.** `vrecpeq_f32` followed by one Newton step
-  (`vrecpsq_f32`) gives about 1.5e-5 relative error, which is inaudible in most audio math. Use
+  (`vrecpsq_f32`) gives under 1e-5 relative error (8.3e-6 at worst, checked), which is inaudible in most audio math. Use
   `vrsqrteq_f32` and `vrsqrtsq_f32` for 1/sqrt. Take two Newton steps where the result feeds a small
   difference. One estimate plus one Newton step has a latency of 17 cycles, against 18 for one divide,
   but handles four lanes, and a new vector can start every 6 cycles, against 64 for the four scalar
@@ -240,9 +246,11 @@ struct BlockLog                                   // a member of the plugin, so 
   `#pragma clang loop vectorize(enable)` before one loop overrides the check: it vectorized that loop and
   a float sum (compiled), reordering the sum. That loop then flushes denormals, and the reordered sum
   rounds differently.
-- **Clang never fuses a vector multiply-add on this target** (documented, LLVM source). A vector
+- **With the SDK's flags, Clang does not fuse a vector multiply-add** (documented, LLVM source). A vector
   `a * b + c`, and also `vaddq_f32(vmulq_f32(a, b), c)`, compiled to one non-fused `vmla.f32`; `vfmaq_f32`
-  compiled to one `vfma.f32` (compiled). The two run at the same speed: 4 cycles through the
+  compiled to one `vfma.f32` (compiled). With `-ffp-contract=fast` or `-ffast-math`, both of the first
+  two compiled to the fused `vfma.f32`, even with the multiply and the add in separate statements
+  (compiled): adding either flag changes the output bits of existing NEON code. `vmla.f32` and `vfma.f32` run at the same speed: 4 cycles through the
   accumulator, 8 through the multiplicand, one four-lane op every 2 cycles (device). A separate `vmul`
   and `vadd` took 5 and 9 cycles and half the throughput (device). Write `vfmaq_f32` only for its
   rounding.
@@ -251,16 +259,18 @@ struct BlockLog                                   // a member of the plugin, so 
   So a vector body and its scalar tail can round differently: the pragma-vectorized loop above used
   `vmla.f32` in its body and `vfma.f32` in its tail (compiled). Where a scalar path and a vector path
   must agree to the bit, write the rounding explicitly in both: `vfmaq_f32` with `std::fma` (which
-  compiled to `vfma.f32`), or `vmla` math with the multiply and the add in separate statements. The same
+  compiled to `vfma.f32`), or `vmla` math with the multiply and the add in separate statements (default flags only; the two
+  flags above fuse across statements). The same
   holds when moving existing scalar code into NEON: if the scalar version compiled to `vfma.f32`, the
   vector version needs `vfmaq_f32` (or `vfma_f32` for two lanes) to keep its bits.
 - **Load with `vld1q_f32(ptr)`.** Casting a `float*` to a vector pointer lets the compiler assume
   alignment, and the load can fault.
 - **Do not split a tight loop to "vectorize harder".** Splitting a 64-tap filter loop by channel made
   it slower: the compiler stopped unrolling it (counted). Try it, count it, keep what is faster.
-- **Keep hot vectors in q0 to q3 and q8 to q15.** Registers q4 to q7 are saved by the callee, so using
-  them costs a push and a pop (documented). A function call inside the loop spills every live scratch
-  register.
+- **Keep hot vectors in q0 to q3 and q8 to q15.** Registers q4 to q7 are saved by the callee, so a
+  function that uses them pays one push and one pop per call (documented): negligible around a block
+  loop, worth avoiding in a small function called per frame. A function call inside the loop spills
+  every live scratch register.
 
 ## 6. NEON code that builds everywhere
 
@@ -291,9 +301,10 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 
 ## 7. Memory
 
-- **32 KB of L1 data cache is the fast budget** for everything a block touches: delay lines, tables,
-  filter state, the audio buffers themselves.
-- **Count bytes touched per block.** A 2048-float table is 8 KB, a quarter of the L1. A 64-tap stereo
+- **About 24 KB is the fast budget** for everything a block touches: delay lines, tables, filter
+  state, the audio buffers themselves. The L1 data cache holds 32 KB, and the stack and the host's own
+  data share it: a random read took 4 cycles within 24 KB and 10 at 32 KB (device).
+- **Count bytes touched per block.** A 2048-float table is 8 KB, a third of that budget. A 64-tap stereo
   FIR history is 512 bytes. One second of stereo float delay is about 345 KB, a third of the shared L2;
   only the lines a delay reads and writes in one block count toward that block (inferred).
 - **Past it, reads hit the 1 MB L2,** which is shared with the other three cores and everything else in
@@ -303,11 +314,11 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   cheap: per 64-byte line, about 7 cycles in L1, 14 to 18 in L2 and 22 at 4 to 16 MB (device).
 - **Assume the L1 is cold at the start of each block.** The host and other plugins ran on the core in
   between (inferred). The MPC app pins a real-time audio worker to each of the four cores, so a plugin
-  can run on any of them, and the app's own threads took about 8 to 14 % of each core while the
-  micro-benchmark ran (device). Compact state pays off on every block.
+  can run on any of them, and the app's own threads took between under 1 % and 14 % of each core,
+  depending on the run (device). Compact state pays off on every block.
 - **Mind the 8 KB spacing.** The L1 is 4-way with 8 KB per way. At exactly 8 KB spacing up to four
   streams always fit; with five or more, an access rose from 4 cycles to about 9 to 26 in most
-  placements, and in one placement only at six or eight streams (device). At 4 KB spacing eight streams
+  placements, in one placement only at six or eight streams, and in one only at twelve (device). At 4 KB spacing eight streams
   usually fit and twelve never did (device). The placement dependence is consistent with a physically
   indexed cache, so the program cannot control conflicts exactly. **Offset parallel delay lines by one
   cache line:** at 8 KB + 64 bytes or 4 KB + 64 bytes, twelve streams never conflicted (device).
@@ -383,7 +394,11 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   allocated `std::atomic<float>` behind a vector of pointers (documented, framework source): each
   parameter is a pointer load followed by a value load. The 60 pairs do not depend on each other, so the
   core overlaps them; the cost is 60 scattered, probably cold cache lines, a fixed cost that weighs most
-  at 32-frame blocks (inferred). Read them in one pass and let only changed values do work.
+  at 32-frame blocks (inferred). The framework's `get(i)` also converts the value to its plain range on
+  every call: a clamp and a switch, plus a `powf` and a divide for a logarithmic or skewed parameter and
+  a library rounding call for a choice or integer one (documented, framework source). Read
+  `getNormalised(i)` in one pass, compare each with its last value, and convert only the ones that
+  changed.
 - **Keep the audio thread real-time.** No allocation, locks, logging or file access in `process()`.
   Audio threads on some products have a 1 MB stack (documented), so put large arrays on the heap,
   allocated in `prepare()`. Swap heavy state (tables, samples) in with a lock-free handoff.
@@ -539,8 +554,9 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
     -I<sdk>/framework -I<project>/src -Rpass-missed=loop-vectorize -S -o out.s <project>/src/MyPlugin.cpp
   ```
 
-  `-Rpass-missed=loop-vectorize` reports only loops the vectorizer tried; code written with vector types
-  (section 6) gives it nothing to report. In the hot functions, look for:
+  `-Rpass-missed=loop-vectorize` reports only loops the vectorizer tried; add
+  `-Rpass-analysis=loop-vectorize` to see why it gave up. Code written with vector types (section 6)
+  gives it nothing to report. In the hot functions, look for:
   - `vdiv.f32` and `vsqrt.f32` (divides and roots), and `vrecpe`/`vrsqrte` where you expected them;
   - `.f64` arithmetic: `vadd`, `vsub`, `vmul`, `vmla`, `vfma`, `vdiv`, `vcmp` or `vcvt` with `.f64`
     (double creep). A two-lane float vector lives in one d register, so its copies show as
@@ -626,7 +642,7 @@ micro-benchmark did not cover; and everything about the 64-bit models' hardware.
       stack reloads of member addresses and per-frame float tests.
 - [ ] Stereo processed as one vector.
 - [ ] NEON code has a portable fallback and passes the host simulator test.
-- [ ] Steady-state data touched per block fits in 32 KB.
+- [ ] Steady-state data touched per block fits in about 24 KB.
 - [ ] No table rebuild or stage start-up inside a single block; optional stages cost nothing when off.
 - [ ] Resets, program changes and mode switches treated as rebuilds: only reachable state cleared,
       per-rate constants cached, unchanged selections not redesigned.
