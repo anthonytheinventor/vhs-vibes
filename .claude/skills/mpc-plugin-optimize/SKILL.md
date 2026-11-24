@@ -55,6 +55,9 @@ Work in this order and keep a short log of every measurement.
 8. **Confirm on the device** when one is available, old and new builds alternating (section 2).
    Instruction counts do not see divide time, cache misses or mispredicted branches, so the device has
    the last word. Do not copy files to an MPC or restart its app without the owner's agreement.
+   For a plugin that is, or will be, listed in the Open MPC catalog, finish with that catalog's own
+   bench: `scripts/openmpc-bench.sh` fetches the current copy and runs it on the device. Its verdict
+   (PASS, WARN or FAIL) is the one that counts there; report it with the figures for old and new.
 9. **Stop** when the worst block is under the limit with margin, the steady cost is a few percent of
    a core, and the next candidate saves under about 2 % of the instructions per frame.
 
@@ -73,6 +76,7 @@ is not on the path, set `ZIG="python3 -m ziglang"` with the SDK's zig environmen
 | `scripts/scan.sh <sdk> <plugin.cpp> [out]` | Compiles to arm32 assembly with the SDK's flags and prints, per function, the counts of the costly patterns. Leaves `out.s` for reading. |
 | `scripts/drive.cpp` | The harness both use: includes the plugin's source and drives it like a host. Copy it and add your own events (a program change at block 300, a mode switch) inside the block loop to measure them. To compare two builds bit for bit, write `oL` and `oR` to a file and compare the files. Run on a device, the same program is a random-parameter CPU bench: `taskset 4 ./drive 4`. Try each core first and use the quietest (reference section 14). |
 | `scripts/scan.awk` | The pattern counter behind `scan.sh`. |
+| `scripts/openmpc-bench.sh <plugin-arm32.so> [device-ip] [bench args]` | Fetches the current CPU bench of the Open MPC catalog (`tools/bench.c` from [open-mpc/mpc-vst-plugins](https://github.com/open-mpc/mpc-vst-plugins), MIT license), builds it unchanged for the 32-bit models, and with a device address runs it there on the built `.so`: both files go to `/tmp` on the MPC and are deleted afterwards. Without an address it only fetches and builds. `-p` sweeps every parameter, `-j` adds a JSON line. The rules it applies are in the `BENCH.md` it fetches; read that file for the current limits, since the catalog can change them. Needs `curl`, and `ssh` and `scp` for a device run. |
 
 `<plugin.cpp>` is the one source file that ends with the SDK's entry macro. The harness needs the
 standard entry point (`VSTPluginMain`), which every SDK plugin has.

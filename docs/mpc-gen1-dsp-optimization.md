@@ -112,9 +112,9 @@ a new independent operation can start. One percent of a block is about 365 cycle
 | `clock_gettime` | about 760 | | 2 |
 
 **Targets.** Aim for a few percent of one core per instance on average. Keep the worst block of the whole
-plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. One community catalog's bench is looser on
+plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. The Open MPC catalog's bench is looser on
 the worst block: it passes a plugin whose 99th-percentile block is at most 15 % and whose worst block is
-at most 50 % (documented, bench source). Several instances multiply these figures.
+at most 50 % (documented, bench source; section 14). Several instances multiply these figures.
 
 ## 2. Measure before you optimize
 
@@ -737,11 +737,27 @@ are documented or inferred, and the costs in section 1 apply per voice.
 
 ## 14. Passing a CPU bench
 
-Community catalogs may run a CPU bench on submitted plugins. A common design sets several randomly
-chosen parameters to random values on every block, then passes or fails the plugin on two limits: one
-for a high-percentile block and one for the worst block. The harness in section 2 is that test: build
-it as shown there, copy the one static file to the device and run it on one core with the number of
-parameters to randomize per block.
+The Open MPC plugin catalog runs a CPU bench on listed plugins: `tools/bench.c` in
+[open-mpc/mpc-vst-plugins](https://github.com/open-mpc/mpc-vst-plugins) (MIT license), with its rules in
+that repository's `docs/BENCH.md`. It loads the built `.so` on the device, plays it in 128-frame blocks
+through several stages (idle, audio or held chords, a sweep that sets 4 random parameters per block, or
+every parameter with `-p`, and the release tail), and gives a verdict from the worst stage: PASS up to
+15 % at the 99th percentile and 50 % for the worst block, WARN up to 35 % and 80 %, FAIL above
+(documented, bench source). It times each block with the thread's own CPU clock, so time taken by the
+app's threads does not count (documented, bench source).
+
+**For a plugin headed to that catalog, its bench is the last check, and its verdict is the one that
+counts.** Their `tools/bench.sh <plugin.so> <device-ip>` builds it in Docker and runs it. The
+`mpc-plugin-optimize` skill's `openmpc-bench.sh` fetches the current `bench.c`, builds it unchanged with
+the SDK's zig, and runs it the same way: the bench and a copy of the plugin go to `/tmp` on the MPC and
+are deleted afterwards. Run old and new builds alternately: on an MPC One+, two alternating runs of one
+effect's builds repeated to within 0.1 points at the 99th percentile and under 1 point at the worst block
+(device).
+
+The harness in section 2 is the same kind of test for use while you work, since it builds from source
+and also serves the instruction counts: copy the one static file to the device and run it on one core
+with the number of parameters to randomize per block. It times with the wall clock, so unlike the Open
+MPC bench it sees preemption, and the core matters.
 
 ```
 for m in 1 2 4 8; do taskset $m ./drive 0; done     # steady state on each core in turn
@@ -778,7 +794,7 @@ kind of test:
   the blocks, and a switch with m positions changes on (m − 1)/m of its picks, for uniform random values
   (inferred). At 4 of 60, a two-position switch flips in 4/60 × 1/2 ≈ 3.3 % of blocks, and two such
   switches that each reset the plugin put a reset in about 6.5 % of blocks (inferred). A bench mode that
-  sets every parameter on every block (one community bench has it as an option) flips a two-position switch in half
+  sets every parameter on every block (the Open MPC bench's `-p` option) flips a two-position switch in half
   the blocks, so reset cost weighs far more there (documented, bench source). Either rate is far above
   the 1 % of blocks the 99th percentile leaves out, so a design that fades out and then resets turns its
   reset cost into the bench's high-percentile and worst-block figures. In one effect plugin, cheaper
