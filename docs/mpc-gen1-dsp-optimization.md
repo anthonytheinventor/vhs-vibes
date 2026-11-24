@@ -23,11 +23,12 @@ See also the SDK's `docs/host-contract.md`, `docs/dsp-cookbook.md`, `docs/buildi
 ## Biggest wins first
 
 1. No divide, square root or transcendental function per frame that could run per block; reciprocal
-   estimates for the divides that remain.
+   estimates for the divides that remain, where the output need not match an earlier release bit for bit.
 2. Stereo processed as one vector.
 3. No `double` and no library math calls in the frame loop.
 4. The data touched per block fits in the 32 KB L1 data cache.
-5. No table rebuild, stage start-up or doubled stage inside one block.
+5. No table rebuild, stage start-up or doubled stage inside one block. Resets, program changes and mode
+   switches count as rebuilds: under a random-parameter bench they set the worst block (section 14).
 6. Optional stages compiled out when they are off.
 7. Only then the micro-tuning below.
 
@@ -79,6 +80,14 @@ plugin under 15 %, the limit in the SDK's `dsp-cookbook.md`. Several instances m
   appear at 32.
 - **Desktop timings are a first estimate.** The SDK's host simulator times the desktop build. The
   cookbook's rough factor to the A17 is 15 to 25 (documented).
+- **A timing bench cannot see a small steady saving.** Eight changes to one effect plugin cut its steady
+  instructions by 1 to 2.4 % per frame (counted), and its idle mean and 99th percentile read 2.9 % and
+  3.5 % of a 128-frame block before and after (device). Judge changes of that size by instruction counts.
+- **Prove bit-identity on the target.** When a change must leave the output unchanged, compare the arm32
+  build's output under the emulator, with NaN and infinity in the test signal (a huge finite input can
+  overflow into them). Agreement on x86 is not proof: a rewrite that matched on x86 changed the output on
+  ARM when one lane held a NaN (section 3). For a change that relies on a bound, also run a control that
+  breaks the bound slightly; it must fail.
 
 **A timing recipe.** Time every `process()` call into a preallocated buffer, and write it out only after
 processing has stopped.
@@ -127,8 +136,10 @@ struct BlockLog                                   // a member of the plugin, so 
   since the compiler could prove the float result unchanged. Do not rely on that: write `0.1f`.
 - **Keep `double` out of the frame loop.** NEON has no double lanes on ARMv7, and a double divide takes
   32 cycles, with a new one every 30, against 18 and 16 for float (device). `std::sin(x * 2.0 * pi)`
-  with a float `x` called the double `sin` (compiled). Build with `-Wdouble-promotion` to see every
-  promotion.
+  with a float `x` called the double `sin` (compiled). Build with `-Wdouble-promotion` to see implicit
+  promotions. It does not see the rest: an explicit `(double)x` and arithmetic between `double` members
+  raised no warning (compiled), and in one plugin all 64 of its warnings were in set-up code (compiled).
+  Confirm with the assembly of the hot functions (section 13).
 - **ARMv7 has no rounding instruction.** `floorf` and `lrintf` compiled to library calls, even with
   `-fno-math-errno` (compiled). Use a truncating convert with a correction:
 
@@ -146,10 +157,16 @@ struct BlockLog                                   // a member of the plugin, so 
   (compiled). Branchless scalar code still pays the compare and transfer: each compare, transfer and
   conditional move took 9 cycles (device). Clamp in vectors with `vminq_f32` and `vmaxq_f32`: 5 cycles
   of latency, and a new four-lane one every 2 cycles (device).
-- **`sqrtf` carries an error check.** With Clang's default `-fmath-errno`, `sqrtf(x)` compiled to
-  `vsqrt.f32`, a compare and a branch to the library `sqrtf` (compiled). `-fno-math-errno` leaves the
-  bare `vsqrt.f32`. The SDK build does not pass that flag; `__builtin_elementwise_sqrt(x)` also gave a
-  bare `vsqrt.f32` (compiled).
+- **NEON min and max propagate NaN; a compare-and-select does not.** `vmaxq_f32` and `vminq_f32` return
+  NaN when either input is NaN (documented, ARM), while `a > b ? a : b` returns one of its inputs. In one
+  plugin, a NEON all-below test in place of a scalar maximum matched on x86 and changed the output on ARM
+  (checked under an emulator).
+- **`sqrtf` and `std::sqrt` carry an error check.** With Clang's default `-fmath-errno`, both compiled to
+  `vsqrt.f32`, a self-compare (`vcmp.f32 s2, s2`), `vmrs` and a path to the library `sqrtf` taken on NaN
+  (in a loop, `bvs` to a `bl sqrtf`) (compiled). `__builtin_elementwise_sqrt(x)` gives the bare
+  `vsqrt.f32` (compiled) and the same bits, since a square root is correctly rounded (documented, IEEE
+  754). The SDK build does not pass `-fno-math-errno`; that flag also lets Clang change other library
+  calls (inferred), so where the output must stay bit-identical, prefer the builtin.
 
 ## 4. Arithmetic
 
@@ -167,6 +184,11 @@ struct BlockLog                                   // a member of the plugin, so 
   vector `/` compiles to take 64 (device). That is about 10 times faster per vector. For 1/sqrt, the
   estimate and one step take 21 cycles and one vector per 8, against 56 for four square roots with
   divides, or 28 for four square roots alone (device). A single isolated divide can stay a plain divide.
+- **Estimates change the output bits.** A divide and a square root are correctly rounded (documented,
+  IEEE 754); an estimate is not, even after Newton steps. On a path that must
+  stay bit-identical to an earlier release, a divide stays a divide, and a root can only become another
+  correctly rounded root (the builtin in section 3). Use estimates on new paths, or where a release may
+  change the sound slightly.
 
   ```c
   static inline float32x4_t recip(float32x4_t x)   // x must not be zero or tiny
@@ -233,7 +255,9 @@ struct BlockLog                                   // a member of the plugin, so 
   So a vector body and its scalar tail can round differently: the pragma-vectorized loop above used
   `vmla.f32` in its body and `vfma.f32` in its tail (compiled). Where a scalar path and a vector path
   must agree to the bit, write the rounding explicitly in both: `vfmaq_f32` with `std::fma` (which
-  compiled to `vfma.f32`), or `vmla` math with the multiply and the add in separate statements.
+  compiled to `vfma.f32`), or `vmla` math with the multiply and the add in separate statements. The same
+  holds when moving existing scalar code into NEON: if the scalar version compiled to `vfma.f32`, the
+  vector version needs `vfmaq_f32` (or `vfma_f32` for two lanes) to keep its bits.
 - **Load with `vld1q_f32(ptr)`.** Casting a `float*` to a vector pointer lets the compiler assume
   alignment, and the load can fault.
 - **Do not split a tight loop to "vectorize harder".** Splitting a 64-tap filter loop by channel made
@@ -292,6 +316,9 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   usually fit and twelve never did (device). The placement dependence is consistent with a physically
   indexed cache, so the program cannot control conflicts exactly. **Offset parallel delay lines by one
   cache line:** at 8 KB + 64 bytes or 4 KB + 64 bytes, twelve streams never conflicted (device).
+  Power-of-two `std::vector` delay lines allocated one after another start a few bytes apart modulo 4 KB (inferred);
+  allocate them as one block, each 64 × k bytes past a 4 KB boundary. Their accesses are sequential, so
+  the cost is probably smaller than the random-read figures above (inferred).
 - **Unaligned loads cost little.** A 128-bit `vld1q` at 8-byte alignment cost nothing measurable, even
   across a cache line or page boundary; at a 4-byte offset it managed one load per 2.3 cycles against
   1.75 (device). A scalar `ldr` across a line takes 7 cycles instead of 4, one per 2.2 cycles instead of
@@ -304,12 +331,38 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   sums in registers.
 - **Ship only what can be reached.** Table data that no control setting uses is binary size and cache
   pressure for nothing.
+- **Use exact symmetry.** If every row of a table is exactly even or odd, half of each rebuild or blend
+  can be a mirrored copy (negated for odd), and the stored table can be half the size. The integral of
+  an exactly odd row, built outward from the middle with negated operands, is exactly even (inferred).
+  Verify the symmetry bitwise on every row, never from the formula alone, and compare the mirrored result
+  with the full computation in a test. In one plugin, blending half of each row and mirroring it matched
+  the full loop on 4.75 billion values (checked on x86-64, and on arm32 and arm64 under an emulator).
 
 ## 8. Blocks, controls and threads
 
 - **Never rebuild in one block.** Recomputing a table or starting an expensive stage inside one block
   produces a spike. Split the work across several blocks, or run it at a fixed, short cadence while a
   control moves.
+- **Resets and switches are rebuilds.** A mode switch, program change or state load that clears state,
+  redesigns filters and recomputes constants is one block of rebuild work, and under a random-parameter
+  bench it sets the worst block (section 14). Three rules cut it without changing a bit:
+  - *Clear only what a reader can reach.* After a reset a delay line's writer restarts and its reader
+    sits at the resting delay. If the delay cannot grow faster than one sample per sample, only the last
+    (largest resting delay plus the interpolation margin) entries before the write position can be read
+    before they are overwritten (inferred). Prove the bound in a test build: fill the uncleared part with
+    NaN at every reset and check that the output is unchanged and free of NaN, then clear a few entries too
+    few and check that NaN appears.
+  - *Compute per-rate constants once per rate.* A value that depends on the sample rate alone, such as a
+    noise power summed over a 50 ms impulse response or an integral over 800 sines, belongs in a cache
+    filled once per rate.
+  - *Skip a redesign whose input did not change.* Moving a gain control of a stage that is not heard, or
+    choosing the same type again, should not redesign that stage.
+
+  With these, and with half of a symmetric table row mirrored (section 7), single blocks fell from 290,144
+  to 152,890 instructions for a quality switch (a reset), 203,354 to 101,253 for a program change,
+  124,753 to 96,286 for a gain move on an unheard stage and 154,103 to 94,467 for choosing a model a
+  second time (counted). The first block after load fell from 11.5, 10.8 and 12.4 % to 10.2, 9.2 and
+  9.3 % of a 128-frame block in three runs (device).
 - **Never run two copies of an expensive stage to crossfade.** Glide one copy's coefficients to the new
   setting.
 - **Do each control's work once per block,** however many times the host sets it during that block.
@@ -323,10 +376,18 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 - **Smooth cheaply.** A per-frame one-pole smoother per parameter adds up, and the SDK's `Smoother` also
   compares on every frame (documented). Prefer a per-block linear ramp (the SDK's `LinearRamp`) or
   control-rate smoothing. Once per block, check whether a smoother has settled and take a constant path
-  if it has. Smooth the final coefficient only when that is cheaper than recomputing it.
+  if it has. Smooth the final coefficient only when that is cheaper than recomputing it. A control-rate
+  loop over many smoothed values never settles under automation, or under a bench that writes parameters
+  every block, so its scalar compares run on every tick (inferred): write it in NEON.
 - **Parameter writes can arrive during `process()`.** Changes from automation, project load and preset
   load can come from the UI thread while the block runs (documented). Read each parameter once per block
-  from its atomic. The SDK framework stores them that way.
+  from its atomic into a snapshot, and have every set-up function read the snapshot, never the atomics
+  again. A second read can see a later write, such as part of a preset load that a check at the start of
+  the block had ruled out (inferred).
+- **The per-block read is a pointer chase.** The SDK framework stores each value as a separately
+  allocated `std::atomic<float>` behind a vector of pointers (documented, framework source): 60
+  parameters are 60 dependent loads over scattered, cold cache lines, a fixed cost that weighs most at
+  32-frame blocks (inferred). Read them in one pass and let only changed values do work.
 - **Keep the audio thread real-time.** No allocation, locks, logging or file access in `process()`.
   Audio threads on some products have a 1 MB stack (documented), so put large arrays on the heap,
   allocated in `prepare()`. Swap heavy state (tables, samples) in with a lock-free handoff.
@@ -349,13 +410,31 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 - **Skip stages at compile time.** Make the frame loop a template with one flag per optional stage, and
   choose the right instantiation once per block. A stage that is off then costs nothing. Checking "is
   this stage on" from memory in every frame cost up to 19 instructions per frame (counted).
+- **Test control-rate state with bools.** A test such as `amount > 0.0f` on state that changes only in
+  the control tick costs a `vcmp`, a `vmrs` and a branch in every frame. Set a `bool` once per tick and
+  test that. In one plugin this removed 4 to 7 scalar `vcmp` per loop copy (compiled), with identical
+  output. Put new bools in existing padding, and confirm with a record-layout dump (add
+  `-fsyntax-only -Xclang -fdump-record-layouts` to the build flags) that no other member moved (compiled).
 - **Watch inlining when a function gains a second caller.** Clang may stop inlining it, which slows a
-  path you did not touch. Force the inline or give the new caller its own copy.
+  path you did not touch. Force the inline or give the new caller its own copy. Compile-time stage flags
+  multiply callers: two loop copies that call the same instantiation of a helper template gave it two
+  callers, and Clang made it an out-of-line function (compiled). Giving each copy its own instantiation,
+  with an extra template argument the helper ignores, inlined it again (compiled). Check that the `bl` to
+  its symbol is gone.
 - **Member order affects speed.** `vldr` reaches only 1020 bytes from its base register and NEON `vld1`
   takes no offset at all, while integer `ldr` reaches 4095 bytes (documented). A float member at offset
   2000 needed an extra `add` before its `vldr`; one at 3208 needed a `movw` and an `add`; an `int` at
-  2004 loaded directly (compiled). Keep hot float members in the first kilobyte of the object. Add new
-  members at the end, so the offsets of hot fields do not move.
+  2004 loaded directly (compiled). Keep hot float members in the first kilobyte of the object, or of the
+  struct that holds them. Add new members at the end, so the offsets of hot fields do not move.
+- **A large base class puts every member out of reach.** The SDK's `mpc::Plugin` holds its MIDI event
+  buffers inline, about 57 KB, so every member of a derived plugin, an effect's included, starts about
+  57 KB from `this` (compiled, record layout). Clang then keeps a few base registers in the loop and
+  reloads the addresses of other members from the stack before each access (`ldr r0, [sp, #512]` marked
+  `@ 4-byte Reload`, then `vldr s4, [r0]`): 74 such reloads in one plugin's lightest loop copy and 203 in
+  its heaviest (compiled, static counts). What counts is the distance from a base register the compiler
+  keeps. Gather the per-frame members into one struct under 1 KB, bind a reference to it at the top of the
+  loop, and move large arrays (rings, delay lines) to the heap or after it (inferred). Count every loop
+  copy afterward.
 - **Link-time optimization changes inlining decisions.** Recheck the hot paths after turning it on or
   off.
 
@@ -401,7 +480,9 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
 - **Flush anyway, for consistency.** With FZ set, scalar code flushes like NEON, so a scalar tail and a
   vector body agree. Denormals may be slow on other processors, such as the desktop x86 test build and
   possibly the 64-bit MPCs (not measured here). Where the mode is not known, give decaying scalar state
-  (filter and envelope tails) a tiny floor.
+  (filter and envelope tails) a tiny floor. In an SDK plugin the framework sets the mode, so a floor buys
+  no speed; decide floors for correctness (tails that must reach exact zero, recovery from NaN). Once
+  released, a floor is part of the output, and removing it changes the bits.
 - **Never rely on a compiler flag to set the FPU mode.** Whether `-ffast-math` sets it in a shared library
   depends on the toolchain and its version; the zig the SDK uses ships no start-up file for it. Set the
   mode explicitly.
@@ -421,14 +502,24 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   shrinks with the square of the input step, the current input's only linearly, and on a 1 kHz sine at
   half scale it was about 500 times closer (checked numerically). The current input alone also shifts
   the output by half a sample. Scale the threshold with the size of the input: at the same step, the
-  float quotient's error near 4.0 was about 1000 times that near 0.1 (checked numerically).
+  float quotient's error near 4.0 was about 1000 times that near 0.1 (checked numerically). For a
+  piecewise polynomial curve, write each piece's mean in closed form instead: for x², the mean over
+  [a, b] is (a² + ab + b²) / 3. Nothing large is then subtracted from anything large, and a fixed tiny
+  threshold is enough (inferred).
 - **Design the filter that follows with the anti-aliasing in the loop,** so its half-sample delay and
   high-frequency droop are corrected once.
 - **Run level detectors at the rate their time constants assume.** A detector whose coefficients are set
   per sample behaves differently at twice the rate. Rescale its time constants for the oversampled rate,
-  or feed it the base-rate signal.
+  or feed it the base-rate signal. Rescaling keeps it running twice per frame at 2x; feeding the base rate
+  halves its cost and changes its output (inferred).
+- **A blend at the oversampled rate keeps everything after it there.** A dry/wet mix inside the 2x
+  section holds the linear stages that follow at 2x as well. Moving them out needs a second down-filter
+  for the other branch; count both versions before choosing (inferred).
 - **Keep the reported latency constant.** The host reads latency once at load (documented). Do not let
-  it depend on an oversampling switch. Compensate internally for paths that change it.
+  it depend on an oversampling switch. Compensate internally for paths that change it: report the largest
+  latency any setting can have, and delay the shorter paths to match. The framework's `setLatency` signals
+  a change to the host (documented, framework source), but whether the MPC acts on it is unknown
+  (section 16), so a plugin should not rely on it.
 
 ## 13. Compiler
 
@@ -452,14 +543,25 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
     -I<sdk>/framework -I<project>/src -Rpass-missed=loop-vectorize -S -o out.s <project>/src/MyPlugin.cpp
   ```
 
-  In the hot functions, look for:
+  `-Rpass-missed=loop-vectorize` reports only loops the vectorizer tried; code written with vector types
+  (section 6) gives it nothing to report. In the hot functions, look for:
   - `vdiv.f32` and `vsqrt.f32` (divides and roots), and `vrecpe`/`vrsqrte` where you expected them;
-  - any `.f64` instruction (double creep);
+  - `.f64` arithmetic: `vadd`, `vsub`, `vmul`, `vmla`, `vfma`, `vdiv`, `vcmp` or `vcvt` with `.f64`
+    (double creep). A two-lane float vector lives in one d register, so its copies show as
+    `vmov.f64 dN, dM` or `vorr dN, dM, dM` (compiled); those move floats and are not double math;
   - `bl` or `b` to `sinf`, `floorf`, `fminf`, `lrintf`, `sqrtf` or an `__aeabi_` helper (library calls);
-  - `vcmp` followed by `vmrs APSR_nzcv` inside a loop (scalar compares);
+  - `vcmp` followed by `vmrs APSR_nzcv` inside a loop (scalar compares). Read the control flow to
+    separate the ones every frame runs from those in rare branches: one loop copy had 68, most of them
+    guarded (compiled);
   - `vmla.f32` against `vfma.f32` (rounding);
   - `vpush {d8` (callee-saved registers in use);
-  - an `add` into a base register right before a `vldr` (a member offset out of reach).
+  - an `add` or `movw` into a base register right before a `vldr` (a member offset out of reach);
+  - `ldr rN, [sp, #n]` marked `@ 4-byte Reload` and followed by a `vldr` or `vstr` through `rN` (a
+    member's address reloaded from the stack inside the loop, section 10);
+  - register pressure: count the `Spill` and `Reload` comments and the `vldr` loads from `.LCPI`
+    constant pools per hot function. One plugin's loop copies had 150 to 330 spills and 190 to 530
+    reloads each, the most common overhead instructions in them (compiled, static counts). A smaller
+    loop body, or fewer live values across it, cuts them (inferred).
 
 ## 14. Passing a CPU bench
 
@@ -471,6 +573,15 @@ know about that kind of test:
 
 - **Switching cost dominates.** Every mode switch flips many times a second, and each flip lands on the
   previous one's crossfade. A feature that is cheap when left alone can fail on what it costs to turn on.
+- **The bench lands on resets often.** If it sets k of N parameters per block, each is picked in k/N of
+  the blocks, and a switch with m positions changes on (m − 1)/m of its picks, for uniform random values
+  (inferred). At 4 of 60, a two-position switch flips in 4/60 × 1/2 ≈ 3.3 % of blocks, and two such
+  switches that each reset the plugin put a reset in about 6.5 % of blocks (inferred). That is far above
+  the 1 % of blocks the 99th percentile leaves out, so a design that fades out and then resets turns its
+  reset cost into the bench's high-percentile and worst-block figures. In one effect plugin, cheaper
+  resets and rebuilds (section 8) lowered the sweep's worst block from 21.5, 19.7 and 21.1 % to 17.3,
+  18.3 and 17.3 % in three runs, its mean from 6.7 to 6.5 % and its 99th percentile from 14.5 to 14.2 %,
+  while the steady figures did not move (device).
 - **The result is the sum of everything that can be on together.** A saving in any heavy stage counts.
 - **Adding a parameter can move the result** with no change to the DSP, because the random sequence
   depends on the parameter count.
@@ -504,18 +615,26 @@ These were not measured, so measure them before relying on them: the FPU mode th
 audio threads (the SDK documents FZ on for the 32-bit models; not observed here); whether the MPC
 compensates for, or re-reads, a plugin's reported latency; whether the L1 really is cold at the start of
 each block; whether the other 32-bit models
-run at the same clock as the MPC One+ measured here; instruction timings the micro-benchmark did not
-cover; and everything about the 64-bit models' hardware.
+run at the same clock as the MPC One+ measured here; the cost of a well-predicted scalar float compare
+whose result feeds only a branch (the 9 cycles in section 3 are a latency on a chain, and whether
+`vmrs APSR_nzcv` stalls the floating-point pipeline is not known); instruction timings the
+micro-benchmark did not cover; and everything about the 64-bit models' hardware.
 
 ## 17. Checklist
 
-- [ ] No allocation, locks, logging or file access in `process()`; each parameter read once per block.
+- [ ] No allocation, locks, logging or file access in `process()`; each parameter read once per block
+      into a snapshot that all set-up code reads.
 - [ ] No divides, square roots or transcendental functions per frame that could be per block.
-- [ ] No `double` or library math calls in the frame loop, checked in the assembly.
+- [ ] No `double` or library math calls in the frame loop, checked in the assembly, along with spills,
+      stack reloads of member addresses and per-frame float tests.
 - [ ] Stereo processed as one vector.
 - [ ] NEON code has a portable fallback and passes the host simulator test.
 - [ ] Steady-state data touched per block fits in 32 KB.
 - [ ] No table rebuild or stage start-up inside a single block; optional stages cost nothing when off.
+- [ ] Resets, program changes and mode switches treated as rebuilds: only reachable state cleared,
+      per-rate constants cached, unchanged selections not redesigned.
+- [ ] Every change meant to be bit-identical proven on the arm32 build, with NaN and infinity in the
+      test signal.
 - [ ] Frame counts from 32 to 512 handled, including vector tails.
 - [ ] FPU mode set or confirmed, so scalar and vector paths flush alike.
 - [ ] Reported latency constant for the life of the instance.
