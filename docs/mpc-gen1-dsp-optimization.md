@@ -392,10 +392,12 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   ```
 
   This compiled to `vmrs`, `orr`, `vmsr`, `bl renderBlock`, `vmsr`, in that order (compiled).
-- **Denormal adds and multiplies cost no time on this core.** With FZ off, scalar VFP multiply and add
-  chains with denormal operands and results ran at the same speed as with normal values, and so did a
-  one-pole filter stuck at a denormal value (device). Setting FZ made a scalar multiply 1 cycle shorter
-  (6 to 5), whatever the values (device). Divide and square root were not measured.
+- **Denormals cost no time on this core.** With FZ off, scalar VFP multiply and add chains with
+  denormal operands and results ran at the same speed as with normal values, and so did a one-pole
+  filter stuck at a denormal value (device). The same holds for divide and square root, float and
+  double: a denormal dividend, divisor or result, and the square root of a denormal, each matched a
+  normal value with the same mantissa to within 0.3 % (device). Setting FZ made a scalar multiply 1
+  cycle shorter (6 to 5), whatever the values (device).
 - **Flush anyway, for consistency.** With FZ set, scalar code flushes like NEON, so a scalar tail and a
   vector body agree. Denormals may be slow on other processors, such as the desktop x86 test build and
   possibly the 64-bit MPCs (not measured here). Where the mode is not known, give decaying scalar state
@@ -501,7 +503,7 @@ targets.
 These were not measured, so measure them before relying on them: the FPU mode the MPC host sets on its
 audio threads (the SDK documents FZ on for the 32-bit models; not observed here); whether the MPC
 compensates for, or re-reads, a plugin's reported latency; whether the L1 really is cold at the start of
-each block; the cost of a denormal in a scalar divide or square root; whether the other 32-bit models
+each block; whether the other 32-bit models
 run at the same clock as the MPC One+ measured here; instruction timings the micro-benchmark did not
 cover; and everything about the 64-bit models' hardware.
 
