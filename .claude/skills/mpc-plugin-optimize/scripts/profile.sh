@@ -15,9 +15,11 @@
 # Only instructions between the block's start and end markers count: the plugin's process call.
 # Code the compiler inlined is counted under the function it was inlined into.
 # DRIVE_BIN, MPC_OPT_MARK and MPC_OPT_SKIP work as in count.sh.
+# The profile pass takes about as long as the count did. While it runs, <out-dir>/status.txt says
+# which block it has reached and about how long is left.
 # Needs: what count.sh needs, plus c++filt. With mawk installed the profile pass is several times faster.
 set -euo pipefail
-[ $# -ge 2 ] || { sed -n '2,19p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '2,20p' "$0"; exit 2; }
 SDK=$1; SRC=$2; K=${3:-0}; BLOCKS=${4:-}; OUT=${5:-mpc-opt-out}
 shift $(( $# < 5 ? $# : 5 ))
 PICKS="$*"
@@ -38,9 +40,27 @@ E=$(nm "$OUT/drive" | awk '$3 == "icEnd" { print $1 }')
 # A Thumb function's symbol has bit 0 set; the trace shows the even address.
 M=$(printf '%08x' $(( 0x$M & ~1 ))); E=$(printf '%08x' $(( 0x$E & ~1 )))
 nm -n "$OUT/drive" | awk '$2 ~ /^[TtWw]$/ && $3 !~ /^[$]/ { print $1, $3 }' > "$OUT/symbols.txt"
+# Progress: the pass below writes the block it has reached to <out-dir>/progress, and this loop turns
+# that into <out-dir>/status.txt with the time left, every 15 seconds.
+progress() {
+  local T0=$SECONDS N
+  while sleep 15; do
+    N=$(cat "$OUT/progress" 2>/dev/null || true); N=${N:-0}
+    if [ "$N" -gt 0 ]; then
+      echo "$1 ($TAG): block $N of $BLOCKS, $(( (SECONDS - T0) / 60 )) min so far, about $(( ((SECONDS - T0) * (BLOCKS - N) / N + 59) / 60 )) min left" > "$OUT/status.txt"
+    else
+      echo "$1 ($TAG): starting, $(( (SECONDS - T0) / 60 )) min so far" > "$OUT/status.txt"
+    fi
+  done
+}
+rm -f "$OUT/progress"; echo "profile ($TAG): starting" > "$OUT/status.txt"
+progress profile > /dev/null 2>&1 &
+PW=$!
+trap 'kill $PW 2>/dev/null || true' EXIT
+T0=$SECONDS
 qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLOCKS" 2>/dev/null \
   | LC_ALL=C grep -F "Trace 0:" \
-  | LC_ALL=C $AWK -F/ -v M="00000000$M" -v E="00000000$E" -v A="$MED" -v P="$PICKS" -v SYMS="$OUT/symbols.txt" '
+  | LC_ALL=C $AWK -F/ -v M="00000000$M" -v E="00000000$E" -v A="$MED" -v P="$PICKS" -v SYMS="$OUT/symbols.txt" -v PROG="$OUT/progress" '
   function hex(s,   i, v) { v = 0; for (i = 1; i <= length(s); ++i) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1; return v }
   function even(v) { return v - v % 2 }     # a Thumb symbol has bit 0 set
   function find(a,   lo, hi, mid) {
@@ -51,7 +71,7 @@ qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLO
   BEGIN { while ((getline line < SYMS) > 0) { split(line, p, " "); addr[++ns] = even(hex(p[1])); name[ns] = p[2] }
           np = split(P, pick, " "); for (i = 1; i <= np; ++i) want[pick[i]] = 1; want[A] = 1
           blk = -1; on = 0 }
-  $2 == M { ++blk; on = (blk in want); next }
+  $2 == M { ++blk; on = (blk in want); if (blk % 5 == 0) { print blk > PROG; close(PROG) } next }
   $2 == E { on = 0; next }
   on { ++pc[blk "," $2] }
   END {
@@ -61,6 +81,8 @@ qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLO
       for (f in seen) { x = n[b "," f] + 0; y = n[A "," f] + 0; if (x + y > 0) printf "%d %d %d %d %s\n", i, (x > y ? x : y), x, y, f }
     }
   }' | sort -k1,1n -k2,2nr | cut -d" " -f1,3- > "$OUT/profile_$TAG.txt"
+kill $PW 2>/dev/null || true
+echo "profile ($TAG): done, $BLOCKS blocks in $(( (SECONDS - T0 + 59) / 60 )) min" > "$OUT/status.txt"
 I=0
 for B in $PICKS; do
   I=$((I + 1))

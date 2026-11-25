@@ -36,10 +36,20 @@ Ask the owner, or find out from the project, and write the answers down:
    several instances is a steady-cost problem. They have different fixes.
 3. **What must never change?** Parameter ids, parameter order and the plugin's `uid` are permanent in
    any SDK plugin. Leave them alone.
+4. **Which code may be edited?** Read the project's own rules (README, contributing notes, agent
+   instructions) for code it keeps unmodified from another project. If the cost sits in such code,
+   ask before editing it, and record what was changed in the way the project asks.
 
 ## The loop
 
 Work in this order and keep a short log of every measurement.
+
+**Say where you are.** The owner cannot see a run under the emulator, and some take an hour. Before
+each step that runs longer than about two minutes, say which step of the loop this is, what is about
+to run, and how long you expect it to take; start it in the background. `count.sh` and `profile.sh`
+keep `status.txt` in their output folder current with the block reached and the time left: read it
+when asked, and say so when a run goes well past its estimate. Time one scenario before starting
+many, so the estimates for the rest are real.
 
 **Two measures, two jobs.** Time on the device is the score: a change is a win only if it lowers the
 time there. Instruction counts under the emulator are the tool for finding candidates and for catching
@@ -54,7 +64,9 @@ so in the report and call every result a count, not a speedup.
    assembly. Use an events file to force each heavy mode on and count it in steady state too.
    Count idle as a scenario of its own (an effect with silent input, an instrument with no notes):
    idle instances multiply in a project. An instrument makes no sound without notes, so give it
-   scenarios with `chord` events: one voice, and every voice sounding with a `restrike`. If a
+   scenarios with `chord` events: one voice, and every voice sounding with a `restrike`. Take the
+   number of voices from the engine's code and its voice setting, not from the README: the limit the
+   code allows is the one a project can reach. If a
    device is available, time the same scenarios there now (step 9 says how), since those are the
    figures the result is judged against. Record everything before changing anything.
 2. **Read the source for cheap wins.** Before any profile, read every file that `process()` reaches,
@@ -120,6 +132,13 @@ so in the report and call every result a count, not a speedup.
    setting enables, a side input), add cases for it to a copy of `render.cpp` first. Then run the
    SDK's host simulator test, or the plugin's own tests where it is not an SDK plugin; they must
    still pass.
+   The script also compares what the plugin shows and saves: every parameter's value text and unit,
+   the program names, and the saved state, at fixed points of the run and after a state is loaded
+   back. It must say IDENTICAL for those too, unless the change was meant to alter a read-out.
+   IDENTICAL is as fine as the samples the plugin hands the host. An engine that computes in 16-bit
+   integers gives float samples in whole steps of 1/32768, so the proof has 16-bit precision there,
+   and a difference shows in whole steps (about -90 dB each). Check the engine's sample format and
+   say which precision was proven.
    The proof holds for the compiler and flags it was run with. Where the release is built with
    another compiler, or with flags that let the compiler reorder float operations (`-ffast-math`,
    `-funsafe-math-optimizations`, `-fassociative-math`), prove it with that exact compiler version
@@ -138,11 +157,13 @@ so in the report and call every result a count, not a speedup.
    as a threshold or a mode switch landing one sample apart; find it before calling it small.
    These figures size a change only while the two builds stay in step. A plugin with random or
    chaotic parts (noise, random modulation, voices that free themselves, triggers) turns one flipped
-   decision into two unrelated signals: peaks near 0 dB and most samples differing, which says the
+   decision into two unrelated signals, and a free-running oscillator does the same with no
+   randomness at all, since the smallest change of pitch makes the two builds drift apart in phase: peaks near 0 dB and most samples differing, which says the
    builds parted and nothing about how large the change is. Read the "first diff" column there:
    the phases that stay identical, and how far into a phase the first difference comes, tell which
    settings reach the changed code. To size the change itself, compare over settings with the random
-   parts off, held in a copy of `render.cpp`.
+   parts off and oscillators held or reset, in a copy of `render.cpp`, or measure the changed
+   function alone.
 7. **Count again.** Compare with the baseline for the same scenario. Check the assembly for the
    pattern you meant to remove, and check that no other hot function grew (inlining can change,
    section 10). A change that does not lower the count for the scenario it was meant for is reverted
@@ -209,16 +230,17 @@ for an output file, since a run that failed never writes it and the loop never e
 
 | File | Use |
 |---|---|
-| `scripts/count.sh <sdk> <plugin.cpp> [k] [blocks] [out]` | Instructions per block for the arm32 build under the emulator. `k` is the number of parameters set to random values before each block (0 = steady state). Prints the median, the 90th and 99th percentiles per frame and the largest block; writes `counts.txt`. Runs 400 blocks in steady state and 1000 with `k` above 0; the first 200 are warm-up. With 1000 blocks a heavy plugin takes several minutes, so run it in the background. Set `MPC_OPT_EVENTS` to an events file to force settings. |
-| `scripts/profile.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block ...]` | Attributes every instruction of the largest block (or of each block number given) to a function and prints the 15 largest, each with its share of the block and the difference from the median block. Name several costly blocks from `counts.txt` in one call: each call is one more full pass under the emulator. It reuses the build and counts from `count.sh` in the same `out` folder while `k`, the block count, the events file and the sources are unchanged, and saves the profile as `profile_k<k>.txt`, or `profile_k<k>_<events file name>.txt` with an events file. Inlined code counts under the function it was inlined into. |
+| `scripts/count.sh <sdk> <plugin.cpp> [k] [blocks] [out]` | Instructions per block for the arm32 build under the emulator. `k` is the number of parameters set to random values before each block (0 = steady state). Prints the median, the 90th and 99th percentiles per frame and the largest block; writes `counts.txt`. Runs 400 blocks in steady state and 1000 with `k` above 0; the first 200 are warm-up. The time grows with the plugin's cost: seconds for a light effect, over an hour for 400 blocks of an instrument with every voice sounding, so run it in the background and use 300 blocks for a heavy steady scenario. `status.txt` in the output folder says which block it has reached and about how long is left. Set `MPC_OPT_EVENTS` to an events file to force settings. |
+| `scripts/profile.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block ...]` | Attributes every instruction of the largest block (or of each block number given) to a function and prints the 15 largest, each with its share of the block and the difference from the median block. Name several costly blocks from `counts.txt` in one call: each call is one more full pass under the emulator. It reuses the build and counts from `count.sh` in the same `out` folder while `k`, the block count, the events file and the sources are unchanged, and saves the profile as `profile_k<k>.txt`, or `profile_k<k>_<events file name>.txt` with an events file. Inlined code counts under the function it was inlined into. The pass takes about as long as the count did and keeps `status.txt` current the same way. |
 | `scripts/scan.sh <sdk> <plugin.cpp> [out]` | Compiles to arm32 assembly with the SDK's flags and prints the counts of the costly patterns for the 20 largest functions. Leaves `out.s` for reading and the counts for every function in `scan_all.txt`. |
 | `scripts/coverage.sh [out ...]` | Joins the profiles and the scan in the folders named into `coverage.md` in the first: one row per function that executed, with an empty Verdict to fill in (step 3). |
-| `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, and NaN, infinity, huge and denormal input. It runs the old build twice first and stops with NOT REPEATABLE if the two runs differ. Prints IDENTICAL, or DIFFERENT with the phase of the first difference and a table of how large the difference is (also saved as `bits/arm32-diff.txt`). `MPC_OPT_HOLD=<seconds>` adds long held programs, to show an error that grows. Exit code 0, 1, or 2 when it could not run. |
+| `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, and NaN, infinity, huge and denormal input. It runs the old build twice first and stops with NOT REPEATABLE if the two runs differ. Prints IDENTICAL, or DIFFERENT with the phase of the first difference and a table of how large the difference is (also saved as `bits/arm32-diff.txt`). `MPC_OPT_HOLD=<seconds>` adds long held programs, to show an error that grows. It also compares what the plugin shows and saves (value texts, units, program names, the saved state, and the sound after a state is loaded back) and says IDENTICAL or DIFFERENT for those. Exit code 0, 1, or 2 when it could not run. |
 | `scripts/outdiff.cpp` | The measuring program behind that table: per phase the output level, the RMS and peak of the difference in dB relative to full scale, how far the difference is below the output, and the share of samples that differ. |
-| `scripts/drive.cpp` | The harness behind `count.sh` and `profile.sh`: includes the plugin's source and drives it like a host, answering the host's time request (120 BPM, playing). An events file named in `MPC_OPT_EVENTS` acts at given blocks (block 0 sets the starting state): `<block> <parameter index or name> <value 0..1>`, `<block> program <n>`, and for instruments `<block> note <pitch>`, `off <pitch>`, `chord <count>`, `chordoff <count>` and `restrike <period>` (the last chord off and on again every so many blocks). That is how to hold a mode on, place a mode switch, or keep voices sounding. `drive list` prints the parameters and marks momentary ones; the random sweep leaves those out, and any named in `MPC_OPT_SKIP`. `MPC_OPT_MARK=all` counts and times parameter writes and events with the process call, as the Open MPC bench does. Run on a device it is a timing bench: `taskset 4 ./drive 0` for steady state, `taskset 4 ./drive 4` for four random parameters per block. It prints the thread's own CPU time, which leaves out other threads on the core, and the wall-clock time, which does not (reference section 14). |
-| `scripts/render.cpp` | The fixed, seeded run behind `bitcheck.sh`. It plays chords into an instrument through every phase and leaves momentary parameters alone. Copy it and add cases when the plugin has behavior the standard run cannot reach. |
+| `scripts/drive.cpp` | The harness behind `count.sh` and `profile.sh`: includes the plugin's source and drives it like a host, answering the host's time request (120 BPM, playing). An events file named in `MPC_OPT_EVENTS` acts at given blocks (block 0 sets the starting state): `<block> <parameter index or name> <value 0..1>`, `<block> program <n>`, and for instruments `<block> note <pitch>`, `off <pitch>`, `chord <count>`, `chordoff <count>` and `restrike <period>` (the last chord off and on again every so many blocks). That is how to hold a mode on, place a mode switch, or keep voices sounding. `drive list` prints the parameters and marks momentary ones; the random sweep leaves those out, and any named in `MPC_OPT_SKIP`. `MPC_OPT_MARK=all` counts and times parameter writes and events with the process call, as the Open MPC bench does. Run on a device it is a timing bench: `taskset 4 ./drive 0` for steady state, `taskset 4 ./drive 4` for four random parameters per block. It prints the thread's own CPU time, which leaves out other threads on the core, and the wall-clock time, which does not (reference section 14). On arm32 it sets flush-to-zero before calling the plugin, as the 32-bit MPC host does (reference section 11); `MPC_OPT_FZ=0` leaves it off. |
+| `scripts/render.cpp` | The fixed, seeded run behind `bitcheck.sh`. It plays chords into an instrument through every phase, leaves momentary parameters and those named in `MPC_OPT_SKIP` alone, sets flush-to-zero as `drive.cpp` does, and writes the plugin's read-outs and saved state to a text file beside the audio. Copy it and add cases when the plugin has behavior the standard run cannot reach. |
+| `scripts/vst2_min.h` | The few VST2 declarations the harness needs, used when it is built around a plugin that has no VST2 header of its own to give it ("Ports and other builds"). |
 | `scripts/scan.awk` | The pattern counter behind `scan.sh`. |
-| `scripts/openmpc-bench.sh <plugin-arm32.so> [device-ip] [bench args]` | Fetches the current CPU bench of the Open MPC catalog (`tools/bench.c` from [open-mpc/mpc-vst-plugins](https://github.com/open-mpc/mpc-vst-plugins), MIT license), builds it unchanged for the 32-bit models, and with a device address runs it there on the built `.so`: both files go to `/tmp` on the MPC and are deleted afterwards. Without an address it only fetches and builds. `-p` sweeps every parameter, `-j` adds a JSON line. The rules it applies are in the `BENCH.md` it fetches; read that file for the current limits, since the catalog can change them. Needs `curl`, and `ssh` and `scp` for a device run. |
+| `scripts/openmpc-bench.sh <plugin-arm32.so> [device-ip] [bench args]` | Fetches the current CPU bench of the Open MPC catalog (`tools/bench.c` from [open-mpc/mpc-vst-plugins](https://github.com/open-mpc/mpc-vst-plugins), MIT license), builds it unchanged for the 32-bit models, and with a device address runs it there on the built `.so`: both files go to a new folder under `/tmp` on the MPC, which is deleted afterwards. `BENCH_DATA=<folder>` copies that folder's contents beside the plugin, for one that loads banks or other files from its own folder. It runs on core 1, as the catalog's own launcher does on these models. Without an address it only fetches and builds. `-p` sweeps every parameter, `-j` adds a JSON line. The rules it applies are in the `BENCH.md` it fetches; read that file for the current limits, since the catalog can change them. Needs `curl`, and `ssh` and `scp` for a device run. |
 
 `<plugin.cpp>` is the one source file that ends with the SDK's entry macro. The harness needs the
 standard entry point (`VSTPluginMain`), which every SDK plugin has.
@@ -230,19 +252,46 @@ plugin built any other way, you build the harness and hand the result to the scr
 
 - **Match the release build exactly.** Counts, the assembly scan and above all the bit check are
   only true for the compiler version and flags that build the shipped binary. Read them from the
-  project's build files and use the same ones. Check what the toolchain adds without being asked:
+  project's build files and use the same ones. Look in the project's CI files as well: a release
+  made there may pin a toolchain image, or a commit of a wrapper or build repository, that the
+  build files in the checkout do not name. Check what the toolchain adds without being asked:
   some distributions turn on stack protection and fortified library calls by default, which puts
   code in the counts that the release does not have (`-fno-stack-protector -U_FORTIFY_SOURCE` takes
   it out). If the exact compiler version is not available, say in the report that bit-identity is
   not proven for the release.
-- **Build the harness around the plugin.** Compile `drive.cpp` and `render.cpp` without `SRC`, with
-  `-DMPC_OPT_ABI='"<the plugin's VST2 header>"'`, and link them statically for arm32 with the
-  plugin's own objects, which must provide `VSTPluginMain`. Name the results in `DRIVE_BIN` (for
+- **Read the real target.** The reference is written for the SDK's build: ARM instructions, VFPv4,
+  NEON and a hardware integer divide. Run `readelf -A` on the shipped arm32 binary and read the
+  first lines of its assembly (`.arch`, `.fpu`, `.thumb`). Without `Tag_Advanced_SIMD_arch` there
+  is no NEON, so sections 5 and 6 do not apply and nothing flushes denormals except the FZ bit.
+  Without `Tag_DIV_use` every integer divide and remainder is a library call (`__aeabi_idiv` and
+  its relatives, which the scan counts as library calls). An FPU named `-d16` has 16 double
+  registers, not 32. Section 13's notes on what the compiler does describe Clang; for another
+  compiler, read its assembly before assuming any of them. The cycle costs of section 1 belong to
+  the processor and hold either way.
+- **Build the harness around the plugin.** Compile `drive.cpp` and `render.cpp` without `SRC` and
+  link them statically for arm32 with the plugin's own objects, which must provide
+  `VSTPluginMain`. Add `-DMPC_OPT_ABI='"<the plugin's VST2 header>"'` to use the plugin's header;
+  without it the harness uses its own `vst2_min.h`. Name the results in `DRIVE_BIN` (for
   `count.sh` and `profile.sh`) and in `RENDER_OLD` and `RENDER_NEW` (for `bitcheck.sh`), and give
   `-` for the arguments those scripts then do not use. For `scan.sh`, write the assembly with the
   release's compiler and name the file in `SCAN_ASM`. Thumb builds work.
+- **Put the plugin's data files where it looks.** A plugin that loads banks, tables or samples
+  from its own folder needs them where it will look from the program the scripts run:
+  `<out>/drive` for `count.sh` and `profile.sh`, `<out>/bits/render-arm32-old` and `-new` for
+  `bitcheck.sh`. A plugin that finds nothing usually runs on
+  silently with an empty state, and every figure is then for the wrong plugin, so check before any
+  measurement that `drive list` shows the real programs and values. Under the emulator, a 32-bit
+  program linked against an older C library cannot list a folder on the Linux disk or on a Windows
+  drive (the call fails with "value too large", checked), and the plugin sees an empty folder. Put
+  the data on a memory file system (`/dev/shm`) and link or copy it into place. That folder is
+  emptied when WSL shuts down, so copy the data in at the start of each script.
+- **Flush-to-zero.** The harness sets it on arm32, as the 32-bit MPC host does. A wrapper that sets
+  the mode itself overrides that, as it would on the device. Check that the release's wrapper and
+  the one you build against do the same thing here.
 - **Count what the host block costs.** In some wrappers a parameter write does real work at once
   (formatting text, searching a table). Set `MPC_OPT_MARK=all` so the counts and times include it.
+  A wrapper that reads the clock in that path can make the same block differ between two passes
+  (by about 500 instructions in one port); treat counts that close as equal.
 - **A second opinion.** `bitcheck.sh` checks arm64 only for SDK builds. For a port, run it again
   with programs built by a second compiler into another output folder; a change that is exact
   under both is less likely to rest on one compiler's choices.

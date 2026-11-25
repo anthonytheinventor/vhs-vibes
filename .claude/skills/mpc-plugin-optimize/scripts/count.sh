@@ -5,8 +5,11 @@
 # optimization level) and counts the instructions each block executes under qemu-arm.
 #   k        parameters set to random values before each block (default 0 = steady state)
 #   blocks   blocks to run (default 400 in steady state, 1000 with k above 0; minimum 300). The first
-#            200 are warm-up and are left out of the summary. A heavy plugin with 1000 blocks takes
-#            several minutes.
+#            200 are warm-up and are left out of the summary. The emulator runs a few million
+#            instructions a second, so the time grows with the plugin's cost: seconds for a light
+#            effect, over an hour for 400 blocks of an instrument with every voice sounding. For a
+#            heavy steady scenario 300 blocks are enough.
+# While it runs, <out-dir>/status.txt says which block it has reached and about how long is left.
 #   out-dir  where drive, counts.txt and the summary go (default ./mpc-opt-out)
 # Set MPC_OPT_EVENTS to an events file (format at the top of drive.cpp) to force settings, program
 # changes or mode switches at given blocks, e.g. to count one mode in steady state.
@@ -18,7 +21,7 @@
 # Needs: zig (or ZIG="python3 -m ziglang"), qemu-arm 8.1 or later, nm, awk. Linux or WSL.
 # The result is an instruction count, exact and repeatable. It is a proxy for time on the device.
 set -euo pipefail
-[ $# -ge 2 ] || { sed -n '2,19p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '2,22p' "$0"; exit 2; }
 SDK=$1; SRC=$2; K=${3:-0}; BLOCKS=${4:-}; OUT=${5:-mpc-opt-out}
 [ -n "$BLOCKS" ] || { if [ "$K" -gt 0 ]; then BLOCKS=1000; else BLOCKS=400; fi; }
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -37,9 +40,30 @@ E=$(nm "$OUT/drive" | awk '$3 == "icEnd" { print $1 }')
 [ -n "$M" ] && [ -n "$E" ] || { echo "icMark/icEnd not found in the binary"; exit 1; }
 # A Thumb function's symbol has bit 0 set; the trace shows the even address.
 M=$(printf '%08x' $(( 0x$M & ~1 ))); E=$(printf '%08x' $(( 0x$E & ~1 )))
+# Progress: the pass below writes the block it has reached to <out-dir>/progress, and this loop turns
+# that into <out-dir>/status.txt with the time left, every 15 seconds.
+progress() {
+  local T0=$SECONDS N
+  while sleep 15; do
+    N=$(cat "$OUT/progress" 2>/dev/null || true); N=${N:-0}
+    if [ "$N" -gt 0 ]; then
+      echo "$1 ($TAG): block $N of $BLOCKS, $(( (SECONDS - T0) / 60 )) min so far, about $(( ((SECONDS - T0) * (BLOCKS - N) / N + 59) / 60 )) min left" > "$OUT/status.txt"
+    else
+      echo "$1 ($TAG): starting, $(( (SECONDS - T0) / 60 )) min so far" > "$OUT/status.txt"
+    fi
+  done
+}
+rm -f "$OUT/progress"; echo "count ($TAG): starting" > "$OUT/status.txt"
+progress count > /dev/null 2>&1 &
+PW=$!
+trap 'kill $PW 2>/dev/null || true' EXIT
+T0=$SECONDS
 qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLOCKS" 2>/dev/null \
-  | LC_ALL=C grep -F "Trace 0:" | LC_ALL=C grep -n -e "/00000000$M/" -e "/00000000$E/" | cut -d: -f1 \
-  | awk 'NR % 2 == 1 { p = $1 } NR % 2 == 0 { print (NR - 2) / 2, $1 - p - 1 }' > "$OUT/counts.txt"
+  | LC_ALL=C grep -F "Trace 0:" | LC_ALL=C grep --line-buffered -n -e "/00000000$M/" -e "/00000000$E/" \
+  | awk -F: -v P="$OUT/progress" 'NR % 2 == 1 { p = $1 }
+      NR % 2 == 0 { print (NR - 2) / 2, $1 - p - 1; if (NR % 10 == 0) { print NR / 2 > P; close(P) } }' > "$OUT/counts.txt"
+kill $PW 2>/dev/null || true
+echo "count ($TAG): done, $BLOCKS blocks in $(( (SECONDS - T0 + 59) / 60 )) min" > "$OUT/status.txt"
 sort -k2 -n "$OUT/counts.txt" | awk -v k="$K" '
   $1 >= 200 { v[n++] = $2; if ($2 >= mx) { mx = $2; mb = $1 } }
   END { if (n == 0) { print "no blocks counted"; exit 1 }

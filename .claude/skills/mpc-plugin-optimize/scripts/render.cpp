@@ -6,22 +6,34 @@
 // Phase boundaries are printed as byte offsets, so a difference can be traced to its phase.
 // An instrument is played: chords of one to six notes go on and off through every phase.
 // Parameters the plugin reports as momentary triggers (opcode 0x7F01) and those named in MPC_OPT_SKIP
-// (indexes, commas between) are left alone; a trigger that the plugin debounces against the clock
-// would make two runs of the same build differ.
+// (indexes or names as "drive list" prints them, commas between) are left alone; a trigger that the
+// plugin debounces against the clock would make two runs of the same build differ.
+// Beside the audio it writes <out.bin>.txt: what the plugin shows and saves at fixed points of the
+// run (every parameter's value, value text and unit, program names, the size and a hash of the saved
+// state). bitcheck.sh compares that file too, so a change to a read-out or to the saved state shows.
+// The harness sets flush-to-zero on arm32, as the 32-bit MPC host does; MPC_OPT_FZ=0 leaves it off.
 // With MPC_OPT_HOLD=<seconds> in the environment the run ends with long held programs (see below).
-// A plugin that is not one SDK source file: compile without SRC, with -DMPC_OPT_ABI='"<its VST2
-// header>"', and link the plugin's own objects (see SKILL.md, "Ports").
+// A plugin that is not one SDK source file: compile without SRC and link the plugin's own objects
+// (see SKILL.md, "Ports"). -DMPC_OPT_ABI='"<its VST2 header>"' uses the plugin's header; without it
+// the harness uses its own vst2_min.h.
 #ifdef SRC
 #include SRC
 #else
+#ifdef MPC_OPT_ABI
 #include MPC_OPT_ABI
+#else
+#include "vst2_min.h"
+#endif
 extern "C" AEffect* VSTPluginMain(audioMasterCallback);
 #endif
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 // The same layouts as the VST2 structures, declared here so any VST2 header will do.
 struct HostTime { double samplePos, sampleRate, nanoSeconds, ppqPos, tempo, barStartPos, cycleStart, cycleEnd;
@@ -46,6 +58,7 @@ enum { MaxB = 512 };
 static float L[MaxB], R[MaxB], oL[MaxB], oR[MaxB];
 static AEffect* fx;
 static FILE* out;
+static FILE* dump;
 static long frames, blocks;
 static bool bad, synth;
 static bool skipParam[4096];
@@ -67,6 +80,47 @@ static void notes(bool on)
         evs.ev[evs.numEvents++] = &m;
     }
     if (evs.numEvents > 0) fx->dispatcher(fx, 25 /* effProcessEvents */, 0, 0, &evs, 0.0f);
+}
+static uint32_t fnv(const void* p, size_t n, uint32_t h = 2166136261u)
+{
+    const unsigned char* c = (const unsigned char*)p;
+    for (size_t i = 0; i < n; ++i) { h ^= c[i]; h *= 16777619u; }
+    return h;
+}
+static void text(int op, int i, char* buf) { std::memset(buf, 0, 256); fx->dispatcher(fx, op, i, 0, buf, 0.0f); }
+static bool sameName(const char* a, const char* b)   // ignores case, and treats _ as a space
+{
+    for (; *a != 0 && *b != 0; ++a, ++b)
+    {
+        const char x = *a == ' ' ? '_' : (char)std::tolower((unsigned char)*a);
+        const char y = *b == ' ' ? '_' : (char)std::tolower((unsigned char)*b);
+        if (x != y) return false;
+    }
+    return *a == *b;
+}
+// What the plugin shows and saves, written beside the audio: every parameter's value, value text and
+// unit, the program's name, and the size and a hash of the state the plugin hands the host.
+static void dumpState(const char* what, int n)
+{
+    if (dump == nullptr) return;
+    char buf[256];
+    text(5 /* effGetProgramName */, 0, buf);
+    std::fprintf(dump, "== %s %d, program name \"%s\"\n", what, n, buf);
+    for (int i = 0; i < fx->numParams; ++i)
+    {
+        char label[256];
+        text(7 /* effGetParamDisplay */, i, buf);
+        text(6 /* effGetParamLabel */, i, label);
+        std::fprintf(dump, "%d %.9g \"%s\" \"%s\"\n", i, (double)fx->getParameter(fx, i), buf, label);
+    }
+    if ((fx->flags & (1 << 5)) != 0)                 // the plugin saves its state as a chunk
+        for (int kind = 0; kind < 2; ++kind)
+        {
+            void* p = nullptr;
+            const long len = (long)fx->dispatcher(fx, 23 /* effGetChunk */, kind, 0, &p, 0.0f);
+            std::fprintf(dump, "%s state: %ld bytes, hash %08x\n", kind == 0 ? "bank" : "program", len,
+                         p != nullptr && len > 0 ? fnv(p, (size_t)len) : 0u);
+        }
 }
 static void setParam(int i, float v) { if (!skipParam[i & 4095]) fx->setParameter(fx, i, v); }
 
@@ -103,9 +157,22 @@ static void phase(const char* name) { std::printf("phase %-28s starts at byte %l
 int main(int argc, char** argv)
 {
     if (argc < 2) return 2;
+#if defined(__arm__)
+    {
+        const char* fz = std::getenv("MPC_OPT_FZ");   // flush-to-zero on, as the 32-bit MPC host has it
+        if (fz == nullptr || fz[0] != '0')
+        {
+            unsigned v;
+            __asm__ volatile("vmrs %0, fpscr" : "=r"(v));
+            v |= 1u << 24;
+            __asm__ volatile("vmsr fpscr, %0" : : "r"(v));
+        }
+    }
+#endif
     fx = VSTPluginMain((audioMasterCallback)hostCb);
     out = fopen(argv[1], "wb");
     if (fx == nullptr || out == nullptr) return 1;
+    dump = fopen((std::string(argv[1]) + ".txt").c_str(), "w");
     hostTime.sampleRate = 44100.0; hostTime.tempo = 120.0; hostTime.tsNum = 4; hostTime.tsDen = 4;
     hostTime.flags = (1 << 1) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 13);
     fx->dispatcher(fx, effSetSampleRate, 0, 0, nullptr, 44100.0f);
@@ -119,14 +186,26 @@ int main(int argc, char** argv)
     for (int i = 0; i < fx->numParams && i < 4096; ++i)
         if (fx->dispatcher(fx, 0x7F01, i, 0, nullptr, 0.0f) == 1) { skipParam[i] = true; ++skipped; }
     if (const char* s = std::getenv("MPC_OPT_SKIP"))
-        for (const char* p = s; *p != 0;)
+    {
+        std::string list(s);
+        for (size_t at = 0; at <= list.size();)
         {
+            const size_t stop = list.find(',', at) == std::string::npos ? list.size() : list.find(',', at);
+            const std::string key = list.substr(at, stop - at);
+            at = stop + 1;
+            if (key.empty()) continue;
             char* end = nullptr;
-            const long i = std::strtol(p, &end, 10);
-            if (end == p) break;
-            if (i >= 0 && i < 4096 && !skipParam[i]) { skipParam[i] = true; ++skipped; }
-            p = *end == ',' ? end + 1 : end;
+            long i = std::strtol(key.c_str(), &end, 10);
+            if (*end != 0)                            // not a number: a name, as "drive list" prints it
+            {
+                i = -1;
+                char name[256];
+                for (int j = 0; j < fx->numParams && i < 0; ++j) { text(8 /* effGetParamName */, j, name); if (sameName(name, key.c_str())) i = j; }
+            }
+            if (i < 0 || i >= fx->numParams || i >= 4096) { std::fprintf(stderr, "MPC_OPT_SKIP: no such parameter: %s\n", key.c_str()); continue; }
+            if (!skipParam[i]) { skipParam[i] = true; ++skipped; }
         }
+    }
 
     phase("programs");                       // every program, two parameters moved partway through
     for (int p = 0; p < npr; ++p)
@@ -137,6 +216,7 @@ int main(int argc, char** argv)
             if (b == 20) { const int i = (int)(rnd() % np); setParam(i, rf()); const int j = (int)(rnd() % np); setParam(j, rf()); }
             block(sizes[p % 7]);
         }
+        dumpState("program", p);
     }
     phase("4 random parameters");            // before every block, block size varying
     for (int b = 0; b < 3000; ++b)
@@ -155,6 +235,7 @@ int main(int argc, char** argv)
     {
         for (uint32_t i = 0; i < np; ++i) setParam((int)i, rf());
         for (int b = 0; b < 30; ++b) block(128);
+        if (c % 4 == 0) dumpState("settled setting", c);
     }
     phase("bad input values");               // with program changes and moving parameters
     bad = true;
@@ -163,6 +244,29 @@ int main(int argc, char** argv)
         if (b % 100 == 0) fx->dispatcher(fx, effSetProgram, 0, (b / 100) % npr, nullptr, 0.0f);
         if (b % 3 == 0) { const int j = (int)(rnd() % np); setParam(j, rf()); }
         block(sizes[rnd() % 7]);
+    }
+    // A saved state loaded back: for a plugin that saves a chunk, random settings are saved, another
+    // program is selected, the saved state is loaded, and the sound that follows is written. A change
+    // to how state is saved or loaded shows here and in the text file.
+    bad = false;
+    if ((fx->flags & (1 << 5)) != 0)
+    {
+        phase("state saved and loaded");
+        for (int c = 0; c < 8; ++c)
+        {
+            fx->dispatcher(fx, effSetProgram, 0, c % npr, nullptr, 0.0f);
+            for (uint32_t i = 0; i < np; ++i) setParam((int)i, rf());
+            for (int b = 0; b < 10; ++b) block(128);
+            void* p = nullptr;
+            const long len = (long)fx->dispatcher(fx, 23 /* effGetChunk */, 0, 0, &p, 0.0f);
+            std::vector<char> saved;
+            if (p != nullptr && len > 0) saved.assign((const char*)p, (const char*)p + len);
+            fx->dispatcher(fx, effSetProgram, 0, (c + 1) % npr, nullptr, 0.0f);
+            for (int b = 0; b < 4; ++b) block(128);
+            if (!saved.empty()) fx->dispatcher(fx, 24 /* effSetChunk */, 0, (VstIntPtr)saved.size(), saved.data(), 0.0f);
+            dumpState("loaded state", c);
+            for (int b = 0; b < 30; ++b) block(128);
+        }
     }
     // Optional: MPC_OPT_HOLD=<seconds> holds up to six programs spread over the list for that long
     // each, with clean input. A difference that grows over such a run comes from a feedback path.
@@ -179,6 +283,7 @@ int main(int argc, char** argv)
         for (int b = 0; b < holdBlocks; ++b) block(128);
     }
     fclose(out);
+    if (dump != nullptr) fclose(dump);
     std::printf("%d parameters (%d left alone), %d programs, %s, %ld frames, %ld bytes\n", fx->numParams, skipped,
                 fx->numPrograms, synth ? "instrument" : "effect", frames, frames * 8);
     return 0;

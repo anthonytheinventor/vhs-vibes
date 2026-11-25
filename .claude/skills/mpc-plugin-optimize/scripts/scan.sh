@@ -25,4 +25,4 @@ else
 fi
 # Every function, for coverage.sh; then the 20 largest for reading.
 awk -v min=1 -f "$HERE/scan.awk" "$OUT/out.s" | sort -k3 -n -r > "$OUT/scan_all.txt"
-awk '$3 >= 100' "$OUT/scan_all.txt" | head -20 | c++filt
+awk '$3 >= 100 && ++n <= 20' "$OUT/scan_all.txt" | c++filt

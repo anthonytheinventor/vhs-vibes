@@ -23,12 +23,18 @@
 // Timing (meaningful on a device only): each block is timed with the thread's own CPU clock, so time
 // taken by other threads on the core, the plugin's own worker threads included, does not count. The
 // wall-clock line beside it does include them; a large gap between the two means the core is shared.
-// A plugin that is not one SDK source file: compile this file without SRC, with
-// -DMPC_OPT_ABI='"<its VST2 header>"', and link the plugin's own objects (see SKILL.md, "Ports").
+// The harness sets flush-to-zero on arm32, as the 32-bit MPC host does; MPC_OPT_FZ=0 leaves it off.
+// A plugin that is not one SDK source file: compile this file without SRC and link the plugin's own
+// objects (see SKILL.md, "Ports"). -DMPC_OPT_ABI='"<its VST2 header>"' uses the plugin's header;
+// without it the harness uses its own vst2_min.h.
 #ifdef SRC
 #include SRC
 #else
+#ifdef MPC_OPT_ABI
 #include MPC_OPT_ABI
+#else
+#include "vst2_min.h"
+#endif
 extern "C" AEffect* VSTPluginMain(audioMasterCallback);
 #endif
 #include <algorithm>
@@ -53,6 +59,21 @@ static intptr_t hostCb(AEffect*, int32_t op, int32_t, intptr_t, void*, float)
     if (op == 1) return 2400;                       // audioMasterVersion
     if (op == 7) return (intptr_t)&hostTime;        // audioMasterGetTime: 120 BPM, playing
     return 0;
+}
+// The 32-bit MPC host runs plugins with flush-to-zero on; a fresh process starts with it off. Set it
+// as the host does, so a plugin that does not set it itself is counted, timed and rendered in the
+// mode it runs in. MPC_OPT_FZ=0 leaves the mode as the process started. (The 64-bit host does not
+// flush, so nothing is set there.)
+static void hostFpuMode()
+{
+#if defined(__arm__)
+    const char* fz = getenv("MPC_OPT_FZ");
+    if (fz != nullptr && fz[0] == '0') return;
+    unsigned v;
+    __asm__ volatile("vmrs %0, fpscr" : "=r"(v));
+    v |= 1u << 24;
+    __asm__ volatile("vmsr fpscr, %0" : : "r"(v));
+#endif
 }
 static int64_t nowNs(clockid_t c) { timespec t; clock_gettime(c, &t); return int64_t(t.tv_sec) * 1000000000 + t.tv_nsec; }
 enum { EvProgram = -1, EvNone = -2, EvNote = -3, EvOff = -4, EvChord = -5, EvChordOff = -6, EvRestrike = -7 };
@@ -115,6 +136,7 @@ static void report(const char* what, std::vector<int64_t>& ns, int Warm, int Blo
 int main(int argc, char** argv)
 {
     enum { N = 128, Warm = 200 };
+    hostFpuMode();
     AEffect* e = VSTPluginMain((audioMasterCallback)hostCb);
     hostTime.sampleRate = 44100.0; hostTime.tempo = 120.0; hostTime.tsNum = 4; hostTime.tsDen = 4;
     hostTime.flags = (1 << 1) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 13);   // playing; ppq, tempo, bars, time signature valid

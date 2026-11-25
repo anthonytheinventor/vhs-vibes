@@ -8,14 +8,18 @@
 #   plugin-arm32.so   the built plugin, e.g. <project>/build/<Manufacturer> - VST - <Name>/VST/<slug>-arm32.so
 #   device-ip         the MPC's address (developer mode on). Omit it to fetch and build only.
 #   bench args        passed to the bench, e.g. -p (sweep every parameter) -j (add a JSON line)
-# With a device address, the bench and a copy of the plugin go to /tmp on the MPC and are deleted
-# afterwards. Nothing is installed and the MPC app keeps running. Get the owner's agreement first.
-# Environment: OUT (default ./mpc-opt-out), ZIG (default zig), BENCH_CPUMASK (default 2 = core 1),
+# With a device address, the bench and a copy of the plugin go to a new folder under /tmp on the MPC,
+# which is deleted afterwards. Nothing is installed and the MPC app keeps running. Get the owner's
+# agreement first. The device's host key is kept in <OUT>/openmpc/known_hosts, not in your own file.
+# Environment: OUT (default ./mpc-opt-out), ZIG (default zig), BENCH_CPUMASK (default 2 = core 1,
+#   the core the catalog's own launcher uses on these models, so the verdict matches the catalog's),
+#   BENCH_DATA (a folder whose contents are copied beside the plugin on the device, for a plugin
+#   that loads banks or other files from its own folder),
 #   OPENMPC_REF (branch, tag or commit to fetch, default main), OPENMPC_DIR (a local checkout of the
 #   catalog to take the three files from, with no fetch).
 # Needs: curl, zig (or ZIG="python3 -m ziglang"), and for a device run ssh and scp. Linux or WSL.
 set -euo pipefail
-[ $# -ge 1 ] || { sed -n '2,16p' "$0"; exit 2; }
+[ $# -ge 1 ] || { sed -n '2,20p' "$0"; exit 2; }
 SO=$1; shift
 IP=""
 if [ $# -ge 1 ] && [ "${1#-}" = "$1" ]; then IP=$1; shift; fi
@@ -43,7 +47,8 @@ if [ -z "$IP" ]; then
   echo "no device address given: stopping after the build"
   exit 0
 fi
-OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
+OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR
+      -o "UserKnownHostsFile=$OUT/openmpc/known_hosts")
 ARCH=$(ssh "${OPTS[@]}" "root@$IP" uname -m) || { echo "cannot reach the MPC at $IP"; exit 2; }
 case "$ARCH" in
   arm*) ;;
@@ -51,12 +56,17 @@ case "$ARCH" in
 esac
 MASK=${BENCH_CPUMASK:-2}
 B=$(basename "$SO")
-clean() { ssh "${OPTS[@]}" "root@$IP" "rm -f /tmp/vstbench '/tmp/$B'" || true; }
+D=/tmp/mpcopt-bench.$$.$RANDOM
+ssh "${OPTS[@]}" "root@$IP" "mkdir -m 700 '$D'" || { echo "cannot make $D on the MPC"; exit 2; }
+clean() { ssh "${OPTS[@]}" "root@$IP" "rm -rf '$D'" || true; }
 trap clean EXIT
-scp -q "${OPTS[@]}" "$OUT/openmpc/bench-armhf" "root@$IP:/tmp/vstbench"
-scp -q "${OPTS[@]}" "$SO" "root@$IP:/tmp/$B"
+scp -q "${OPTS[@]}" "$OUT/openmpc/bench-armhf" "root@$IP:$D/vstbench"
+scp -q "${OPTS[@]}" "$SO" "root@$IP:$D/$B"
+if [ -n "${BENCH_DATA:-}" ]; then
+  tar -C "$BENCH_DATA" -cf - . | ssh "${OPTS[@]}" "root@$IP" "tar -C '$D' -xf -" || { echo "could not copy $BENCH_DATA to the MPC"; exit 2; }
+fi
 set +e
-ssh "${OPTS[@]}" "root@$IP" "chmod +x /tmp/vstbench; taskset $MASK /tmp/vstbench '/tmp/$B' $*" | tee "$OUT/openmpc/result.txt"
+ssh "${OPTS[@]}" "root@$IP" "chmod +x '$D/vstbench'; cd '$D' && taskset $MASK ./vstbench '$D/$B' $*" | tee "$OUT/openmpc/result.txt"
 R=${PIPESTATUS[0]}
 set -e
 echo "bench exit code: $R (1 = FAIL); output saved to $OUT/openmpc/result.txt"
