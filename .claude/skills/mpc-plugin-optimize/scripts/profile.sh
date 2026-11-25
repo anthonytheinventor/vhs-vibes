@@ -19,7 +19,7 @@ shift $(( $# < 5 ? $# : 5 ))
 PICKS="$*"
 HERE=$(cd "$(dirname "$0")" && pwd)
 [ -n "$BLOCKS" ] || { if [ "$K" -gt 0 ]; then BLOCKS=1000; else BLOCKS=400; fi; }
-STAMP="$K $BLOCKS $(cat "$(dirname "$SRC")"/*.[ch]* "$HERE/drive.cpp" | sha256sum | cut -c1-16)"
+STAMP="$K $BLOCKS $(cat "$(dirname "$SRC")"/*.[ch]* "$HERE/drive.cpp" "${MPC_OPT_EVENTS:-/dev/null}" | sha256sum | cut -c1-16)"
 if [ -x "$OUT/drive" ] && [ -s "$OUT/counts.txt" ] && [ "$(cat "$OUT/counts.stamp" 2>/dev/null)" = "$STAMP" ]; then
   echo "reusing the build and counts in $OUT (k=$K, $BLOCKS blocks, sources unchanged)"
 else

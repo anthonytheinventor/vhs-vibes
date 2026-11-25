@@ -130,9 +130,17 @@ at most 50 % (documented, bench source; section 14). Several instances multiply 
     faster (device).
   - Code that reads a lot of table memory got about 10 % fewer instructions done per cycle than code
     that computes (device, against counts).
-- **The device has the last word.** Time candidates on the hardware, alternating A, B, A, B. Results
-  drift by about half a percentage point between sessions (device), so two builds timed an hour apart
-  cannot be compared.
+  - Counts also overstate. Rewriting three 64-tap filters to run side by side and moving a large
+    inlined function out of its loops cut 15 to 16 % of the instructions per frame of one mode of an
+    effect plugin (counted) and changed its time by under 1 %, inside the run-to-run spread (device).
+    The instructions removed were ones the processor already ran side by side. Expect time from a
+    change that removes a divide, a library call, a cache miss or a link in a chain of dependent
+    operations; expect little from one that only removes independent loads, moves and loop overhead
+    (inferred from the above).
+- **The device has the last word, so time is the score.** A change is a win when it lowers the time
+  on the hardware; a lower count alone is a lead to follow up. Time candidates alternating A, B, A, B.
+  Results drift by about half a percentage point between sessions (device), so two builds timed an
+  hour apart cannot be compared. Time with the thread's own CPU clock, not the wall clock (section 14).
 - **Watch the worst block, not only the average.** A feature that costs 3 % on average still causes a
   dropout if one block in a thousand costs 40 %. Script the events that cost extra (a knob sweep, a mode
   switch, several controls at once) and look at the heaviest blocks.
@@ -152,36 +160,122 @@ at most 50 % (documented, bench source; section 14). Several instances multiply 
 **A counting and bench harness.** One small program includes the plugin's source, drives it the way a
 host does and marks each block. It serves three jobs: instruction counts per block under the emulator,
 bit-identity checks (write `oL` and `oR` to a file and compare two builds), and the random-parameter
-bench of section 14 when run on the device. Add your own events (a program change at a given block, a
-mode switch) inside the block loop.
+bench of section 14 when run on the device. An events file named in `MPC_OPT_EVENTS` sets parameters
+or selects programs at given blocks, by index or by name, which is how to hold a mode on or to place a
+mode switch; `drive list` prints the names. The file `<events>.applied` then shows what each event set,
+in the plugin's own value text. Read it: a setting that lands on the wrong parameter measures the
+wrong mode without any other sign.
 
 ```cpp
 // drive.cpp: includes the plugin's source and drives it the way a host does.
-//   drive [k]   k = parameters set to random values before each block (0 = steady state)
+//   drive [k] [blocks]   k = parameters set to random values before each block (0 = steady state)
+//   drive list           print every parameter's index, name and current value text, then exit
+// Events: set MPC_OPT_EVENTS to a text file to force settings or mode switches. One event per line,
+//   <block> <parameter> <value 0..1>     set a parameter (normalized) before that block; the parameter
+//                                        is its index or its name as "drive list" prints it, with _ for
+//                                        spaces (case does not matter)
+//   <block> program <number>             select a program before that block
+// Lines starting with # are skipped. Block 0 events set the state the run starts in. What each event
+// did is written to <events file>.applied with the value text the plugin reports, so a setting that
+// did not land where intended shows up there: read it before trusting the run.
+// Timing (meaningful on a device only): each block is timed with the thread's own CPU clock, so time
+// taken by other threads on the core, the plugin's own worker threads included, does not count. The
+// wall-clock line beside it does include them; a large gap between the two means the core is shared.
 #include SRC
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <time.h>
 #include <vector>
 
 extern "C" __attribute__((noinline, used)) void icMark(int b) { asm volatile("" :: "r"(b) : "memory"); }
 extern "C" __attribute__((noinline, used)) void icEnd(int b)  { asm volatile("" :: "r"(b) : "memory"); }
 static VstIntPtr hostCb(AEffect*, VstInt32 op, VstInt32, VstIntPtr, void*, float) { return op == audioMasterVersion ? 2400 : 0; }
-static int64_t nowNs() { timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return int64_t(t.tv_sec) * 1000000000 + t.tv_nsec; }
+static int64_t nowNs(clockid_t c) { timespec t; clock_gettime(c, &t); return int64_t(t.tv_sec) * 1000000000 + t.tv_nsec; }
+struct Event { int block, index; float value; };
+static std::string paramText(AEffect* e, int i, VstInt32 op)
+{
+    char buf[256] = {};
+    e->dispatcher(e, op, i, 0, buf, 0.0f);
+    return buf;
+}
+static bool sameName(const std::string& a, const char* b)   // ignores case, and treats _ as a space
+{
+    size_t n = strlen(b);
+    if (a.size() != n) return false;
+    for (size_t i = 0; i < n; ++i)
+    {
+        const char x = a[i] == ' ' ? '_' : (char)tolower((unsigned char)a[i]);
+        const char y = b[i] == ' ' ? '_' : (char)tolower((unsigned char)b[i]);
+        if (x != y) return false;
+    }
+    return true;
+}
+
+static void report(const char* what, std::vector<int64_t>& ns, int Warm, int Blocks, int N)
+{
+    std::sort(ns.begin() + Warm, ns.end());
+    const double block = N * 1e9 / 44100.0, n = Blocks - Warm;
+    double sum = 0.0;
+    for (int b = Warm; b < Blocks; ++b) sum += (double)ns[b];
+    std::printf("%s: mean %.2f %%  p99 %.2f %%  worst %.2f %% of a %d-frame block\n", what, 100.0 * sum / n / block,
+                100.0 * (double)ns[Warm + (int)(n * 0.99)] / block, 100.0 * (double)ns[Blocks - 1] / block, N);
+}
 
 int main(int argc, char** argv)
 {
-    enum { N = 128, Blocks = 4000, Warm = 200 };
-    const int k = argc > 1 ? atoi(argv[1]) : 0;
+    enum { N = 128, Warm = 200 };
     AEffect* e = VSTPluginMain(hostCb);
     e->dispatcher(e, effSetSampleRate, 0, 0, nullptr, 44100.0f);
     e->dispatcher(e, effSetBlockSize, 0, N, nullptr, 0.0f);
     e->dispatcher(e, effMainsChanged, 0, 1, nullptr, 0.0f);
+    if (argc > 1 && strcmp(argv[1], "list") == 0)
+    {
+        for (int i = 0; i < e->numParams; ++i)
+            std::printf("%3d  %-24s %s\n", i, paramText(e, i, effGetParamName).c_str(), paramText(e, i, effGetParamDisplay).c_str());
+        std::printf("%d parameters, %d programs\n", e->numParams, e->numPrograms);
+        return 0;
+    }
+    const int k = argc > 1 ? atoi(argv[1]) : 0;
+    const int Blocks = argc > 2 ? std::max(atoi(argv[2]), Warm + 100) : 4000;
+    std::vector<Event> events;
+    FILE* applied = nullptr;
+    if (const char* path = getenv("MPC_OPT_EVENTS"))
+    {
+        FILE* f = fopen(path, "r");
+        if (f == nullptr) { std::fprintf(stderr, "cannot open events file %s\n", path); return 2; }
+        applied = fopen((std::string(path) + ".applied").c_str(), "w");
+        char line[256], key[128];
+        while (fgets(line, sizeof line, f))
+        {
+            Event ev;
+            if (line[0] == '#' || sscanf(line, "%d %127s %f", &ev.block, key, &ev.value) != 3) continue;
+            char* end = nullptr;
+            const long idx = strtol(key, &end, 10);
+            if (*end == 0) ev.index = (int)idx;
+            else if (sameName("program", key)) ev.index = -1;
+            else
+            {
+                ev.index = -2;
+                for (int i = 0; i < e->numParams; ++i)
+                    if (sameName(paramText(e, i, effGetParamName), key)) { ev.index = i; break; }
+            }
+            if (ev.index < -1 || ev.index >= e->numParams)
+            {
+                if (applied) std::fprintf(applied, "NOT APPLIED, no such parameter: %s", line);
+                std::fprintf(stderr, "events: no such parameter: %s", line);
+                continue;
+            }
+            events.push_back(ev);
+        }
+        fclose(f);
+    }
     static float L[N], R[N], oL[N], oR[N];
     float* in[2] = { L, R };
     float* out[2] = { oL, oR };
-    std::vector<int64_t> ns(Blocks);
+    std::vector<int64_t> cpu(Blocks), wall(Blocks);
     unsigned seed = 12345;
     for (int b = 0; b < Blocks; ++b)
     {
@@ -190,19 +284,33 @@ int main(int argc, char** argv)
             const int p = rand_r(&seed) % e->numParams;
             e->setParameter(e, p, rand_r(&seed) / (float)RAND_MAX);
         }
+        for (const Event& ev : events)
+        {
+            if (ev.block != b) continue;
+            if (ev.index < 0)
+            {
+                e->dispatcher(e, effSetProgram, 0, (VstIntPtr)ev.value, nullptr, 0.0f);
+                if (applied) std::fprintf(applied, "block %d: program %d\n", b, (int)ev.value);
+            }
+            else
+            {
+                e->setParameter(e, ev.index, ev.value);
+                if (applied) std::fprintf(applied, "block %d: %d %s = %s (%.4f)\n", b, ev.index,
+                                          paramText(e, ev.index, effGetParamName).c_str(),
+                                          paramText(e, ev.index, effGetParamDisplay).c_str(), ev.value);
+            }
+        }
         for (int i = 0; i < N; ++i) L[i] = R[i] = rand_r(&seed) / (float)RAND_MAX - 0.5f;
-        const int64_t t0 = nowNs();
+        const int64_t w0 = nowNs(CLOCK_MONOTONIC), c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
         icMark(b);
         e->processReplacing(e, in, out, N);
         icEnd(b);
-        ns[b] = nowNs() - t0;
+        cpu[b] = nowNs(CLOCK_THREAD_CPUTIME_ID) - c0;
+        wall[b] = nowNs(CLOCK_MONOTONIC) - w0;
     }
-    std::sort(ns.begin() + Warm, ns.end());
-    const double block = N * 1e9 / 44100.0, n = Blocks - Warm;
-    double sum = 0.0;
-    for (int b = Warm; b < Blocks; ++b) sum += (double)ns[b];
-    std::printf("mean %.2f %%  p99 %.2f %%  worst %.2f %% of a %d-frame block\n", 100.0 * sum / n / block,
-                100.0 * (double)ns[Warm + (int)(n * 0.99)] / block, 100.0 * (double)ns[Blocks - 1] / block, N);
+    if (applied) fclose(applied);
+    report("thread CPU time", cpu, Warm, Blocks, N);
+    report("wall clock     ", wall, Warm, Blocks, N);
     return 0;
 }
 ```
@@ -221,7 +329,7 @@ qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout drive 2>/dev/null | gre
 
 `counts.txt` holds one line per block: its index and its instruction count. Divide a steady block by
 the frame count for instructions per frame; for an event, read the largest block after it. The printed
-timing line means nothing under the emulator. For a total over the whole run, qemu's `libinsn.so`
+timing lines mean nothing under the emulator. For a total over the whole run, qemu's `libinsn.so`
 plugin (`qemu-arm -plugin <path>/libinsn.so -d plugin drive`) is faster.
 
 **A timing recipe for inside the host.** Time every `process()` call into a preallocated buffer; write
@@ -756,37 +864,37 @@ effect's builds repeated to within 0.1 points at the 99th percentile and under 1
 
 The harness in section 2 is the same kind of test for use while you work, since it builds from source
 and also serves the instruction counts: copy the one static file to the device and run it on one core
-with the number of parameters to randomize per block. It times with the wall clock, so unlike the Open
-MPC bench it sees preemption, and the core matters.
+with the number of parameters to randomize per block.
 
 ```
-for m in 1 2 4 8; do taskset $m ./drive 0; done     # steady state on each core in turn
-taskset 4 ./drive 4        # four random parameters per block, on the quietest core found
-taskset 4 ./drive 0        # steady state, for comparison
+taskset 4 ./drive 0        # steady state
+taskset 4 ./drive 4        # four random parameters per block
+MPC_OPT_EVENTS=/tmp/mode.txt taskset 4 ./drive 0     # steady state with a mode held on
 ```
 
-It prints the mean, the 99th percentile and the worst block as percent of a 128-frame block. Run old
-and new builds alternately (section 2).
+It prints two lines, each with the mean, the 99th percentile and the worst block as percent of a
+128-frame block: one timed with the thread's own CPU clock, as the Open MPC bench does, and one with
+the wall clock. Run old and new builds alternately (section 2).
 
-**Pick the core first.** The MPC app keeps running beside the harness, and its own threads preempt an
-ordinary-priority process on the cores they use. An SDK example delay, steady state, with the app idle
-and one plugin loaded, gave these figures, each the same to within 0.05 points over three runs
-(device):
+**Read the thread CPU time.** The MPC app keeps running beside the harness, and its threads preempt
+an ordinary-priority process on the cores they use. The thread clock leaves that out; the wall clock
+does not. An SDK example delay, steady state, with the app idle, two runs on each core (device):
 
-| Core (mask) | Mean | 99th percentile | Worst block |
-|---|---|---|---|
-| 0 (1) | 0.68 % | 1.6 % | 43 to 45 % |
-| 1 (2) | 0.66 % | 3.7 % | 8 to 9 % |
-| 2 (4) | 0.62 % | 1.0 % | 2.5 to 3.3 % |
-| 3 (8) | 0.71 % | 4.1 % | 11 to 12 % |
+| Core (mask) | Thread CPU: mean, 99th percentile, worst | Wall clock: mean, 99th percentile, worst |
+|---|---|---|
+| 0 (1) | 0.65 %, 1.1 to 1.2 %, 1.6 to 1.7 % | 0.83 to 0.85 %, 8.4 to 8.6 %, 49 % |
+| 1 (2) | 0.64 %, 1.0 %, 1.7 to 1.8 % | 0.75 to 0.76 %, 1.6 to 1.8 %, 10 to 13 % |
+| 2 (4) | 0.64 %, 1.0 %, 1.4 to 1.5 % | 0.78 %, 1.3 %, 16 % |
+| 3 (8) | 0.64 to 0.65 %, 1.1 %, 1.5 to 1.7 % | 0.86 to 0.87 %, 8.2 to 8.3 %, 39 to 40 % |
 
-On core 1 the slow blocks came in pairs about every 125 blocks, close to 3 ms apart, each about five
-times the usual time (device). That is the pattern of a periodic thread of the app on the same core,
-such as its audio thread (inferred). Which core is quiet may differ with
-the project loaded, so test all four each session and use the one with the lowest 99th percentile.
-The mean barely moves between cores; the percentile and the worst block are only meaningful on the
-quiet one, and even there the worst block varies from run to run, so compare several runs. About that
-kind of test:
+The thread figures are the same on every core. The wall-clock figures depend on the core, and which
+cores are busy changes: a few hours earlier in the same session, before the app was restarted, cores 1
+and 3 were the busy ones and core 0 had the worst single blocks (device). A plugin with a worker
+thread of its own adds to the gap, since pinning the harness puts that thread on the same core: one
+effect plugin read 7.9 % at the 99th percentile by the thread clock and 19 % by the wall clock in
+steady state (device). So judge a change by the thread CPU time, pin to one core so the comparison is
+like for like, and treat a large gap between the two lines as a sign that the core is shared. The
+worst block still varies from run to run, so compare several runs. About that kind of test:
 
 - **Switching cost dominates.** Every mode switch flips many times a second, and each flip lands on the
   previous one's crossfade. A feature that is cheap when left alone can fail on what it costs to turn on.

@@ -7,6 +7,7 @@ $1 ~ /^bl?$/ && $2 ~ /^(sin|cos|tan|exp|pow|log|tanh|floor|ceil|round|lrint|fmin
 $1 == "vmrs" { cmp[f]++ }
 /Spill/ { sp[f]++ }
 /Reload/ { rl[f]++ }
-END { for (f in n) if (n[f] >= 100)
+END { if (min == "") min = 100
+      for (f in n) if (n[f] >= min)
         printf "%s insns %d div/sqrt %d f64 %d libcalls %d compares %d spills %d reloads %d\n",
                f, n[f], div[f], dbl[f], lib[f], cmp[f], sp[f], rl[f] }
