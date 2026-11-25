@@ -3,7 +3,7 @@
 //   outdiff <old.bin> <new.bin> <old.log>
 // For every phase of the run it prints the level of the old output, the RMS and the peak of the
 // difference (dB relative to full scale, 1.0), how far the difference is below the output, and the
-// share of samples that differ. For a held phase (MPC_OPT_HOLD) it also prints the difference in the
+// share of samples that differ, and how far into the phase the first difference is. For a held phase (MPC_OPT_HOLD) it also prints the difference in the
 // first and the last quarter, which shows whether an error grows with time.
 // Samples where both files hold the same non-finite value are left out; any other disagreement that
 // involves a non-finite value is counted on its own line, since it has no size.
@@ -18,7 +18,7 @@ struct Phase { std::string name; long start; };
 struct Acc
 {
     double sa = 0.0, sd = 0.0, peak = 0.0;
-    long n = 0, differ = 0, peakAt = -1, nonFinite = 0;
+    long n = 0, differ = 0, peakAt = -1, nonFinite = 0, firstAt = -1;
     void add(float a, float b, long byteAt)
     {
         if (!std::isfinite(a) || !std::isfinite(b))
@@ -26,14 +26,14 @@ struct Acc
             uint32_t ua, ub;
             std::memcpy(&ua, &a, 4);
             std::memcpy(&ub, &b, 4);
-            if (ua != ub && !(std::isnan(a) && std::isnan(b))) ++nonFinite;
+            if (ua != ub && !(std::isnan(a) && std::isnan(b))) { ++nonFinite; if (firstAt < 0) firstAt = byteAt; }
             return;
         }
         const double d = std::fabs((double)a - (double)b);
         sa += (double)a * (double)a;
         sd += d * d;
         ++n;
-        if (d != 0.0) ++differ;
+        if (d != 0.0) { ++differ; if (firstAt < 0) firstAt = byteAt; }
         if (d > peak) { peak = d; peakAt = byteAt; }
     }
     double rmsA() const { return n > 0 ? std::sqrt(sa / (double)n) : 0.0; }
@@ -107,13 +107,16 @@ int main(int argc, char** argv)
         if (n < Buf) break;
     }
 
-    std::printf("  %-28s %10s %10s %10s %14s %9s\n", "phase", "output RMS", "diff RMS", "diff peak", "diff below out", "differing");
+    std::printf("  %-28s %10s %10s %10s %14s %9s %12s\n", "phase", "output RMS", "diff RMS", "diff peak", "diff below out", "differing", "first diff");
     for (size_t i = 0; i <= ph.size(); ++i)
     {
         const Acc& c = i < ph.size() ? acc[i] : all;
-        std::printf("  %-28s %10s %10s %10s %14s %8.2f%%\n", i < ph.size() ? ph[i].name.c_str() : "whole run",
+        char when[32] = "none";
+        if (c.firstAt >= 0)   // seconds into the phase: 8 bytes per frame at 44.1 kHz
+            std::snprintf(when, sizeof when, "%.3f s", (double)(c.firstAt - (i < ph.size() ? ph[i].start : 0)) / 8.0 / 44100.0);
+        std::printf("  %-28s %10s %10s %10s %14s %8.2f%% %12s\n", i < ph.size() ? ph[i].name.c_str() : "whole run",
                     db(c.rmsA()).c_str(), db(c.rmsD()).c_str(), db(c.peak).c_str(), below(c).c_str(),
-                    c.n > 0 ? 100.0 * (double)c.differ / (double)c.n : 0.0);
+                    c.n > 0 ? 100.0 * (double)c.differ / (double)c.n : 0.0, when);
         if (i < ph.size() && ph[i].name.compare(0, 4, "held") == 0)
             std::printf("  %-28s diff RMS in the first quarter %s, in the last quarter %s\n", "",
                         db(first[i].rmsD()).c_str(), db(last[i].rmsD()).c_str());

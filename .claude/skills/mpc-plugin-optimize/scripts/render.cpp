@@ -4,24 +4,71 @@
 // same to the bit write byte-identical files. bitcheck.sh builds and compares them.
 //   render <out.bin>
 // Phase boundaries are printed as byte offsets, so a difference can be traced to its phase.
+// An instrument is played: chords of one to six notes go on and off through every phase.
+// Parameters the plugin reports as momentary triggers (opcode 0x7F01) and those named in MPC_OPT_SKIP
+// (indexes, commas between) are left alone; a trigger that the plugin debounces against the clock
+// would make two runs of the same build differ.
 // With MPC_OPT_HOLD=<seconds> in the environment the run ends with long held programs (see below).
+// A plugin that is not one SDK source file: compile without SRC, with -DMPC_OPT_ABI='"<its VST2
+// header>"', and link the plugin's own objects (see SKILL.md, "Ports").
+#ifdef SRC
 #include SRC
+#else
+#include MPC_OPT_ABI
+extern "C" AEffect* VSTPluginMain(audioMasterCallback);
+#endif
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
-static VstIntPtr hostCb(AEffect*, VstInt32 op, VstInt32, VstIntPtr, void*, float) { return op == audioMasterVersion ? 2400 : 0; }
+// The same layouts as the VST2 structures, declared here so any VST2 header will do.
+struct HostTime { double samplePos, sampleRate, nanoSeconds, ppqPos, tempo, barStartPos, cycleStart, cycleEnd;
+                  int32_t tsNum, tsDen, smpte, smpteRate, toNextClock, flags; };
+struct HostMidi { int32_t type, byteSize, deltaFrames, flags, noteLength, noteOffset; char midi[4]; char detune, offVelocity, r1, r2; };
+struct HostEvents { int32_t numEvents; intptr_t reserved; HostMidi* ev[8]; };
+static HostTime hostTime;
+static intptr_t hostCb(AEffect*, int32_t op, int32_t, intptr_t, void*, float)
+{
+    if (op == 1) return 2400;                       // audioMasterVersion
+    if (op == 7) return (intptr_t)&hostTime;        // audioMasterGetTime: 120 BPM, playing
+    return 0;
+}
 static uint32_t rs = 0x1234567u;
 static uint32_t rnd() { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return rs; }
 static float rf() { return (float)(rnd() >> 8) * (1.0f / 16777216.0f); }
+// A second generator for the notes, so an effect's run draws the same numbers as it always did.
+static uint32_t ns = 0x2468aceu;
+static uint32_t nrnd() { ns ^= ns << 13; ns ^= ns >> 17; ns ^= ns << 5; return ns; }
 
 enum { MaxB = 512 };
 static float L[MaxB], R[MaxB], oL[MaxB], oR[MaxB];
 static AEffect* fx;
 static FILE* out;
-static long frames;
-static bool bad;
+static long frames, blocks;
+static bool bad, synth;
+static bool skipParam[4096];
+static int noteBase, noteCount;
+
+static void notes(bool on)
+{
+    static HostMidi mev[8];
+    static HostEvents evs;
+    evs.numEvents = 0;
+    for (int k = 0; k < noteCount; ++k)
+    {
+        HostMidi& m = mev[k];
+        std::memset(&m, 0, sizeof m);
+        m.type = 1; m.byteSize = sizeof m;
+        m.midi[0] = (char)(on ? 0x90 : 0x80);
+        m.midi[1] = (char)(noteBase + k * 7);
+        m.midi[2] = (char)(on ? 100 : 0);
+        evs.ev[evs.numEvents++] = &m;
+    }
+    if (evs.numEvents > 0) fx->dispatcher(fx, 25 /* effProcessEvents */, 0, 0, &evs, 0.0f);
+}
+static void setParam(int i, float v) { if (!skipParam[i & 4095]) fx->setParameter(fx, i, v); }
 
 static void block(int n)
 {
@@ -38,25 +85,48 @@ static void block(int n)
         static const float v[6] = { NAN, INFINITY, -INFINITY, 3e38f, -3e38f, 1e-40f };
         ((rnd() & 1) ? L : R)[rnd() % (uint32_t)n] = v[rnd() % 6];
     }
+    if (synth)                                    // a chord for 16 blocks, then 8 blocks of release
+    {
+        if (blocks % 24 == 0) { noteBase = 36 + (int)(nrnd() % 24); noteCount = 1 + (int)(nrnd() % 6); notes(true); }
+        if (blocks % 24 == 16) notes(false);
+    }
+    hostTime.samplePos = (double)frames;
+    hostTime.ppqPos = hostTime.samplePos / 44100.0 * 2.0;
     fx->processReplacing(fx, in, o, n);
     fwrite(oL, sizeof(float), (size_t)n, out);
     fwrite(oR, sizeof(float), (size_t)n, out);
     frames += n;
+    ++blocks;
 }
 static void phase(const char* name) { std::printf("phase %-28s starts at byte %ld\n", name, frames * 8); }
 
 int main(int argc, char** argv)
 {
     if (argc < 2) return 2;
-    fx = VSTPluginMain(hostCb);
+    fx = VSTPluginMain((audioMasterCallback)hostCb);
     out = fopen(argv[1], "wb");
     if (fx == nullptr || out == nullptr) return 1;
+    hostTime.sampleRate = 44100.0; hostTime.tempo = 120.0; hostTime.tsNum = 4; hostTime.tsDen = 4;
+    hostTime.flags = (1 << 1) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 13);
     fx->dispatcher(fx, effSetSampleRate, 0, 0, nullptr, 44100.0f);
     fx->dispatcher(fx, effSetBlockSize, 0, MaxB, nullptr, 0.0f);
     fx->dispatcher(fx, effMainsChanged, 0, 1, nullptr, 0.0f);
     static const int sizes[7] = { 32, 128, 512, 64, 96, 192, 256 };
     const uint32_t np = (uint32_t)(fx->numParams > 0 ? fx->numParams : 1);
     const int npr = fx->numPrograms > 0 ? fx->numPrograms : 1;
+    synth = (fx->flags & (1 << 8)) != 0;
+    int skipped = 0;
+    for (int i = 0; i < fx->numParams && i < 4096; ++i)
+        if (fx->dispatcher(fx, 0x7F01, i, 0, nullptr, 0.0f) == 1) { skipParam[i] = true; ++skipped; }
+    if (const char* s = std::getenv("MPC_OPT_SKIP"))
+        for (const char* p = s; *p != 0;)
+        {
+            char* end = nullptr;
+            const long i = std::strtol(p, &end, 10);
+            if (end == p) break;
+            if (i >= 0 && i < 4096 && !skipParam[i]) { skipParam[i] = true; ++skipped; }
+            p = *end == ',' ? end + 1 : end;
+        }
 
     phase("programs");                       // every program, two parameters moved partway through
     for (int p = 0; p < npr; ++p)
@@ -64,26 +134,26 @@ int main(int argc, char** argv)
         fx->dispatcher(fx, effSetProgram, 0, p, nullptr, 0.0f);
         for (int b = 0; b < 40; ++b)
         {
-            if (b == 20) { fx->setParameter(fx, (int)(rnd() % np), rf()); fx->setParameter(fx, (int)(rnd() % np), rf()); }
+            if (b == 20) { const int i = (int)(rnd() % np); setParam(i, rf()); const int j = (int)(rnd() % np); setParam(j, rf()); }
             block(sizes[p % 7]);
         }
     }
     phase("4 random parameters");            // before every block, block size varying
     for (int b = 0; b < 3000; ++b)
     {
-        for (int i = 0; i < 4; ++i) fx->setParameter(fx, (int)(rnd() % np), rf());
+        for (int i = 0; i < 4; ++i) { const int j = (int)(rnd() % np); setParam(j, rf()); }
         block(sizes[rnd() % 7]);
     }
     phase("every parameter random");         // on every block
     for (int b = 0; b < 600; ++b)
     {
-        for (uint32_t i = 0; i < np; ++i) fx->setParameter(fx, (int)i, rf());
+        for (uint32_t i = 0; i < np; ++i) setParam((int)i, rf());
         block(sizes[rnd() % 3]);
     }
     phase("settled random settings");        // the steady state of many combinations
     for (int c = 0; c < 120; ++c)
     {
-        for (uint32_t i = 0; i < np; ++i) fx->setParameter(fx, (int)i, rf());
+        for (uint32_t i = 0; i < np; ++i) setParam((int)i, rf());
         for (int b = 0; b < 30; ++b) block(128);
     }
     phase("bad input values");               // with program changes and moving parameters
@@ -91,7 +161,7 @@ int main(int argc, char** argv)
     for (int b = 0; b < 3000; ++b)
     {
         if (b % 100 == 0) fx->dispatcher(fx, effSetProgram, 0, (b / 100) % npr, nullptr, 0.0f);
-        if (b % 3 == 0) fx->setParameter(fx, (int)(rnd() % np), rf());
+        if (b % 3 == 0) { const int j = (int)(rnd() % np); setParam(j, rf()); }
         block(sizes[rnd() % 7]);
     }
     // Optional: MPC_OPT_HOLD=<seconds> holds up to six programs spread over the list for that long
@@ -109,6 +179,7 @@ int main(int argc, char** argv)
         for (int b = 0; b < holdBlocks; ++b) block(128);
     }
     fclose(out);
-    std::printf("%d parameters, %d programs, %ld frames, %ld bytes\n", fx->numParams, fx->numPrograms, frames, frames * 8);
+    std::printf("%d parameters (%d left alone), %d programs, %s, %ld frames, %ld bytes\n", fx->numParams, skipped,
+                fx->numPrograms, synth ? "instrument" : "effect", frames, frames * 8);
     return 0;
 }

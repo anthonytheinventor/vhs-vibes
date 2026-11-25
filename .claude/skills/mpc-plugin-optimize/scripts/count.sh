@@ -10,10 +10,15 @@
 #   out-dir  where drive, counts.txt and the summary go (default ./mpc-opt-out)
 # Set MPC_OPT_EVENTS to an events file (format at the top of drive.cpp) to force settings, program
 # changes or mode switches at given blocks, e.g. to count one mode in steady state.
+# MPC_OPT_MARK=all counts the whole host block (events and parameter writes too), MPC_OPT_SKIP names
+# parameters the random sweep leaves alone; both are explained at the top of drive.cpp.
+# A plugin that is not one SDK source file: build drive.cpp yourself with the compiler and flags of
+# the release (static, arm32) and name the program in DRIVE_BIN; <sdk-dir> and <plugin.cpp> are then
+# not used (give - for each).
 # Needs: zig (or ZIG="python3 -m ziglang"), qemu-arm 8.1 or later, nm, awk. Linux or WSL.
 # The result is an instruction count, exact and repeatable. It is a proxy for time on the device.
 set -euo pipefail
-[ $# -ge 2 ] || { sed -n '2,14p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '2,19p' "$0"; exit 2; }
 SDK=$1; SRC=$2; K=${3:-0}; BLOCKS=${4:-}; OUT=${5:-mpc-opt-out}
 [ -n "$BLOCKS" ] || { if [ "$K" -gt 0 ]; then BLOCKS=1000; else BLOCKS=400; fi; }
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -21,11 +26,17 @@ ZIG=${ZIG:-zig}
 mkdir -p "$OUT"
 TAG="k$K"; [ -z "${MPC_OPT_EVENTS:-}" ] || TAG="${TAG}_$(basename "${MPC_OPT_EVENTS%.*}")"
 rm -f "$OUT/counts.stamp"
-$ZIG c++ -O2 -std=c++17 -pthread -target arm-linux-musleabihf -mcpu=cortex_a17 -static \
-  -I"$SDK/framework" -I"$(dirname "$SRC")" "-DSRC=\"$(basename "$SRC")\"" "$HERE/drive.cpp" -o "$OUT/drive"
+if [ -n "${DRIVE_BIN:-}" ]; then
+  cp "$DRIVE_BIN" "$OUT/drive"
+else
+  $ZIG c++ -O2 -std=c++17 -pthread -target arm-linux-musleabihf -mcpu=cortex_a17 -static \
+    -I"$SDK/framework" -I"$(dirname "$SRC")" "-DSRC=\"$(basename "$SRC")\"" "$HERE/drive.cpp" -o "$OUT/drive"
+fi
 M=$(nm "$OUT/drive" | awk '$3 == "icMark" { print $1 }')
 E=$(nm "$OUT/drive" | awk '$3 == "icEnd" { print $1 }')
 [ -n "$M" ] && [ -n "$E" ] || { echo "icMark/icEnd not found in the binary"; exit 1; }
+# A Thumb function's symbol has bit 0 set; the trace shows the even address.
+M=$(printf '%08x' $(( 0x$M & ~1 ))); E=$(printf '%08x' $(( 0x$E & ~1 )))
 qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLOCKS" 2>/dev/null \
   | LC_ALL=C grep -F "Trace 0:" | LC_ALL=C grep -n -e "/00000000$M/" -e "/00000000$E/" | cut -d: -f1 \
   | awk 'NR % 2 == 1 { p = $1 } NR % 2 == 0 { print (NR - 2) / 2, $1 - p - 1 }' > "$OUT/counts.txt"
@@ -39,4 +50,4 @@ sort -k2 -n "$OUT/counts.txt" | awk -v k="$K" '
         printf "\n" }' | tee "$OUT/summary_$TAG.txt"
 [ -z "${MPC_OPT_EVENTS:-}" ] || { echo "events applied:"; sed 's/^/  /' "$MPC_OPT_EVENTS.applied"; }
 # Lets profile.sh reuse this build and counts.txt while k, the block count and the sources are unchanged.
-echo "$K $BLOCKS $(cat "$(dirname "$SRC")"/*.[ch]* "$HERE/drive.cpp" "${MPC_OPT_EVENTS:-/dev/null}" | sha256sum | cut -c1-16)" > "$OUT/counts.stamp"
+echo "$K $BLOCKS ${MPC_OPT_MARK:-} ${MPC_OPT_SKIP:-} $(cat ${DRIVE_BIN:+"$DRIVE_BIN"} ${DRIVE_BIN:-"$(dirname "$SRC")"/*.[ch]*} "$HERE/drive.cpp" "${MPC_OPT_EVENTS:-/dev/null}" | sha256sum | cut -c1-16)" > "$OUT/counts.stamp"

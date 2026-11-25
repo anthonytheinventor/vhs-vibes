@@ -11,10 +11,11 @@
 # With a device address, the bench and a copy of the plugin go to /tmp on the MPC and are deleted
 # afterwards. Nothing is installed and the MPC app keeps running. Get the owner's agreement first.
 # Environment: OUT (default ./mpc-opt-out), ZIG (default zig), BENCH_CPUMASK (default 2 = core 1),
-#   OPENMPC_REF (branch, tag or commit to fetch, default main).
+#   OPENMPC_REF (branch, tag or commit to fetch, default main), OPENMPC_DIR (a local checkout of the
+#   catalog to take the three files from, with no fetch).
 # Needs: curl, zig (or ZIG="python3 -m ziglang"), and for a device run ssh and scp. Linux or WSL.
 set -euo pipefail
-[ $# -ge 1 ] || { sed -n '2,15p' "$0"; exit 2; }
+[ $# -ge 1 ] || { sed -n '2,16p' "$0"; exit 2; }
 SO=$1; shift
 IP=""
 if [ $# -ge 1 ] && [ "${1#-}" = "$1" ]; then IP=$1; shift; fi
@@ -25,11 +26,15 @@ RAW=https://raw.githubusercontent.com/open-mpc/mpc-vst-plugins/$REF
 [ -f "$SO" ] || { echo "no such file: $SO"; exit 2; }
 mkdir -p "$OUT/openmpc"
 for f in tools/bench.c docs/BENCH.md LICENSE; do
+  if [ -n "${OPENMPC_DIR:-}" ]; then
+    cp "$OPENMPC_DIR/$f" "$OUT/openmpc/$(basename "$f")" || { echo "no $f in $OPENMPC_DIR"; exit 2; }
+    continue
+  fi
   curl -fsSL "$RAW/$f" -o "$OUT/openmpc/$(basename "$f").new" \
     || { echo "could not fetch $f from Open MPC ($RAW)"; exit 2; }
   mv "$OUT/openmpc/$(basename "$f").new" "$OUT/openmpc/$(basename "$f")"
 done
-echo "fetched Open MPC bench ($REF): $(wc -c < "$OUT/openmpc/bench.c") bytes, sha256 $(sha256sum "$OUT/openmpc/bench.c" | cut -c1-12)"
+echo "Open MPC bench (${OPENMPC_DIR:-$REF}): $(wc -c < "$OUT/openmpc/bench.c") bytes, sha256 $(sha256sum "$OUT/openmpc/bench.c" | cut -c1-12)"
 # Same compiler floor as their Docker image for the 32-bit models: glibc 2.31, dynamic (it loads the .so).
 $ZIG cc -target arm-linux-gnueabihf.2.31 -mcpu=cortex_a17 -O2 -Wall \
   -o "$OUT/openmpc/bench-armhf" "$OUT/openmpc/bench.c" -ldl -lm

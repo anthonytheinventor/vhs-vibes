@@ -26,7 +26,7 @@ done
 awk '
   FNR == 1 { file++ }
   FILENAME ~ /scan_all\.txt$/ { sub(/:$/, "", $1); s[$1] = $3 " | " $5 " | " $7 " | " $9 " | " $11 " | " $13 " | " $15; next }
-  $4 == "TOTAL" || $4 == "main" || $4 == "icMark" || $4 == "icEnd" || $4 ~ /^hostCb/ { next }
+  $4 == "TOTAL" || $4 == "main" || $4 == "icMark" || $4 == "icEnd" || $4 ~ /hostCb/ || $4 ~ /sendNotes/ { next }
   { f = $4; if ($2 + 0 > big[f]) big[f] = $2 + 0; if ($3 + 0 > med[f]) med[f] = $3 + 0; seen[f] = 1 }
   END { for (f in seen) printf "%d\t%d\t%s\t%s\n", (big[f] > med[f] ? big[f] : med[f]), med[f], (f in s ? s[f] : " |  |  |  |  |  | "), f }
 ' "$SCAN" "${PROFILES[@]}" | sort -k1,1nr | c++filt | awk -F'\t' '
