@@ -383,11 +383,23 @@ struct Engine
     // clamp: the fallback read (clamped at both ends, as look()) or the integral's (the caller has checked the
     // range, and there the clamps would leave every lane as it is).
     // anyOut: any lane outside lo .. hi (or a NaN)
+    // allSet: every lane of a compare's result true (all ones). On the MPC one NEON AND and pairwise minimum and
+    // one lane moved out, where taking the four lanes out one by one cost about twice as many instructions.
+    typedef int32_t QuadI __attribute__((vector_size(16)));
+    static inline bool allSet(QuadI m)
+    {
+#if defined(__ARM_NEON)
+        const uint32x4_t u = (uint32x4_t)m;
+        const uint32x2_t h = vand_u32(vget_low_u32(u), vget_high_u32(u));
+        return vget_lane_u32(vpmin_u32(h, h), 0) != 0;
+#else
+        return (m[0] & m[1] & m[2] & m[3]) != 0;
+#endif
+    }
     static inline bool anyOut(Quad a, float lo, float hi)
     {
-        typedef int32_t QuadI __attribute__((vector_size(16)));
         const QuadI in = (a >= vsplat<Quad>(lo)) & (a <= vsplat<Quad>(hi));
-        return (in[0] & in[1] & in[2] & in[3]) == 0;
+        return !allSet(in);
     }
     static inline Quad vabs4(Quad a) { return __builtin_elementwise_abs(a); }
     static inline Quad fmad(Quad a, Quad b, Quad c)
@@ -428,7 +440,9 @@ struct Engine
     }
     // Two samples at twice the rate (ring indices w0 - 1 and w0, the second the newest) to one at the
     // session rate, in field units; hs: the record field at the session rate, for the correction.
-    __attribute__((always_inline)) Stereo step(const Stereo* ring, uint32_t w0, Stereo hs)
+    // Out of line: written into the recorder's copies of the sample loop it crowded their registers, and as a
+    // call once a sample each copy came out shorter (32-bit ARM build, counted); the arithmetic is the same.
+    __attribute__((noinline)) Stereo step(const Stereo* ring, uint32_t w0, Stereo hs)
     {
         Stereo y = splat(0.0f);
         fp = (fp - 1) & (kFir - 1);
@@ -467,19 +481,30 @@ struct Engine
             const auto moved = vabs4(d) > fmad(vsplat<Quad>(kQk), vabs4(A), vsplat<Quad>(kQ0));
             const Quad q = (g - g0) * rcp4(d);
             Quad r = q;
-            if (__builtin_expect(!(moved[0] & moved[1] & moved[2] & moved[3]), 0)) r = moved ? q : tRead4(j, 0.5f * (A + pa));
+            if (__builtin_expect(!allSet(moved), 0)) r = moved ? q : tRead4(j, 0.5f * (A + pa));
             const Stereo v = dn[j].down(lo2(r), hi2(r));
             fh[j][fp] = v; fh[j][fp + kFir] = v;
-            const Stereo* hh = &fh[j][fp];
-            Quad acc = {};
-            for (int k = 0; k < kFir / 2; ++k)
-            {
-                Quad q;
-                std::memcpy(&q, hh + 2 * k, sizeof(q));
-                acc += fir[j][k] * q;
-            }
-            y += lo2(acc) + hi2(acc);
         }
+        // The three playback FIRs, written out and side by side: each group's sum is its own chain of
+        // multiply-adds in tap order, as one loop per group had it, and y adds the groups in order, so every
+        // value is the same to the bit; the three chains no longer wait on each other.
+        static_assert(kJ == 3, "three groups");
+        Quad acc0 = {}, acc1 = {}, acc2 = {};
+        const float *h0 = (const float*)&fh[0][fp], *h1 = (const float*)&fh[1][fp], *h2 = (const float*)&fh[2][fp];
+        const float *c0 = (const float*)fir[0], *c1 = (const float*)fir[1], *c2 = (const float*)fir[2];
+#pragma clang loop unroll(full)
+        for (int k = 0; k < kFir / 2; ++k)
+        {
+            Quad q0, q1, q2, f0, f1, f2;
+            std::memcpy(&q0, h0, sizeof(Quad)); std::memcpy(&f0, c0, sizeof(Quad));
+            std::memcpy(&q1, h1, sizeof(Quad)); std::memcpy(&f1, c1, sizeof(Quad));
+            std::memcpy(&q2, h2, sizeof(Quad)); std::memcpy(&f2, c2, sizeof(Quad));
+            acc0 += f0 * q0; acc1 += f1 * q1; acc2 += f2 * q2;
+            h0 += 4; h1 += 4; h2 += 4; c0 += 4; c1 += 4; c2 += 4;
+        }
+        y += lo2(acc0) + hi2(acc0);
+        y += lo2(acc1) + hi2(acc1);
+        y += lo2(acc2) + hi2(acc2);
         // the high-frequency self-erasure: the record field's slope (field per micrometer of tape) through
         // a peak follower; above the knee e0 the band above fc is turned down by 1 / (1 + c (env - e0)).
         // The side chain is the record field, so there is no feedback.
