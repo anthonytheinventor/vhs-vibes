@@ -36,15 +36,28 @@ Work in this order and keep a short log of every measurement.
 1. **Baseline.** Keep an untouched copy of the source. Count instructions per frame in steady state
    and for each event that costs extra (a mode switch, a program change, a knob sweep), and scan the
    assembly. Use the scripts below. Record the numbers before changing anything.
-2. **Find where the cost is.** Read the scan for the hot functions: divides and square roots, double
-   math, library calls, scalar compares, spills and reloads (reference section 13). Read the largest
-   blocks in `counts.txt` for rebuilds and resets (sections 8 and 14), and run `profile.sh` to see
-   which functions a costly block spent its extra instructions in. Size the candidate from that
-   figure, not from a guess.
-3. **Pick one change,** in the order of "Choosing what to change" in the reference: worst block first,
-   then the high percentile under moving controls, then the steady cost. Estimate the saving from the
-   cost table in section 1 before writing code. If the estimate is under about 2 % of the instructions
-   per frame and does not touch the worst block, skip it.
+2. **Survey the whole plugin before choosing anything.** The most expensive block or function is
+   where the instructions are, which is not the same as where the waste is: it may already be tight,
+   while cheap fixes sit elsewhere. So look everywhere first:
+   - Profile steady state (`profile.sh` with `k` 0) and read the median column: where a typical block
+     spends its instructions.
+   - Profile several costly blocks from the random-parameter run in one call (the largest, and a few
+     from around the 99th and 90th percentiles in `counts.txt`), and note whether they share a cause
+     or are different mode combinations. Look for rebuilds and resets (sections 8 and 14).
+   - Read the scan for every function that showed up in either profile: divides and square roots,
+     double math, library calls, scalar compares, spills and reloads (reference section 13). A
+     function with many instructions and few of these patterns is probably already tight.
+   - Write a candidate list. For each: the function, the pattern, which scenario it helps (steady,
+     high percentile, worst block), the estimated saving in instructions per frame from the cost
+     table in section 1 and the profile figures, how often it runs, and how much code it touches.
+3. **Pick one change from the list by saving for the effort,** not by where the biggest number is.
+   Do the cheap, certain ones first (a library call or divide that can move out of a loop, work
+   repeated per sample that changes per block, a clear that covers more than it needs to), wherever
+   they are. Among candidates of similar yield, follow "Choosing what to change" in the reference:
+   the worst block, then the high percentile under moving controls, then the steady cost, with the
+   owner's complaint deciding ties. Skip a candidate whose estimate is under about 2 % of the
+   instructions per frame of the scenario it helps, unless it lowers the worst block. If a function
+   resists two attempts, leave it and take the next candidate; come back only when the list is empty.
 4. **Make that one change.** One change per measurement, so a result can be traced to its cause.
 5. **Prove the output.** For a change meant to be bit-exact, compare the output of the old and new
    arm32 builds under the emulator, with NaN and infinity in the test signal (section 2). Agreement
@@ -60,8 +73,9 @@ Work in this order and keep a short log of every measurement.
    For a plugin that is, or will be, listed in the Open MPC catalog, finish with that catalog's own
    bench: `scripts/openmpc-bench.sh` fetches the current copy and runs it on the device. Its verdict
    (PASS, WARN or FAIL) is the one that counts there; report it with the figures for old and new.
-9. **Stop** when the worst block is under the limit with margin, the steady cost is a few percent of
-   a core, and the next candidate saves under about 2 % of the instructions per frame.
+9. **Stop** when the candidate list holds nothing above the 2 % rule. Reaching the limit with
+   margin is a reason to check with the owner, not to stop early: cheap savings still on the list
+   are worth taking, since several instances multiply them.
 
 Report the before and after numbers for every scenario, what was changed, what was tried and
 reverted, and which claims are measured and which are reasoned.
