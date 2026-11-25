@@ -122,6 +122,14 @@ int main(int argc, char** argv)
                         db(first[i].rmsD()).c_str(), db(last[i].rmsD()).c_str());
     }
     std::printf("  levels are dB relative to full scale (1.0)\n");
+    {
+        int heldPhases = 0, heldDiffer = 0;
+        for (size_t i = 0; i < ph.size(); ++i)
+            if (ph[i].name.compare(0, 4, "held") == 0) { ++heldPhases; if (acc[i].firstAt >= 0) ++heldDiffer; }
+        if (heldPhases > 0 && heldDiffer == 0 && all.firstAt >= 0)
+            std::printf("  NO HELD PHASE REACHES THE DIFFERENCE, so this run says nothing about whether it grows:\n"
+                        "  choose held settings that use the changed code (MPC_OPT_HOLD_PROGRAMS, MPC_OPT_HOLD_SET)\n");
+    }
     if (all.peakAt >= 0)
     {
         size_t q = 0;

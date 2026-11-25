@@ -30,9 +30,9 @@ awk '
   { f = $4; if ($2 + 0 > big[f]) big[f] = $2 + 0; if ($3 + 0 > med[f]) med[f] = $3 + 0; seen[f] = 1 }
   END { for (f in seen) printf "%d\t%d\t%s\t%s\n", (big[f] > med[f] ? big[f] : med[f]), med[f], (f in s ? s[f] : " |  |  |  |  |  | "), f }
 ' "$SCAN" "${PROFILES[@]}" | sort -k1,1nr | c++filt | awk -F'\t' '
-  BEGIN { print "| Function | Costly block | Median block | Size | Div/sqrt | f64 | Lib calls | Compares | Spills | Reloads | Verdict |"
+  BEGIN { print "| Function | Costly block (largest) | Median block (largest) | Size | Div/sqrt | f64 | Lib calls | Compares | Spills | Reloads | Verdict |"
           print "|---|---|---|---|---|---|---|---|---|---|---|" }
   { name = $4; gsub(/\|/, "\\|", name); printf "| `%s` | %d | %d | %s |  |\n", substr(name, 1, 120), $1, $2, $3; n++ }
-  END { printf "\n%d functions executed. Counts are instructions in one 128-frame block: the largest over the profiled blocks, and the median block.\n", n }
+  END { printf "\n%d functions executed. Counts are instructions in one 128-frame block: the largest over the profiled blocks, and the largest median block over the scenarios.\n", n }
 ' > "$OUT/coverage.md"
 echo "wrote $OUT/coverage.md from ${#PROFILES[@]} profiles: $(grep -c '^| `' "$OUT/coverage.md") rows to fill in"

@@ -13,6 +13,10 @@
 // state). bitcheck.sh compares that file too, so a change to a read-out or to the saved state shows.
 // The harness sets flush-to-zero on arm32, as the 32-bit MPC host does; MPC_OPT_FZ=0 leaves it off.
 // With MPC_OPT_HOLD=<seconds> in the environment the run ends with long held programs (see below).
+// MPC_OPT_HOLD_PROGRAMS=<n,n,...> chooses which programs, and MPC_OPT_HOLD_SET=<name=value,...>
+// (values 0..1) sets parameters on top of each, so the held run reaches the code under test.
+// It hands the plugin the same buffers for input and output, as the MPC host does; MPC_OPT_INPLACE=0
+// gives it separate ones.
 // A plugin that is not one SDK source file: compile without SRC and link the plugin's own objects
 // (see SKILL.md, "Ports"). -DMPC_OPT_ABI='"<its VST2 header>"' uses the plugin's header; without it
 // the harness uses its own vst2_min.h.
@@ -60,7 +64,7 @@ static AEffect* fx;
 static FILE* out;
 static FILE* dump;
 static long frames, blocks;
-static bool bad, synth;
+static bool bad, synth, inplace = true;
 static bool skipParam[4096];
 static int noteBase, noteCount;
 
@@ -98,6 +102,29 @@ static bool sameName(const char* a, const char* b)   // ignores case, and treats
     }
     return *a == *b;
 }
+static int paramIndex(const char* key)       // an index, or a name as "drive list" prints it; -1 when neither
+{
+    char* end = nullptr;
+    const long i = std::strtol(key, &end, 10);
+    if (*end == 0 && end != key) return i >= 0 && i < fx->numParams ? (int)i : -1;
+    char name[256];
+    for (int j = 0; j < fx->numParams; ++j) { text(8 /* effGetParamName */, j, name); if (sameName(name, key)) return j; }
+    return -1;
+}
+static std::vector<std::string> listOf(const char* env)   // the comma-separated items of an environment variable
+{
+    std::vector<std::string> v;
+    const char* s = std::getenv(env);
+    if (s == nullptr) return v;
+    std::string list(s);
+    for (size_t at = 0; at <= list.size();)
+    {
+        const size_t stop = list.find(',', at) == std::string::npos ? list.size() : list.find(',', at);
+        if (stop > at) v.push_back(list.substr(at, stop - at));
+        at = stop + 1;
+    }
+    return v;
+}
 // What the plugin shows and saves, written beside the audio: every parameter's value, value text and
 // unit, the program's name, and the size and a hash of the state the plugin hands the host.
 static void dumpState(const char* what, int n)
@@ -127,7 +154,7 @@ static void setParam(int i, float v) { if (!skipParam[i & 4095]) fx->setParamete
 static void block(int n)
 {
     float* in[2] = { L, R };
-    float* o[2] = { oL, oR };
+    float* o[2] = { inplace ? L : oL, inplace ? R : oR };
     for (int i = 0; i < n; ++i)
     {
         const float a = 0.6f * std::sin(0.031f * (float)(frames + i)) + 0.3f * (rf() - 0.5f);
@@ -147,8 +174,8 @@ static void block(int n)
     hostTime.samplePos = (double)frames;
     hostTime.ppqPos = hostTime.samplePos / 44100.0 * 2.0;
     fx->processReplacing(fx, in, o, n);
-    fwrite(oL, sizeof(float), (size_t)n, out);
-    fwrite(oR, sizeof(float), (size_t)n, out);
+    fwrite(o[0], sizeof(float), (size_t)n, out);
+    fwrite(o[1], sizeof(float), (size_t)n, out);
     frames += n;
     ++blocks;
 }
@@ -185,27 +212,13 @@ int main(int argc, char** argv)
     int skipped = 0;
     for (int i = 0; i < fx->numParams && i < 4096; ++i)
         if (fx->dispatcher(fx, 0x7F01, i, 0, nullptr, 0.0f) == 1) { skipParam[i] = true; ++skipped; }
-    if (const char* s = std::getenv("MPC_OPT_SKIP"))
+    for (const std::string& key : listOf("MPC_OPT_SKIP"))
     {
-        std::string list(s);
-        for (size_t at = 0; at <= list.size();)
-        {
-            const size_t stop = list.find(',', at) == std::string::npos ? list.size() : list.find(',', at);
-            const std::string key = list.substr(at, stop - at);
-            at = stop + 1;
-            if (key.empty()) continue;
-            char* end = nullptr;
-            long i = std::strtol(key.c_str(), &end, 10);
-            if (*end != 0)                            // not a number: a name, as "drive list" prints it
-            {
-                i = -1;
-                char name[256];
-                for (int j = 0; j < fx->numParams && i < 0; ++j) { text(8 /* effGetParamName */, j, name); if (sameName(name, key.c_str())) i = j; }
-            }
-            if (i < 0 || i >= fx->numParams || i >= 4096) { std::fprintf(stderr, "MPC_OPT_SKIP: no such parameter: %s\n", key.c_str()); continue; }
-            if (!skipParam[i]) { skipParam[i] = true; ++skipped; }
-        }
+        const int i = paramIndex(key.c_str());
+        if (i < 0 || i >= 4096) { std::fprintf(stderr, "MPC_OPT_SKIP: no such parameter: %s\n", key.c_str()); continue; }
+        if (!skipParam[i]) { skipParam[i] = true; ++skipped; }
     }
+    if (const char* ip = std::getenv("MPC_OPT_INPLACE")) inplace = ip[0] != '0';
 
     phase("programs");                       // every program, two parameters moved partway through
     for (int p = 0; p < npr; ++p)
@@ -273,13 +286,24 @@ int main(int argc, char** argv)
     bad = false;
     const char* hold = std::getenv("MPC_OPT_HOLD");
     const int holdBlocks = hold != nullptr ? (int)(std::atof(hold) * 44100.0 / 128.0) : 0;
-    for (int k = 0; holdBlocks > 0 && k < (npr < 6 ? npr : 6); ++k)
+    std::vector<int> held;
+    for (const std::string& s : listOf("MPC_OPT_HOLD_PROGRAMS")) held.push_back(std::atoi(s.c_str()) % npr);
+    if (held.empty())
+        for (int k = 0; k < (npr < 6 ? npr : 6); ++k) held.push_back(npr <= 6 ? k : (int)((long)k * (npr - 1) / 5));
+    const std::vector<std::string> holdSet = listOf("MPC_OPT_HOLD_SET");
+    for (size_t k = 0; holdBlocks > 0 && k < held.size(); ++k)
     {
-        const int p = npr <= 6 ? k : (int)((long)k * (npr - 1) / 5);
         char name[32];
-        std::snprintf(name, sizeof name, "held program %d", p);
+        std::snprintf(name, sizeof name, "held program %d", held[k]);
         phase(name);
-        fx->dispatcher(fx, effSetProgram, 0, p, nullptr, 0.0f);
+        fx->dispatcher(fx, effSetProgram, 0, held[k], nullptr, 0.0f);
+        for (const std::string& s : holdSet)
+        {
+            const size_t eq = s.find('=');
+            const int i = eq == std::string::npos ? -1 : paramIndex(s.substr(0, eq).c_str());
+            if (i < 0) { if (k == 0) std::fprintf(stderr, "MPC_OPT_HOLD_SET: no such parameter: %s\n", s.c_str()); continue; }
+            fx->setParameter(fx, i, (float)std::atof(s.c_str() + eq + 1));
+        }
         for (int b = 0; b < holdBlocks; ++b) block(128);
     }
     fclose(out);

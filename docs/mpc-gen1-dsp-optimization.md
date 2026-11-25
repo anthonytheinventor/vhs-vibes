@@ -131,7 +131,7 @@ at most 50 % (documented, bench source; section 14). Several instances multiply 
 ## 2. Measure before you optimize
 
 - **Count instructions for precision.** Run the ARM build under an emulator that counts executed
-  instructions (qemu with a counting plugin). The count is exact and repeatable, so it can prove that a
+  instructions (qemu with a counting plugin). The count is exact and, for most plugins, repeatable, so it can prove that a
   change did not add instructions to a path, to a fraction of an instruction per frame.
 - **Counts do not see time.** Each of these is one instruction: a divide takes 18 cycles, a
   mispredicted branch about 12, and a table read that misses the cache up to about 200 (all device). In
@@ -208,8 +208,13 @@ wrong mode without any other sign.
 // call, as the Open MPC bench does. The default is the process call alone.
 // Timing (meaningful on a device only): each block is timed with the thread's own CPU clock, so time
 // taken by other threads on the core, the plugin's own worker threads included, does not count. The
-// wall-clock line beside it does include them; a large gap between the two means the core is shared.
+// "process CPU time" line adds the plugin's other threads: where it is well above the thread's own
+// time, the plugin does work on a thread of its own, and that line is its cost. The wall-clock line
+// includes everything on the core; a large gap to the others means the core is shared.
+// MPC_OPT_SILENT=1 feeds silence in place of noise: the idle scenario of an effect.
 // The harness sets flush-to-zero on arm32, as the 32-bit MPC host does; MPC_OPT_FZ=0 leaves it off.
+// It hands the plugin the same buffers for input and output, as the MPC host does; MPC_OPT_INPLACE=0
+// gives it separate ones.
 // A plugin that is not one SDK source file: compile this file without SRC and link the plugin's own
 // objects (see SKILL.md, "Ports"). -DMPC_OPT_ABI='"<its VST2 header>"' uses the plugin's header;
 // without it the harness uses its own vst2_min.h.
@@ -340,6 +345,10 @@ int main(int argc, char** argv)
     const int k = argc > 1 ? atoi(argv[1]) : 0;
     const int Blocks = argc > 2 ? std::max(atoi(argv[2]), Warm + 100) : 4000;
     const char* markEnv = getenv("MPC_OPT_MARK");
+    const char* silentEnv = getenv("MPC_OPT_SILENT");
+    const bool silent = silentEnv != nullptr && silentEnv[0] != '0' && silentEnv[0] != 0;
+    const char* inplaceEnv = getenv("MPC_OPT_INPLACE");
+    const bool inplace = inplaceEnv == nullptr || inplaceEnv[0] != '0';
     const bool markAll = markEnv != nullptr && strcmp(markEnv, "all") == 0;
 
     // The parameters the random sweep may turn.
@@ -401,8 +410,8 @@ int main(int argc, char** argv)
 
     static float L[N], R[N], oL[N], oR[N];
     float* in[2] = { L, R };
-    float* out[2] = { oL, oR };
-    std::vector<int64_t> cpu(Blocks), wall(Blocks);
+    float* out[2] = { inplace ? L : oL, inplace ? R : oR };
+    std::vector<int64_t> cpu(Blocks), wall(Blocks), proc(Blocks);
     std::vector<int> pk((size_t)std::max(k, 1));
     std::vector<float> pv((size_t)std::max(k, 1));
     unsigned seed = 12345;
@@ -415,10 +424,11 @@ int main(int argc, char** argv)
             pk[(size_t)i] = sweep.empty() ? -1 : sweep[(size_t)rand_r(&seed) % sweep.size()];
             pv[(size_t)i] = rand_r(&seed) / (float)RAND_MAX;
         }
-        for (int i = 0; i < N; ++i) L[i] = R[i] = rand_r(&seed) / (float)RAND_MAX - 0.5f;
+        for (int i = 0; i < N; ++i) L[i] = R[i] = rand_r(&seed) / (float)RAND_MAX - 0.5f;   // drawn either way
+        if (silent) for (int i = 0; i < N; ++i) L[i] = R[i] = 0.0f;
         hostTime.samplePos = (double)b * N;
         hostTime.ppqPos = hostTime.samplePos / 44100.0 * 2.0;
-        int64_t w0 = nowNs(CLOCK_MONOTONIC), c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
+        int64_t w0 = nowNs(CLOCK_MONOTONIC), p0 = nowNs(CLOCK_PROCESS_CPUTIME_ID), c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
         if (markAll) icMark(b);
         for (int i = 0; i < k; ++i)
             if (pk[(size_t)i] >= 0) e->setParameter(e, pk[(size_t)i], pv[(size_t)i]);
@@ -444,12 +454,13 @@ int main(int argc, char** argv)
         }
         if (!markAll)
         {
-            w0 = nowNs(CLOCK_MONOTONIC); c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
+            w0 = nowNs(CLOCK_MONOTONIC); p0 = nowNs(CLOCK_PROCESS_CPUTIME_ID); c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
             icMark(b);
         }
         e->processReplacing(e, in, out, N);
         icEnd(b);
         cpu[b] = nowNs(CLOCK_THREAD_CPUTIME_ID) - c0;
+        proc[b] = nowNs(CLOCK_PROCESS_CPUTIME_ID) - p0;
         wall[b] = nowNs(CLOCK_MONOTONIC) - w0;
         if (applied)
             for (const Event& ev : events)
@@ -464,6 +475,7 @@ int main(int argc, char** argv)
     }
     if (applied) fclose(applied);
     report("thread CPU time", cpu, Warm, Blocks, N);
+    report("process CPU time", proc, Warm, Blocks, N);
     report("wall clock     ", wall, Warm, Blocks, N);
     return 0;
 }
@@ -485,6 +497,17 @@ qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout drive 2>/dev/null | gre
 the frame count for instructions per frame; for an event, read the largest block after it. The printed
 timing lines mean nothing under the emulator. For a total over the whole run, qemu's `libinsn.so`
 plugin (`qemu-arm -plugin <path>/libinsn.so -d plugin drive`) is faster.
+
+This command logs one line per instruction, which is simple and slow. The `mpc-plugin-optimize`
+skill's `count.sh` gets the same counts 4 to 8 times faster (checked on three SDK example plugins and
+a Thumb build): it lets the emulator run whole translated blocks (`-d in_asm,exec,nochain`, without
+`-one-insn-per-tb`), logs one line per block executed, and takes each block's instruction count from
+the listing the emulator prints when it first translates the block.
+
+The counts repeat exactly from run to run for a plugin whose audio code depends on nothing but its
+input. A plugin that pushes meters from a timer thread gave counts that differed by 88 instructions,
+up or down, in about a quarter of its blocks between two runs of the same build (counted); compare
+medians for such a plugin.
 
 **A timing recipe for inside the host.** Time every `process()` call into a preallocated buffer; write
 it out only after processing has stopped.
@@ -850,6 +873,12 @@ are documented or inferred, and the costs in section 1 apply per voice.
   keeps. Gather the per-frame members into one struct under 1 KB, bind a reference to it at the top of the
   loop, and move large arrays (rings, delay lines) to the heap or after it (inferred). Count every loop
   copy afterward.
+  In one plugin, moving the members its loop does not read at every frame behind the ones it does, and
+  dropping 520 bytes of padding between them, cut the reloads executed per frame in its default loop
+  copy from about 116 to about 51 and the instructions per frame by 2 to 4 % in every scenario
+  (counted). On the device the idle and steady time fell by about 3 %, three heavier modes by about
+  2 %, and the heaviest did not change (device). Five of the seven orders tried were worse than the
+  best in some scenario, so count every scenario after each move and let the counts choose the order.
 - **Link-time optimization changes inlining decisions.** Recheck the hot paths after turning it on or
   off.
 

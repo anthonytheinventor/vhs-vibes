@@ -22,8 +22,13 @@
 // call, as the Open MPC bench does. The default is the process call alone.
 // Timing (meaningful on a device only): each block is timed with the thread's own CPU clock, so time
 // taken by other threads on the core, the plugin's own worker threads included, does not count. The
-// wall-clock line beside it does include them; a large gap between the two means the core is shared.
+// "process CPU time" line adds the plugin's other threads: where it is well above the thread's own
+// time, the plugin does work on a thread of its own, and that line is its cost. The wall-clock line
+// includes everything on the core; a large gap to the others means the core is shared.
+// MPC_OPT_SILENT=1 feeds silence in place of noise: the idle scenario of an effect.
 // The harness sets flush-to-zero on arm32, as the 32-bit MPC host does; MPC_OPT_FZ=0 leaves it off.
+// It hands the plugin the same buffers for input and output, as the MPC host does; MPC_OPT_INPLACE=0
+// gives it separate ones.
 // A plugin that is not one SDK source file: compile this file without SRC and link the plugin's own
 // objects (see SKILL.md, "Ports"). -DMPC_OPT_ABI='"<its VST2 header>"' uses the plugin's header;
 // without it the harness uses its own vst2_min.h.
@@ -154,6 +159,10 @@ int main(int argc, char** argv)
     const int k = argc > 1 ? atoi(argv[1]) : 0;
     const int Blocks = argc > 2 ? std::max(atoi(argv[2]), Warm + 100) : 4000;
     const char* markEnv = getenv("MPC_OPT_MARK");
+    const char* silentEnv = getenv("MPC_OPT_SILENT");
+    const bool silent = silentEnv != nullptr && silentEnv[0] != '0' && silentEnv[0] != 0;
+    const char* inplaceEnv = getenv("MPC_OPT_INPLACE");
+    const bool inplace = inplaceEnv == nullptr || inplaceEnv[0] != '0';
     const bool markAll = markEnv != nullptr && strcmp(markEnv, "all") == 0;
 
     // The parameters the random sweep may turn.
@@ -215,8 +224,8 @@ int main(int argc, char** argv)
 
     static float L[N], R[N], oL[N], oR[N];
     float* in[2] = { L, R };
-    float* out[2] = { oL, oR };
-    std::vector<int64_t> cpu(Blocks), wall(Blocks);
+    float* out[2] = { inplace ? L : oL, inplace ? R : oR };
+    std::vector<int64_t> cpu(Blocks), wall(Blocks), proc(Blocks);
     std::vector<int> pk((size_t)std::max(k, 1));
     std::vector<float> pv((size_t)std::max(k, 1));
     unsigned seed = 12345;
@@ -229,10 +238,11 @@ int main(int argc, char** argv)
             pk[(size_t)i] = sweep.empty() ? -1 : sweep[(size_t)rand_r(&seed) % sweep.size()];
             pv[(size_t)i] = rand_r(&seed) / (float)RAND_MAX;
         }
-        for (int i = 0; i < N; ++i) L[i] = R[i] = rand_r(&seed) / (float)RAND_MAX - 0.5f;
+        for (int i = 0; i < N; ++i) L[i] = R[i] = rand_r(&seed) / (float)RAND_MAX - 0.5f;   // drawn either way
+        if (silent) for (int i = 0; i < N; ++i) L[i] = R[i] = 0.0f;
         hostTime.samplePos = (double)b * N;
         hostTime.ppqPos = hostTime.samplePos / 44100.0 * 2.0;
-        int64_t w0 = nowNs(CLOCK_MONOTONIC), c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
+        int64_t w0 = nowNs(CLOCK_MONOTONIC), p0 = nowNs(CLOCK_PROCESS_CPUTIME_ID), c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
         if (markAll) icMark(b);
         for (int i = 0; i < k; ++i)
             if (pk[(size_t)i] >= 0) e->setParameter(e, pk[(size_t)i], pv[(size_t)i]);
@@ -258,12 +268,13 @@ int main(int argc, char** argv)
         }
         if (!markAll)
         {
-            w0 = nowNs(CLOCK_MONOTONIC); c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
+            w0 = nowNs(CLOCK_MONOTONIC); p0 = nowNs(CLOCK_PROCESS_CPUTIME_ID); c0 = nowNs(CLOCK_THREAD_CPUTIME_ID);
             icMark(b);
         }
         e->processReplacing(e, in, out, N);
         icEnd(b);
         cpu[b] = nowNs(CLOCK_THREAD_CPUTIME_ID) - c0;
+        proc[b] = nowNs(CLOCK_PROCESS_CPUTIME_ID) - p0;
         wall[b] = nowNs(CLOCK_MONOTONIC) - w0;
         if (applied)
             for (const Event& ev : events)
@@ -278,6 +289,7 @@ int main(int argc, char** argv)
     }
     if (applied) fclose(applied);
     report("thread CPU time", cpu, Warm, Blocks, N);
+    report("process CPU time", proc, Warm, Blocks, N);
     report("wall clock     ", wall, Warm, Blocks, N);
     return 0;
 }

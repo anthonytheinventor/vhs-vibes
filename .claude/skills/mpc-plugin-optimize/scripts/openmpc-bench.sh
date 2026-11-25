@@ -60,8 +60,10 @@ D=/tmp/mpcopt-bench.$$.$RANDOM
 ssh "${OPTS[@]}" "root@$IP" "mkdir -m 700 '$D'" || { echo "cannot make $D on the MPC"; exit 2; }
 clean() { ssh "${OPTS[@]}" "root@$IP" "rm -rf '$D'" || true; }
 trap clean EXIT
-scp -q "${OPTS[@]}" "$OUT/openmpc/bench-armhf" "root@$IP:$D/vstbench"
-scp -q "${OPTS[@]}" "$SO" "root@$IP:$D/$B"
+# some devices take only the older copy protocol (-O)
+copy() { scp -q "${OPTS[@]}" "$1" "$2" 2>/dev/null || scp -q -O "${OPTS[@]}" "$1" "$2"; }
+copy "$OUT/openmpc/bench-armhf" "root@$IP:$D/vstbench"
+copy "$SO" "root@$IP:$D/$B"
 if [ -n "${BENCH_DATA:-}" ]; then
   tar -C "$BENCH_DATA" -cf - . | ssh "${OPTS[@]}" "root@$IP" "tar -C '$D' -xf -" || { echo "could not copy $BENCH_DATA to the MPC"; exit 2; }
 fi

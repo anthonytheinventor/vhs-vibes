@@ -18,7 +18,9 @@
 # per phase, the level of the output, the RMS and peak of the difference in dB, how far the
 # difference is below the output, and where in the phase the first difference is. Set
 # MPC_OPT_HOLD=<seconds> to add long held programs to the run; the table then shows the difference
-# early and late in each, which is how an error that grows in a feedback path is seen.
+# early and late in each, which is how an error that grows in a feedback path is seen. The held
+# programs must use the changed code: MPC_OPT_HOLD_PROGRAMS=<n,n,...> chooses them and
+# MPC_OPT_HOLD_SET=<name=value,...> sets parameters on top; the table says so when none reaches it.
 # A pass covers what the run visits. A plugin with behavior the run cannot reach (side inputs, a
 # sample rate other than 44.1 kHz) needs its own cases added to a copy of render.cpp.
 # Check that the comparison can fail: change one constant in a copy of the source and run it once.
@@ -37,7 +39,7 @@
 # RENDER_OLD and RENDER_NEW; the first three arguments are then not used (give - for each).
 # Needs: zig (or ZIG="python3 -m ziglang"), qemu-arm, cmp. Linux or WSL.
 set -uo pipefail
-[ $# -ge 3 ] || { sed -n '2,38p' "$0"; exit 2; }
+[ $# -ge 3 ] || { sed -n '2,40p' "$0"; exit 2; }
 SDK=$1; OLD=$2; NEW=$3; OUT=${4:-mpc-opt-out}
 HERE=$(cd "$(dirname "$0")" && pwd)
 ZIG=${ZIG:-zig}
@@ -113,11 +115,13 @@ run_target() {  # name, zig target, extra flags, emulator
               { if (!("H" in k)) print }' \
            "$OUT/bits/$T-$W2.bin.txt" > "$OUT/bits/$T-$W2.cmp.txt"
        done
-       [ -z "$U" ] || LEFT="; left out, since two runs of the old build differ there: $U"
+       [ -z "$U" ] || LEFT="; NOT COMPARED, since two runs of the old build differ there: $U"
+       local WHAT="read-outs and saved state"
+       ! grep -q '^S' "$OUT/bits/$T-unstable.txt" || WHAT="read-outs"
        if cmp -s "$OUT/bits/$T-old.cmp.txt" "$OUT/bits/$T-new.cmp.txt"; then
-         echo "$T: read-outs and saved state IDENTICAL ($(wc -l < "$OUT/bits/$T-old.cmp.txt") lines$LEFT)"
+         echo "$T: $WHAT IDENTICAL ($(wc -l < "$OUT/bits/$T-old.cmp.txt") lines$LEFT)"
        else
-         echo "$T: read-outs or saved state DIFFERENT (old <, new >; full files in $OUT/bits/$T-old.bin.txt and $T-new.bin.txt$LEFT):"
+         echo "$T: $WHAT DIFFERENT (old <, new >; full files in $OUT/bits/$T-old.bin.txt and $T-new.bin.txt$LEFT):"
          diff "$OUT/bits/$T-old.cmp.txt" "$OUT/bits/$T-new.cmp.txt" | head -n 12 | sed 's/^/  /'
          [ "$RESULT" = 2 ] || RESULT=1
        fi ;;
