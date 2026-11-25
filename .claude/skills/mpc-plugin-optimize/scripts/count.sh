@@ -17,6 +17,7 @@ SDK=$1; SRC=$2; K=${3:-0}; BLOCKS=${4:-}; OUT=${5:-mpc-opt-out}
 HERE=$(cd "$(dirname "$0")" && pwd)
 ZIG=${ZIG:-zig}
 mkdir -p "$OUT"
+rm -f "$OUT/counts.stamp"
 $ZIG c++ -O2 -std=c++17 -pthread -target arm-linux-musleabihf -mcpu=cortex_a17 -static \
   -I"$SDK/framework" -I"$(dirname "$SRC")" "-DSRC=\"$(basename "$SRC")\"" "$HERE/drive.cpp" -o "$OUT/drive"
 M=$(nm "$OUT/drive" | awk '$3 == "icMark" { print $1 }')
@@ -33,3 +34,5 @@ sort -k2 -n "$OUT/counts.txt" | awk -v k="$K" '
         printf "      per frame: 90th percentile %.1f, 99th percentile %.1f", v[int(n * 0.90)] / 128, v[int(n * 0.99)] / 128
         if (n < 500) printf " (only %d blocks: the 99th percentile is rough)", n
         printf "\n" }' | tee "$OUT/summary_k$K.txt"
+# Lets profile.sh reuse this build and counts.txt while k, the block count and the sources are unchanged.
+echo "$K $BLOCKS $(cat "$(dirname "$SRC")"/*.[ch]* "$HERE/drive.cpp" | sha256sum | cut -c1-16)" > "$OUT/counts.stamp"
