@@ -6240,12 +6240,6 @@ private:
     bool  humOn_ = false, buzzOn_ = false, headOn_ = false, hissOn_ = false, crackleOn_ = false;
     bool  tiltOn_ = false, driveOn_ = false, slewOn_ = false, loSatOn_ = false, hiSatOn_ = false;
     bool  boost_ = false, dropOn_ = false, whistleOn_ = false, scrapeOn_ = false, breathOn_ = false;
-    NoiseRed nrEnc_, nrDec_;               // noise reduction: record side, playback side
-    bool  nrEncOn_ = false, nrDecOn_ = false, nrEncSeed_ = false, nrDecSeed_ = false;
-    float nrEncMix_ = 0.0f, nrDecMix_ = 0.0f, nrFade_ = 0.0f;   // how far each side is faded in
-    float nrEncGoal_ = 0.0f;
-    bool  nrEncRun_ = false, nrDecRun_ = false;                 // the side is on or still fading out
-    TapeSat tapeSat_;                                           // Sat Type = VHS
     bool  tape_ = false;
     bool  choActive_ = false, dryActive_ = false, dryStill_ = false;
     int   fadeHold_ = 0;                                  // control ticks the output stays shut after a reset
@@ -6264,31 +6258,23 @@ private:
 
     float sr_ = 0.0f;
     int   ctrlCount_ = 0;
-    // (1.8) lastNorm_ and units_ (one entry per parameter) are the last members now; their room here is
-    // kept, as 1.7's 65 entries each, so that every member after it keeps its place: with Hysteresis
-    // appended they grew, the members after them moved, and the sample loop came out 5 instructions a
-    // sample longer (32-bit ARM build, counted).
-    static constexpr int kParams17 = 65;
-    [[maybe_unused]] char paramsRoom_[kParams17 * (sizeof(float) + sizeof(int))] = {};
+    // (1.8) lastNorm_ and units_ (one entry per parameter) are the last members. (Up to 1.8.0 their old
+    // place was kept free here, 520 bytes, so that the members after it kept their places. Since then the
+    // members the sample loop reads at every sample come first, without it, and those it reads only per
+    // control tick or in a mode of its own are further down, after dropTicks_: the 32-bit ARM sample loop
+    // reaches more of them from one base register (a vldr reaches 1020 bytes), and every copy came out 26
+    // to 45 instructions a sample shorter, the same to the bit; see the note there.)
 
-    float tgt_[kNumCtl] = {}, cur_[kNumCtl] = {};
-    float rampT_[kNumRamp] = {}, rampS_[kNumRamp] = {};
+    float cur_[kNumCtl] = {};
     bool  ctlBusy_ = true, rampBusy_ = true, rampMoving_ = true;   // (audio thread only) the smoothing has work; a ramp moves (see controlTick)
     Ramp  ramp_[kNumRamp];
 
     // chorus
-    PairDelay choDelay_;
-    Ramp  choD_[2];
-    float choPhase_ = 0.0f, choSpeed_ = 0.6f, choWidth_ = 0.7f;
-    float choDelayTarget_ = 500.0f, choBase_ = 500.0f;
 
     // mic (its filters are the last members, see there)
-    int   micType_ = -1, micWant_ = 0;    // the mic that is in; the one Mic Type and Mic Model ask for (see setMic)
     bool  micOn_ = false, micSwap_ = false;   // the Mic switch; the mic is out for a change of type or model
     bool  micSimple_ = false;                 // the mic that is in is a Simple one
     bool  micRun_ = false;                    // it runs (heard, fading, or settling unheard)
-    int   micHold_ = 0, micHoldTicks_ = 55;   // control ticks it settles unheard before it fades in (20 ms)
-    int   micHoldCamTicks_ = 276;              // the same for the Camcorder (100 ms, see micHoldFor)
 
     // preamp, wear, compressor
     Stereo tiltLp_ = {0.0f, 0.0f}, slew_ = {0.0f, 0.0f};
@@ -6308,15 +6294,7 @@ private:
 
     // wobble
     PairDelay wf1Delay_, wf2Delay_;
-    PairDelay dryDelay_;                 // the untouched input, for Mix
-    Ramp  dryD_;                         // its delay: the resting length of the two wobble delays
-    float dryJump_ = 0, dryXf_ = 0;      // its crossfade to a far new length (as TapeSpeed::jump, xf)
-    int   dryFill_ = 0;                  // control ticks of sound it has taken in since it was switched in
     TapeSpeed wf1_, wf2_;
-    float dev1Slow_ = 0, rate1Slow_ = 0.55f, shape1_ = 0, dev1Fast_ = 0, rate1Fast_ = 9;
-    float dev2Slow_ = 0, rate2Slow_ = 0.8f,  dev2Fast_ = 0, rate2Fast_ = 14;
-    float scrapeA_ = 0, scrapeB_ = 0, scrapeLo_ = 0.08f, scrapeHi_ = 0.35f;   // scrape flutter noise and its band
-    Xorshift32 scrapeRng_{0x5c7a9e01u};
 
     // noise
     bool  noiseActive_ = true, noisePre_ = false, headFlip_ = false;
@@ -6359,6 +6337,34 @@ private:
     float dropAmount_ = 0, dropGain_ = 1.0f, dropTarget_ = 1.0f;
     int   dropTicks_ = 0;
 
+    // Members the sample loop does not read at every sample of the usual settings: B-Type NR's two sides,
+    // the VHS tape, the control values' targets and the ramps' goals (control tick only), the chorus, the
+    // mic's bookkeeping, the dry copy for Mix, the wobble's settings and Scrape. Here, after the members
+    // it does read, they no longer push those out of reach of the loop's base register (see lastNorm_).
+    // Their own copies of the loop (NR, VHS) came out shorter too (32-bit ARM build, counted).
+    NoiseRed nrEnc_, nrDec_;               // noise reduction: record side, playback side
+    bool  nrEncOn_ = false, nrDecOn_ = false, nrEncSeed_ = false, nrDecSeed_ = false;
+    float nrEncMix_ = 0.0f, nrDecMix_ = 0.0f, nrFade_ = 0.0f;   // how far each side is faded in
+    float nrEncGoal_ = 0.0f;
+    bool  nrEncRun_ = false, nrDecRun_ = false;                 // the side is on or still fading out
+    TapeSat tapeSat_;                                           // Sat Type = VHS
+    float tgt_[kNumCtl] = {};
+    float rampT_[kNumRamp] = {}, rampS_[kNumRamp] = {};
+    PairDelay choDelay_;
+    Ramp  choD_[2];
+    float choPhase_ = 0.0f, choSpeed_ = 0.6f, choWidth_ = 0.7f;
+    float choDelayTarget_ = 500.0f, choBase_ = 500.0f;
+    int   micType_ = -1, micWant_ = 0;    // the mic that is in; the one Mic Type and Mic Model ask for (see setMic)
+    int   micHold_ = 0, micHoldTicks_ = 55;   // control ticks it settles unheard before it fades in (20 ms)
+    int   micHoldCamTicks_ = 276;              // the same for the Camcorder (100 ms, see micHoldFor)
+    PairDelay dryDelay_;                 // the untouched input, for Mix
+    Ramp  dryD_;                         // its delay: the resting length of the two wobble delays
+    float dryJump_ = 0, dryXf_ = 0;      // its crossfade to a far new length (as TapeSpeed::jump, xf)
+    int   dryFill_ = 0;                  // control ticks of sound it has taken in since it was switched in
+    float dev1Slow_ = 0, rate1Slow_ = 0.55f, shape1_ = 0, dev1Fast_ = 0, rate1Fast_ = 9;
+    float dev2Slow_ = 0, rate2Slow_ = 0.8f,  dev2Fast_ = 0, rate2Fast_ = 14;
+    float scrapeA_ = 0, scrapeB_ = 0, scrapeLo_ = 0.08f, scrapeHi_ = 0.35f;   // scrape flutter noise and its band
+    Xorshift32 scrapeRng_{0x5c7a9e01u};
     // The mic model, last: it is large (its filters), and placed among the other members it
     // moved the ones after it further into the object; with it here the sample loop compiles
     // 13 instructions a sample shorter with the Mic off (32-bit ARM build, counted). The Simple
@@ -6429,7 +6435,7 @@ private:
     bool  hyEmph_ = false;      // the tape's emphasis is the recorder's (no bias in it: see hyTapeSet)
     int   hyHold_ = 0;          // control ticks the Saturator waits while the recorder starts from rest
 
-    // (see paramsRoom_)
+    // (last: see the note before cur_)
     float lastNorm_[kNumParams] = {};   // parameter values readParams() last saw
     int   units_[kNumParams] = {};      // 0 none, 1 %, 2 dB, 3 Hz, 4 ms, 5 turns per minute, shown in Hz (see formatValue)
 
