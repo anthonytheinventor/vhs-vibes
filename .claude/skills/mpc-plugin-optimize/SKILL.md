@@ -36,7 +36,27 @@ Work in this order and keep a short log of every measurement.
 1. **Baseline.** Keep an untouched copy of the source. Count instructions per frame in steady state
    and for each event that costs extra (a mode switch, a program change, a knob sweep), and scan the
    assembly. Use the scripts below. Record the numbers before changing anything.
-2. **Survey the whole plugin before choosing anything.** The most expensive block or function is
+2. **Read the source for cheap wins.** Before any profile, read every file that `process()` reaches,
+   plus the parameter, program, reset and mode-switch code, against the checklist in reference
+   section 17 and this list. These are mistakes that are quick to see in source, quick to fix, and
+   easy to miss in a profile because each hides inside a larger function or runs only on an event:
+   - a parameter read with `get(i)` per sample or per block when it has not changed (section 8);
+   - `pow`, `exp`, `log`, `sin`, `tanh` or `sqrt` inside the sample loop, or recomputed every block
+     from values that only change with a parameter (sections 3 and 4);
+   - a divide whose divisor does not change inside the loop (section 4);
+   - double literals or double functions that drag float math into double (`1.0` for `1.0f`,
+     `std::pow` on a float) (section 3);
+   - `floor`, `round` or `lround` calls where a conversion would do (section 4);
+   - a whole buffer or state block cleared on reset or a mode switch when only part can be read
+     back (sections 7 and 8);
+   - a table or filter redesigned on any parameter change, where only one parameter feeds it;
+   - a per-sample test of something that only changes per block or per control tick (section 10);
+   - a small function called from the sample loop that is not inlined, or a virtual or
+     `std::function` call there (section 10);
+   - scalar code beside vector code doing the same work on the other channel (section 5).
+   Put every hit on the candidate list of step 3 with its estimate. Take the clear ones first, one
+   at a time through steps 5 to 8 like any other change: a cheap win is still proven and counted.
+3. **Survey the whole plugin before choosing anything.** The most expensive block or function is
    where the instructions are, which is not the same as where the waste is: it may already be tight,
    while cheap fixes sit elsewhere. So look everywhere first:
    - Profile steady state (`profile.sh` with `k` 0) and read the median column: where a typical block
@@ -47,10 +67,10 @@ Work in this order and keep a short log of every measurement.
    - Read the scan for every function that showed up in either profile: divides and square roots,
      double math, library calls, scalar compares, spills and reloads (reference section 13). A
      function with many instructions and few of these patterns is probably already tight.
-   - Write a candidate list. For each: the function, the pattern, which scenario it helps (steady,
+   - Add to the candidate list started in step 2. For each: the function, the pattern, which scenario it helps (steady,
      high percentile, worst block), the estimated saving in instructions per frame from the cost
      table in section 1 and the profile figures, how often it runs, and how much code it touches.
-3. **Pick one change from the list by saving for the effort,** not by where the biggest number is.
+4. **Pick one change from the list by saving for the effort,** not by where the biggest number is.
    Do the cheap, certain ones first (a library call or divide that can move out of a loop, work
    repeated per sample that changes per block, a clear that covers more than it needs to), wherever
    they are. Among candidates of similar yield, follow "Choosing what to change" in the reference:
@@ -58,22 +78,22 @@ Work in this order and keep a short log of every measurement.
    owner's complaint deciding ties. Skip a candidate whose estimate is under about 2 % of the
    instructions per frame of the scenario it helps, unless it lowers the worst block. If a function
    resists two attempts, leave it and take the next candidate; come back only when the list is empty.
-4. **Make that one change.** One change per measurement, so a result can be traced to its cause.
-5. **Prove the output.** For a change meant to be bit-exact, compare the output of the old and new
+5. **Make that one change.** One change per measurement, so a result can be traced to its cause.
+6. **Prove the output.** For a change meant to be bit-exact, compare the output of the old and new
    arm32 builds under the emulator, with NaN and infinity in the test signal (section 2). Agreement
    on the desktop build is not proof. Then run the SDK's host simulator test; it must still pass.
-6. **Count again.** Compare with the baseline for the same scenario. Check the assembly for the
+7. **Count again.** Compare with the baseline for the same scenario. Check the assembly for the
    pattern you meant to remove, and check that no other hot function grew (inlining can change,
    section 10).
-7. **Keep or revert.** Keep a change that lowers the count or the worst block and passes step 5.
+8. **Keep or revert.** Keep a change that lowers the count or the worst block and passes step 6.
    Revert anything else, and note in the log that it was tried.
-8. **Confirm on the device** when one is available, old and new builds alternating (section 2).
+9. **Confirm on the device** when one is available, old and new builds alternating (section 2).
    Instruction counts do not see divide time, cache misses or mispredicted branches, so the device has
    the last word. Do not copy files to an MPC or restart its app without the owner's agreement.
    For a plugin that is, or will be, listed in the Open MPC catalog, finish with that catalog's own
    bench: `scripts/openmpc-bench.sh` fetches the current copy and runs it on the device. Its verdict
    (PASS, WARN or FAIL) is the one that counts there; report it with the figures for old and new.
-9. **Stop** when the candidate list holds nothing above the 2 % rule. Reaching the limit with
+10. **Stop** when the candidate list holds nothing above the 2 % rule. Reaching the limit with
    margin is a reason to check with the owner, not to stop early: cheap savings still on the list
    are worth taking, since several instances multiply them.
 
@@ -107,8 +127,8 @@ standard entry point (`VSTPluginMain`), which every SDK plugin has.
   flags (section 5). Every NEON path needs a fallback that builds for the desktop test (section 6).
 - Do not add `-ffast-math`, `-ffp-contract=fast` or `-fno-math-errno` to an existing plugin: each can
   change its output bits (sections 3 and 5).
-- A reciprocal or square-root estimate changes the output bits (section 4). Use it only where step 1
-  allows.
+- A reciprocal or square-root estimate changes the output bits (section 4). Use it only where the owner's
+  answer to the first question allows.
 - Figures in the reference given as "in one plugin" show scale. They are not targets.
 - The reference covers the 32-bit models. For the 64-bit models only section 15 applies, and no cycle
   count carries over.
