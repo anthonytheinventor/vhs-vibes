@@ -21,9 +21,16 @@ other ARM cores, since several rules here differ from the usual advice.
 
 Ask the owner, or find out from the project, and write the answers down:
 
-1. **May the output change?** If the plugin is released and projects depend on it, the usual answer is
-   that existing settings must produce the same bits. That limits you to bit-exact changes (reference:
-   "Choosing what to change"). Never trade away bit-identity without being told to.
+1. **May the output change?** There are three answers; ask which applies.
+   - **Same bits, always.** Only bit-exact changes qualify (reference: "Choosing what to change").
+   - **Same bits unless I agree to a change.** The usual answer for a released plugin that projects
+     depend on, and the one to assume when the owner cannot be asked. Bit-exact changes are made as
+     they are found. A change that alters the output is measured and brought to the owner with its
+     saving and the size of the difference (step 8), and is kept only on a yes to that change.
+   - **The output may change.** A plugin that is not released yet. Still measure every difference and
+     report it.
+   Under every answer, a change that alters the output goes on the candidate list with its estimate,
+   so the owner sees what is on offer. Never keep one without the owner's yes to that change.
 2. **What is the complaint?** Dropouts and bench failures are worst-block problems. A high meter with
    several instances is a steady-cost problem. They have different fixes.
 3. **What must never change?** Parameter ids, parameter order and the plugin's `uid` are permanent in
@@ -83,6 +90,8 @@ so in the report and call every result a count, not a speedup.
    - The candidates, from steps 2 and 3 together, are the list you choose from. For each note which
      scenario it helps (steady, high percentile, worst block), how often it runs, how much code it
      touches, and whether its saving is the kind the device will show (see "Two measures" above).
+     Mark each one "same bits" or "changes the output" (the reference lists which kinds do, under
+     "Choosing what to change"). Do not drop a candidate because it changes the output.
 4. **Pick one change from the list by saving for the effort,** not by where the biggest number is.
    Do the cheap, certain ones first (a library call or divide that can move out of a loop, work
    repeated per sample that changes per block, a clear that covers more than it needs to), wherever
@@ -91,6 +100,9 @@ so in the report and call every result a count, not a speedup.
    owner's complaint deciding ties. Skip a candidate whose estimate is under about 2 % of the
    instructions per frame of the scenario it helps, unless it lowers the worst block. If a function
    resists two attempts, leave it and take the next candidate; come back only when the list is empty.
+   Take the same-bits candidates first. A candidate that changes the output is worth trying when its
+   estimate is about 5 % or more of the scenario it helps, or when it brings the worst block under
+   the limit; below that, list it in the report with its estimate and leave it.
 5. **Make that one change.** One change per measurement, so a result can be traced to its cause.
 6. **Prove the output.** For a change meant to be bit-exact, run `bitcheck.sh` with the untouched
    source and the changed one. It must print IDENTICAL for arm32; agreement on the desktop build is
@@ -98,6 +110,16 @@ so in the report and call every result a count, not a speedup.
    and see DIFFERENT. If the plugin has behavior the standard run cannot reach (tempo, MIDI notes, a
    mode only one hidden setting enables), add cases for it to a copy of `render.cpp` first. Then run
    the SDK's host simulator test; it must still pass.
+   For a change that alters the output, run `bitcheck.sh` with `MPC_OPT_HOLD=20`. It prints
+   DIFFERENT and a table: for each phase the level of the output, the RMS and the peak of the
+   difference in dB, and how far the difference is below the output. Record the largest peak, the
+   smallest "diff below out", and the line counting samples where one build is not finite and the
+   other disagrees, which must be 0. For scale, the rounding noise of a 16-bit file is about 98 dB
+   below a full-scale sine, and of a 24-bit one about 146 dB. In the held phases compare the
+   difference in the first and the last quarter: a figure that rises through the run means the error
+   feeds back and grows, and the short phases understate it. A difference that sits in a few
+   samples (a high peak with a low RMS and a small differing share) is a decision that flipped, such
+   as a threshold or a mode switch landing one sample apart; find it before calling it small.
 7. **Count again.** Compare with the baseline for the same scenario. Check the assembly for the
    pattern you meant to remove, and check that no other hot function grew (inlining can change,
    section 10). A change that does not lower the count for the scenario it was meant for is reverted
@@ -109,6 +131,16 @@ so in the report and call every result a count, not a speedup.
    A change that lowers the count but not the time is not a win: keep it only if the code is no
    harder to read and nothing else got slower, and report it as "no measured gain". Revert anything
    that is slower, and note in the log that it was tried.
+   **A change that alters the output is the owner's decision.** Keep it apart from the others (its
+   own commit or patch), and once it is timed, stop and ask, with the figures side by side: the time
+   saved on the device in the scenario it helps, the largest peak difference and the smallest
+   "diff below out" from step 6, whether the difference grows in the held run, and in one sentence
+   what in the signal changes (a detector that reacts a sample later, a gain off by one part in
+   100,000). A small figure is strong evidence, not proof, that nobody will hear it: say so, and
+   offer a build to listen to when the change sits in a feedback path or moves a decision. Where
+   the plugin has a place for it, offer the third way too: put the change behind a new setting whose
+   default keeps the old bits, so saved projects sound the same. Revert the change unless the answer
+   is yes.
 9. **How to time on the device.** Do not copy files to an MPC or restart its app without the
    owner's agreement. Build `drive.cpp` around the old and the new source (the command is at the top
    of `count.sh`), copy both static files to `/tmp` on the MPC, run them alternately pinned to one
@@ -124,7 +156,9 @@ so in the report and call every result a count, not a speedup.
 Report, for every scenario, the device time before and after (or say plainly that there was no
 device), the instruction counts before and after, what was changed, what was tried and reverted, the
 filled `coverage.md`, how bit-identity was proven, and which claims are measured and which are
-reasoned.
+reasoned. List every candidate that changes the output on its own: the saving (measured or
+estimated), the size of the difference where it was measured, and the owner's answer or "not yet
+asked".
 
 ## Scripts
 
@@ -139,7 +173,8 @@ script of one job the same `out` folder: they share the build, the counts and th
 | `scripts/profile.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block ...]` | Attributes every instruction of the largest block (or of each block number given) to a function and prints the 15 largest, each with its share of the block and the difference from the median block. Name several costly blocks from `counts.txt` in one call: each call is one more full pass under the emulator. It reuses the build and counts from `count.sh` in the same `out` folder while `k`, the block count, the events file and the sources are unchanged. Inlined code counts under the function it was inlined into. |
 | `scripts/scan.sh <sdk> <plugin.cpp> [out]` | Compiles to arm32 assembly with the SDK's flags and prints the counts of the costly patterns for the 20 largest functions. Leaves `out.s` for reading and the counts for every function in `scan_all.txt`. |
 | `scripts/coverage.sh [out]` | Joins the profiles and the scan in `out` into `coverage.md`: one row per function that executed, with an empty Verdict to fill in (step 3). |
-| `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, and NaN, infinity, huge and denormal input. Prints IDENTICAL, or DIFFERENT with the phase of the first difference. Exit code 0, 1, or 2 when it could not run. |
+| `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, and NaN, infinity, huge and denormal input. Prints IDENTICAL, or DIFFERENT with the phase of the first difference and a table of how large the difference is (also saved as `bits/arm32-diff.txt`). `MPC_OPT_HOLD=<seconds>` adds long held programs, to show an error that grows. Exit code 0, 1, or 2 when it could not run. |
+| `scripts/outdiff.cpp` | The measuring program behind that table: per phase the output level, the RMS and peak of the difference in dB relative to full scale, how far the difference is below the output, and the share of samples that differ. |
 | `scripts/drive.cpp` | The harness behind `count.sh` and `profile.sh`: includes the plugin's source and drives it like a host. An events file named in `MPC_OPT_EVENTS` sets parameters or selects programs at given blocks (`<block> <parameter index> <value 0..1>`, or `<block> -1 <program>`; block 0 sets the starting state), which is how to hold a mode on or to place a mode switch. Run on a device it is a timing bench: `taskset 4 ./drive 0` for steady state, `taskset 4 ./drive 4` for four random parameters per block. It prints the thread's own CPU time, which leaves out other threads on the core, and the wall-clock time, which does not (reference section 14). |
 | `scripts/render.cpp` | The fixed, seeded run behind `bitcheck.sh`. Copy it and add cases when the plugin has behavior the standard run cannot reach. |
 | `scripts/scan.awk` | The pattern counter behind `scan.sh`. |
@@ -157,8 +192,8 @@ standard entry point (`VSTPluginMain`), which every SDK plugin has.
   flags (section 5). Every NEON path needs a fallback that builds for the desktop test (section 6).
 - Do not add `-ffast-math`, `-ffp-contract=fast` or `-fno-math-errno` to an existing plugin: each can
   change its output bits (sections 3 and 5).
-- A reciprocal or square-root estimate changes the output bits (section 4). Use it only where the owner's
-  answer to the first question allows.
+- A reciprocal or square-root estimate changes the output bits (section 4), as does every kind of
+  change the reference lists with it. Each is measured and put to the owner (steps 6 and 8).
 - Figures in the reference given as "in one plugin" show scale. They are not targets.
 - The reference covers the 32-bit models. For the 64-bit models only section 15 applies, and no cycle
   count carries over.

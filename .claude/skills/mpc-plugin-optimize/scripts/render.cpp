@@ -4,6 +4,7 @@
 // same to the bit write byte-identical files. bitcheck.sh builds and compares them.
 //   render <out.bin>
 // Phase boundaries are printed as byte offsets, so a difference can be traced to its phase.
+// With MPC_OPT_HOLD=<seconds> in the environment the run ends with long held programs (see below).
 #include SRC
 #include <cmath>
 #include <cstdint>
@@ -92,6 +93,20 @@ int main(int argc, char** argv)
         if (b % 100 == 0) fx->dispatcher(fx, effSetProgram, 0, (b / 100) % npr, nullptr, 0.0f);
         if (b % 3 == 0) fx->setParameter(fx, (int)(rnd() % np), rf());
         block(sizes[rnd() % 7]);
+    }
+    // Optional: MPC_OPT_HOLD=<seconds> holds up to six programs spread over the list for that long
+    // each, with clean input. A difference that grows over such a run comes from a feedback path.
+    bad = false;
+    const char* hold = std::getenv("MPC_OPT_HOLD");
+    const int holdBlocks = hold != nullptr ? (int)(std::atof(hold) * 44100.0 / 128.0) : 0;
+    for (int k = 0; holdBlocks > 0 && k < (npr < 6 ? npr : 6); ++k)
+    {
+        const int p = npr <= 6 ? k : (int)((long)k * (npr - 1) / 5);
+        char name[32];
+        std::snprintf(name, sizeof name, "held program %d", p);
+        phase(name);
+        fx->dispatcher(fx, effSetProgram, 0, p, nullptr, 0.0f);
+        for (int b = 0; b < holdBlocks; ++b) block(128);
     }
     fclose(out);
     std::printf("%d parameters, %d programs, %ld frames, %ld bytes\n", fx->numParams, fx->numPrograms, frames, frames * 8);

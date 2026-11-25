@@ -45,6 +45,10 @@ The order below is a recommendation; the measurements behind it are in the secti
    8, 10). These change the bits and need the owner's decision: reciprocal estimates, a reordered or
    vectorized sum, fused against non-fused multiply-add, a new or removed floor, a detector moved to
    another rate, a different oversampling factor (sections 4, 5, 11, 12).
+   Put a figure on such a change before deciding: render the old and the new build over the same
+   input and express the RMS and the peak of the difference in dB, against full scale and against
+   the output level. Weigh that figure against the time saved, one change at a time. An error
+   inside a feedback path can grow, so measure a run of many seconds as well and listen to it.
 2. **Then fix the worst block.** One block over the limit is a dropout, whatever the average. Resets,
    rebuilds and stage start-ups come before any frame-loop work (sections 8, 14).
 3. **Then the high-percentile block under moving controls,** which is what a bench with random
