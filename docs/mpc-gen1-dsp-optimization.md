@@ -560,6 +560,13 @@ x86-64 (compiled). The desktop result differs in the last bits; test it against 
   between (inferred). The MPC app pins a real-time audio worker to each of the four cores, so a plugin
   can run on any of them, and the app's own threads took between under 1 % and 14 % of each core,
   depending on the run (device). Compact state pays off on every block.
+- **A larger table can win warm and lose cold.** A harness that runs blocks back to back keeps the
+  plugin's tables in the cache. A bench that jumps between settings, or a host that ran other work on
+  the core in between, reads them cold. In one plugin a change that traded computation for a larger
+  lookup table cut 13 % of the instructions of the worst block (counted) and 2.6 % of the steady
+  time (device), and still made the result of the Open MPC bench worse (device). After a change that
+  adds or enlarges a table, compare the worst block under changing parameters as well as the steady
+  time (section 14).
 - **Mind the 8 KB spacing.** The L1 is 4-way with 8 KB per way. At exactly 8 KB spacing up to four
   streams always fit; with five or more, an access rose from 4 cycles to about 9 to 26 in most
   placements, in one placement only at six or eight streams, and in one only at twelve (device). At 4 KB spacing eight streams

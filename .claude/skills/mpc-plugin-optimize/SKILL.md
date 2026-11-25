@@ -81,7 +81,8 @@ so in the report and call every result a count, not a speedup.
    - Profile several costly blocks from the random-parameter run in one call (the largest, and a few
      from around the 99th and 90th percentiles in `counts.txt`), and note whether they share a cause
      or are different mode combinations. Look for rebuilds and resets (sections 8 and 14).
-   - Run `scan.sh` and then `coverage.sh`, all into the same output folder. `coverage.md` lists every
+   - Run `scan.sh` once and then `coverage.sh`, naming every scenario's output folder ("Scripts"
+     below says how to lay the folders out). `coverage.md` lists every
      function that executed, with its instruction counts and its costly patterns (divides and square
      roots, double math, library calls, scalar compares, spills and reloads; reference section 13).
      Fill in the Verdict of **every** row: "candidate: what, about how many instructions per frame" or
@@ -131,6 +132,13 @@ so in the report and call every result a count, not a speedup.
    A change that lowers the count but not the time is not a win: keep it only if the code is no
    harder to read and nothing else got slower, and report it as "no measured gain". Revert anything
    that is slower, and note in the log that it was tried.
+   A change that adds or enlarges a lookup table, or spreads state over more memory, needs a second
+   test before it is kept. `drive` runs blocks back to back, so the table stays in the cache and
+   the change looks good; where parameters jump or other work ran on the core in between, the table
+   is read cold and the same change can lose (reference section 7). Time it with random parameters
+   too (`drive 4`) and compare the worst block of the Open MPC bench, old against new. In one plugin
+   such a change cut 13 % of the instructions of the worst block and 2.6 % of the steady time, and
+   made that bench's result worse.
    **A change that alters the output is the owner's decision.** Keep it apart from the others (its
    own commit or patch), and once it is timed, stop and ask, with the figures side by side: the time
    saved on the device in the scenario it helps, the largest peak difference and the smallest
@@ -164,15 +172,23 @@ asked".
 
 They are in `scripts/` beside this file (in Claude Code, `${CLAUDE_SKILL_DIR}/scripts`). They need a
 Linux shell (WSL on Windows) with `zig`, `qemu-arm` 8.1 or later, `nm`, `awk` and `c++filt`. If `zig`
-is not on the path, set `ZIG="python3 -m ziglang"` with the SDK's zig environment active. Give every
-script of one job the same `out` folder: they share the build, the counts and the profiles.
+is not on the path, set `ZIG="python3 -m ziglang"` with the SDK's zig environment active.
+
+**One output folder per scenario.** A scenario is one combination of `k`, block count and events
+file: steady state, each heavy mode held on, the random-parameter run. The build and `counts.txt` in
+a folder belong to one scenario, so give each its own folder (`out/steady`, `out/hq-on`, `out/k4`)
+and pass that folder to `count.sh` and `profile.sh` for that scenario. `scan.sh` does not depend on
+the scenario; run it once into any of them. `coverage.sh` takes all the folders at once. Scenarios in
+separate folders can run at the same time, one emulator per processor core. Start each as a
+background job and wait for the jobs to exit (the shell's `wait`); do not write a loop that polls
+for an output file, since a run that failed never writes it and the loop never ends.
 
 | File | Use |
 |---|---|
 | `scripts/count.sh <sdk> <plugin.cpp> [k] [blocks] [out]` | Instructions per block for the arm32 build under the emulator. `k` is the number of parameters set to random values before each block (0 = steady state). Prints the median, the 90th and 99th percentiles per frame and the largest block; writes `counts.txt`. Runs 400 blocks in steady state and 1000 with `k` above 0; the first 200 are warm-up. With 1000 blocks a heavy plugin takes several minutes, so run it in the background. Set `MPC_OPT_EVENTS` to an events file to force settings. |
-| `scripts/profile.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block ...]` | Attributes every instruction of the largest block (or of each block number given) to a function and prints the 15 largest, each with its share of the block and the difference from the median block. Name several costly blocks from `counts.txt` in one call: each call is one more full pass under the emulator. It reuses the build and counts from `count.sh` in the same `out` folder while `k`, the block count, the events file and the sources are unchanged. Inlined code counts under the function it was inlined into. |
+| `scripts/profile.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block ...]` | Attributes every instruction of the largest block (or of each block number given) to a function and prints the 15 largest, each with its share of the block and the difference from the median block. Name several costly blocks from `counts.txt` in one call: each call is one more full pass under the emulator. It reuses the build and counts from `count.sh` in the same `out` folder while `k`, the block count, the events file and the sources are unchanged, and saves the profile as `profile_k<k>.txt`, or `profile_k<k>_<events file name>.txt` with an events file. Inlined code counts under the function it was inlined into. |
 | `scripts/scan.sh <sdk> <plugin.cpp> [out]` | Compiles to arm32 assembly with the SDK's flags and prints the counts of the costly patterns for the 20 largest functions. Leaves `out.s` for reading and the counts for every function in `scan_all.txt`. |
-| `scripts/coverage.sh [out]` | Joins the profiles and the scan in `out` into `coverage.md`: one row per function that executed, with an empty Verdict to fill in (step 3). |
+| `scripts/coverage.sh [out ...]` | Joins the profiles and the scan in the folders named into `coverage.md` in the first: one row per function that executed, with an empty Verdict to fill in (step 3). |
 | `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, and NaN, infinity, huge and denormal input. Prints IDENTICAL, or DIFFERENT with the phase of the first difference and a table of how large the difference is (also saved as `bits/arm32-diff.txt`). `MPC_OPT_HOLD=<seconds>` adds long held programs, to show an error that grows. Exit code 0, 1, or 2 when it could not run. |
 | `scripts/outdiff.cpp` | The measuring program behind that table: per phase the output level, the RMS and peak of the difference in dB relative to full scale, how far the difference is below the output, and the share of samples that differ. |
 | `scripts/drive.cpp` | The harness behind `count.sh` and `profile.sh`: includes the plugin's source and drives it like a host. An events file named in `MPC_OPT_EVENTS` sets parameters or selects programs at given blocks (`<block> <parameter index> <value 0..1>`, or `<block> -1 <program>`; block 0 sets the starting state), which is how to hold a mode on or to place a mode switch. Run on a device it is a timing bench: `taskset 4 ./drive 0` for steady state, `taskset 4 ./drive 4` for four random parameters per block. It prints the thread's own CPU time, which leaves out other threads on the core, and the wall-clock time, which does not (reference section 14). |

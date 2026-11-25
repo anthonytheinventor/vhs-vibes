@@ -19,6 +19,7 @@ SDK=$1; SRC=$2; K=${3:-0}; BLOCKS=${4:-}; OUT=${5:-mpc-opt-out}
 HERE=$(cd "$(dirname "$0")" && pwd)
 ZIG=${ZIG:-zig}
 mkdir -p "$OUT"
+TAG="k$K"; [ -z "${MPC_OPT_EVENTS:-}" ] || TAG="${TAG}_$(basename "${MPC_OPT_EVENTS%.*}")"
 rm -f "$OUT/counts.stamp"
 $ZIG c++ -O2 -std=c++17 -pthread -target arm-linux-musleabihf -mcpu=cortex_a17 -static \
   -I"$SDK/framework" -I"$(dirname "$SRC")" "-DSRC=\"$(basename "$SRC")\"" "$HERE/drive.cpp" -o "$OUT/drive"
@@ -35,7 +36,7 @@ sort -k2 -n "$OUT/counts.txt" | awk -v k="$K" '
                k, v[int(n / 2)] / 128, mx, mb, mx / 128, n
         printf "      per frame: 90th percentile %.1f, 99th percentile %.1f", v[int(n * 0.90)] / 128, v[int(n * 0.99)] / 128
         if (n < 500) printf " (only %d blocks: the 99th percentile is rough)", n
-        printf "\n" }' | tee "$OUT/summary_k$K.txt"
+        printf "\n" }' | tee "$OUT/summary_$TAG.txt"
 [ -z "${MPC_OPT_EVENTS:-}" ] || { echo "events applied:"; sed 's/^/  /' "$MPC_OPT_EVENTS.applied"; }
 # Lets profile.sh reuse this build and counts.txt while k, the block count and the sources are unchanged.
 echo "$K $BLOCKS $(cat "$(dirname "$SRC")"/*.[ch]* "$HERE/drive.cpp" "${MPC_OPT_EVENTS:-/dev/null}" | sha256sum | cut -c1-16)" > "$OUT/counts.stamp"

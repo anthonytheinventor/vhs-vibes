@@ -9,15 +9,19 @@
 # It reuses the build and counts.txt left in <out-dir> by count.sh or by an earlier profile when k,
 # the block count and the sources are unchanged, and runs count.sh otherwise.
 # The run is repeatable (fixed random seed), so block numbers match those in counts.txt.
+# The profile is saved as profile_k<k>.txt, or profile_k<k>_<events file name>.txt with an events
+# file, so the scenarios of one job do not overwrite each other's profiles. The build and counts.txt
+# belong to one scenario at a time: give each scenario its own out-dir to keep them all.
 # Only instructions between the block's start and end markers count: the plugin's process call.
 # Code the compiler inlined is counted under the function it was inlined into.
 # Needs: what count.sh needs, plus c++filt.
 set -euo pipefail
-[ $# -ge 2 ] || { sed -n '2,14p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '2,17p' "$0"; exit 2; }
 SDK=$1; SRC=$2; K=${3:-0}; BLOCKS=${4:-}; OUT=${5:-mpc-opt-out}
 shift $(( $# < 5 ? $# : 5 ))
 PICKS="$*"
 HERE=$(cd "$(dirname "$0")" && pwd)
+TAG="k$K"; [ -z "${MPC_OPT_EVENTS:-}" ] || TAG="${TAG}_$(basename "${MPC_OPT_EVENTS%.*}")"
 [ -n "$BLOCKS" ] || { if [ "$K" -gt 0 ]; then BLOCKS=1000; else BLOCKS=400; fi; }
 STAMP="$K $BLOCKS $(cat "$(dirname "$SRC")"/*.[ch]* "$HERE/drive.cpp" "${MPC_OPT_EVENTS:-/dev/null}" | sha256sum | cut -c1-16)"
 if [ -x "$OUT/drive" ] && [ -s "$OUT/counts.txt" ] && [ "$(cat "$OUT/counts.stamp" 2>/dev/null)" = "$STAMP" ]; then
@@ -51,16 +55,16 @@ qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLO
       printf "%d 999999999999 %d %d TOTAL\n", i, tot[b], tot[A]
       for (f in seen) { x = n[b "," f] + 0; y = n[A "," f] + 0; if (x + y > 0) printf "%d %d %d %d %s\n", i, (x > y ? x : y), x, y, f }
     }
-  }' | sort -k1,1n -k2,2nr | cut -d" " -f1,3- > "$OUT/profile_k$K.txt"
+  }' | sort -k1,1n -k2,2nr | cut -d" " -f1,3- > "$OUT/profile_$TAG.txt"
 I=0
 for B in $PICKS; do
   I=$((I + 1))
   echo
   echo "k=$K: block $B against the median block $MED (instructions per block of 128 frames)"
   printf "%10s %7s %10s %10s  %s\n" "block $B" "share" "median" "extra" "function"
-  awk -v i="$I" '$1 == i' "$OUT/profile_k$K.txt" | head -16 | c++filt | awk 'NR == 1 { t = $2 }
+  awk -v i="$I" '$1 == i' "$OUT/profile_$TAG.txt" | head -16 | c++filt | awk 'NR == 1 { t = $2 }
     { f = $4; for (j = 5; j <= NF; ++j) f = f " " $j
       printf "%10d %6.1f%% %10d %10d  %s\n", $2, 100 * $2 / t, $3, $2 - $3, substr(f, 1, 110) }'
 done
 echo
-echo "full list (block index in the order given, block count, median count, function): $OUT/profile_k$K.txt"
+echo "full list (block index in the order given, block count, median count, function): $OUT/profile_$TAG.txt"
