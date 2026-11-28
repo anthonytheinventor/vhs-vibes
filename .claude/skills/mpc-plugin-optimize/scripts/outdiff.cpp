@@ -10,8 +10,11 @@
 // A second table says where in the spectrum the difference sits, since one level cannot: for each
 // phase that differs, how far the difference is below the output in three bands (under 2 kHz, 2 to
 // 8 kHz, above 8 kHz), and the strongest narrow line of the difference with how far it stands above
-// the difference around it. A line the output does not have is a tone the change added (a whistle);
-// a band where the difference comes close to the output is a hiss or a dullness the overall figure hides.
+// the difference on either side of it. A line that the old or the new output does not have is marked
+// A TONE: the change added, removed or moved a steady tone. A band where the difference comes close
+// to the output is a hiss or a dullness the overall figure hides. The spectra are averages over
+// half-overlapping frames of 8192 samples (5.4 Hz apart); lines are searched from 43 Hz up. The phase
+// of bad input values is left out, since its huge samples swamp every figure.
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -47,14 +50,15 @@ struct Acc
     double rmsD() const { return n > 0 ? std::sqrt(sd / (double)n) : 0.0; }
 };
 
-// The spectrum of one phase: the power of the old output and of the difference per frequency bin,
-// averaged over frames of N stereo samples (Hann window), both channels added.
-enum { N = 2048, Bins = N / 2 + 1 };
+// The spectrum of one phase: the power of the old output, the new output and the difference per
+// frequency bin, averaged over half-overlapping frames of N samples (Hann window, which then weighs
+// every sample the same), both channels added. The end of a phase is padded with zeros.
+enum { N = 8192, Hop = N / 2, Bins = N / 2 + 1, Reach = 40, Gap = 4, FirstBin = 8 };
 struct Spec
 {
-    std::vector<double> pa, pd;
+    std::vector<double> pa, pb, pd;
     long frames = 0;
-    Spec() : pa(Bins, 0.0), pd(Bins, 0.0) {}
+    Spec() : pa(Bins, 0.0), pb(Bins, 0.0), pd(Bins, 0.0) {}
 };
 static void fft(std::vector<std::complex<double>>& x)
 {
@@ -81,30 +85,39 @@ static void fft(std::vector<std::complex<double>>& x)
         }
     }
 }
-static void addFrame(Spec& s, const double* a, const double* d)   // N samples of one channel
+static void addFrame(Spec& s, const double* a, const double* b)   // N samples of one channel, old and new
 {
     static std::vector<double> win;
     if (win.empty()) { win.resize(N); for (int i = 0; i < N; ++i) win[(size_t)i] = 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979323846 * i / N); }
     std::vector<std::complex<double>> x(N);
-    for (int pass = 0; pass < 2; ++pass)
+    for (int pass = 0; pass < 3; ++pass)
     {
-        const double* v = pass == 0 ? a : d;
-        for (int i = 0; i < N; ++i) x[(size_t)i] = v[i] * win[(size_t)i];
+        for (int i = 0; i < N; ++i) x[(size_t)i] = (pass == 0 ? a[i] : pass == 1 ? b[i] : a[i] - b[i]) * win[(size_t)i];
         fft(x);
-        std::vector<double>& p = pass == 0 ? s.pa : s.pd;
+        std::vector<double>& p = pass == 0 ? s.pa : pass == 1 ? s.pb : s.pd;
         for (int k = 0; k < Bins; ++k) p[(size_t)k] += std::norm(x[(size_t)k]);
     }
 }
-// How far bin k stands above the median of the bins around it (leaving out its own main lobe), as a ratio of power.
+// How far bin k stands above the bins on either side of it, as a ratio of power: against the higher
+// of the two medians, left and right, so the edge of a falling spectrum is no line. The reach
+// shrinks toward low frequencies. 0 when a side has too few bins or nothing to compare with.
 static double standsOut(const std::vector<double>& p, int k)
 {
-    std::vector<double> near;
-    for (int j = k - 40; j <= k + 40; ++j)
-        if (j >= 2 && j < Bins && (j < k - 3 || j > k + 3)) near.push_back(p[(size_t)j]);
-    if (near.empty()) return 0.0;
-    std::nth_element(near.begin(), near.begin() + (long)(near.size() / 2), near.end());
-    const double m = near[near.size() / 2];
-    return m > 0.0 ? p[(size_t)k] / m : (p[(size_t)k] > 0.0 ? 1e30 : 0.0);
+    const int reach = std::min((int)Reach, std::max(Gap + 2, k / 2));
+    double m = 0.0;
+    for (int side = -1; side <= 1; side += 2)
+    {
+        std::vector<double> near;
+        for (int j = Gap; j <= reach; ++j)
+        {
+            const int at = k + side * j;
+            if (at >= 2 && at < Bins) near.push_back(p[(size_t)at]);
+        }
+        if (near.size() < 3) return 0.0;
+        std::nth_element(near.begin(), near.begin() + (long)(near.size() / 2), near.end());
+        m = std::max(m, near[near.size() / 2]);
+    }
+    return m > 0.0 ? p[(size_t)k] / m : 0.0;
 }
 static std::string bandBelow(const Spec& s, double f0, double f1)
 {
@@ -114,7 +127,7 @@ static std::string bandBelow(const Spec& s, double f0, double f1)
         const double f = k * 44100.0 / N;
         if (f >= f0 && f < f1) { a += s.pa[(size_t)k]; d += s.pd[(size_t)k]; }
     }
-    if (!(d > 0.0)) return "identical";
+    if (!(d > 0.0)) return "none here";
     if (!(a > 0.0)) return "no output";
     char t[32];
     std::snprintf(t, sizeof t, "%.1f dB", 10.0 * std::log10(a / d));
@@ -163,9 +176,32 @@ int main(int argc, char** argv)
     std::vector<Acc> acc(ph.size()), first(ph.size()), last(ph.size());
     Acc all;
     std::vector<Spec> spec(ph.size());
-    static double fa2[2][N], fd2[2][N];
-    int fill = 0;
+    static double sa2[2][N], sb2[2][N];          // the frame being filled: old and new, left and right
+    int fill = 0, fresh = 0;                      // samples in the frame, and how many no frame has used yet
     size_t fillPhase = 0;
+    auto frame = [&](size_t q)
+    {
+        addFrame(spec[q], sa2[0], sb2[0]);
+        addFrame(spec[q], sa2[1], sb2[1]);
+        ++spec[q].frames;
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            std::memmove(sa2[ch], sa2[ch] + Hop, sizeof(double) * (N - Hop));
+            std::memmove(sb2[ch], sb2[ch] + Hop, sizeof(double) * (N - Hop));
+        }
+        fill = N - Hop;
+        fresh = 0;
+    };
+    auto flush = [&](size_t q)                    // the end of a phase: pad what no frame has used with zeros
+    {
+        if (fresh > 0)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = fill; i < N; ++i) sa2[ch][i] = sb2[ch][i] = 0.0;
+            frame(q);
+        }
+        fill = fresh = 0;
+    };
     enum { Buf = 16384 };
     static float a[Buf], b[Buf];
     long byteAt = 0;
@@ -179,18 +215,12 @@ int main(int argc, char** argv)
             while (p + 1 < ph.size() && byteAt >= ph[p + 1].start) ++p;
             {
                 // the file holds left and right in turn (render.cpp); a frame is N samples of each
-                if (p != fillPhase) { fill = 0; fillPhase = p; }
+                if (p != fillPhase) { flush(fillPhase); fillPhase = p; }
                 const bool ok = std::isfinite(a[i]) && std::isfinite(b[i]);
                 const int ch = (int)((byteAt / 4) & 1);
-                fa2[ch][fill] = ok ? (double)a[i] : 0.0;
-                fd2[ch][fill] = ok ? (double)a[i] - (double)b[i] : 0.0;
-                if (ch == 1 && ++fill == N)
-                {
-                    addFrame(spec[p], fa2[0], fd2[0]);
-                    addFrame(spec[p], fa2[1], fd2[1]);
-                    ++spec[p].frames;
-                    fill = 0;
-                }
+                sa2[ch][fill] = ok ? (double)a[i] : 0.0;
+                sb2[ch][fill] = ok ? (double)b[i] : 0.0;
+                if (ch == 1) { ++fresh; if (++fill == N) frame(p); }
             }
             acc[p].add(a[i], b[i], byteAt);
             all.add(a[i], b[i], byteAt);
@@ -206,6 +236,7 @@ int main(int argc, char** argv)
         if (na != nb) std::printf("  the files differ in length\n");
         if (n < Buf) break;
     }
+    flush(fillPhase);
 
     std::printf("  %-28s %10s %10s %10s %14s %9s %12s\n", "phase", "output RMS", "diff RMS", "diff peak", "diff below out", "differing", "first diff");
     for (size_t i = 0; i <= ph.size(); ++i)
@@ -229,36 +260,42 @@ int main(int argc, char** argv)
         for (size_t i = 0; i < ph.size(); ++i)
         {
             const Spec& s = spec[i];
-            if (acc[i].firstAt < 0 || s.frames < 8) continue;
-            int best = -1;
-            double bestOut = 0.0;
-            for (int k = 4; k < Bins - 1; ++k)
-            {
-                if (!(s.pd[(size_t)k] > 0.0)) continue;
-                const double o = standsOut(s.pd, k);
-                if (o > bestOut) { bestOut = o; best = k; }
-            }
+            if (acc[i].firstAt < 0) continue;
             if (!head)
             {
                 std::printf("  where the difference sits: how far it is below the output in each band, and its strongest narrow line\n");
                 std::printf("  %-28s %12s %12s %12s   %s\n", "phase", "under 2 kHz", "2 to 8 kHz", "over 8 kHz", "strongest line of the difference");
                 head = true;
             }
-            char lineText[160] = "none";
+            if (ph[i].name.compare(0, 9, "bad input") == 0) { std::printf("  %-28s left out: its huge input samples swamp every figure\n", ph[i].name.c_str()); continue; }
+            if (s.frames < 8) { std::printf("  %-28s too short to measure\n", ph[i].name.c_str()); continue; }
+            int best = -1;
+            double bestOut = 0.0;
+            for (int k = FirstBin; k < Bins - FirstBin; ++k)
+            {
+                if (!(s.pd[(size_t)k] > 0.0)) continue;
+                const double o = standsOut(s.pd, k);
+                if (o > bestOut) { bestOut = o; best = k; }
+            }
+            char lineText[200] = "none";
             if (best >= 0)
             {
-                const double outDb = 10.0 * std::log10(bestOut), inOutput = 10.0 * std::log10(std::max(standsOut(s.pa, best), 1e-30));
-                const bool tone = outDb >= 15.0 && inOutput < outDb - 10.0;
+                // A line of the difference is a tone added, removed or moved when the old or the new
+                // output has no line of its own there (under 6 dB).
+                auto dbOf = [](double r) { return 10.0 * std::log10(std::max(r, 1e-30)); };
+                const double outDb = dbOf(bestOut), oldDb = dbOf(standsOut(s.pa, best)), newDb = dbOf(standsOut(s.pb, best));
+                const bool line = outDb >= 15.0, tone = line && std::min(oldDb, newDb) < 6.0;
                 if (tone) ++tones;
-                std::snprintf(lineText, sizeof lineText, "%.0f Hz, %.0f dB above the difference around it%s", best * 44100.0 / N, outDb,
-                              tone ? "  <-- A TONE" : outDb >= 15.0 ? " (the output has a line there too)" : "");
+                std::snprintf(lineText, sizeof lineText, "%.0f Hz, %.0f dB above the difference beside it%s", best * 44100.0 / N, outDb,
+                              tone ? "  <-- A TONE" : line ? " (both outputs have a line there)" : "");
             }
             std::printf("  %-28s %12s %12s %12s   %s\n", ph[i].name.c_str(), bandBelow(s, 0.0, 2000.0).c_str(),
                         bandBelow(s, 2000.0, 8000.0).c_str(), bandBelow(s, 8000.0, 1e9).c_str(), lineText);
         }
         if (tones > 0)
-            std::printf("  A TONE: the difference has a narrow line where the output has none, in %d phase(s). The change adds\n"
-                        "  or removes a steady tone there; a value updated once every N samples puts one at 44100 / N Hz\n", tones);
+            std::printf("  A TONE: the difference has a narrow line that the old or the new output lacks, in %d phase(s): the\n"
+                        "  change added, removed or moved a steady tone. A value added to the signal and updated once every\n"
+                        "  N samples puts one at 44100 / N Hz and its multiples\n", tones);
     }
     {
         int heldPhases = 0, heldDiffer = 0;

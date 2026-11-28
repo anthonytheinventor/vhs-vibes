@@ -1,10 +1,10 @@
 // render.cpp: includes the plugin's source and writes its output for a fixed, seeded run that visits
 // every program, seven block sizes, random parameters, every parameter at once, many settled random
-// settings, and bad input values (NaN, infinities, huge and denormal). Two builds whose output is the
-// same to the bit write byte-identical files. bitcheck.sh builds and compares them.
+// settings, short bursts with silence between, and bad input values (NaN, infinities, huge and
+// denormal). Two builds whose output is the same to the bit write byte-identical files, left and right samples in turn. bitcheck.sh builds and compares them.
 //   render <out.bin>
 // Phase boundaries are printed as byte offsets, so a difference can be traced to its phase.
-// An instrument is played: chords of one to six notes go on and off through every phase.
+// An instrument is played: chords of one to six notes go on and off through every phase, and short notes in the burst phase.
 // Parameters the plugin reports as momentary triggers (opcode 0x7F01) and those named in MPC_OPT_SKIP
 // (indexes or names as "drive list" prints them, commas between) are left alone; a trigger that the
 // plugin debounces against the clock would make two runs of the same build differ.
@@ -65,6 +65,7 @@ static FILE* out;
 static FILE* dump;
 static long frames, blocks;
 static bool bad, synth, bursts, inplace = true;
+static long burstBlock;
 static bool skipParam[4096];
 static int noteBase, noteCount;
 
@@ -169,8 +170,9 @@ static void block(int n)
     }
     if (synth && bursts)                          // short notes: 2 blocks held, 14 blocks to ring out
     {
-        if (blocks % 16 == 0) { noteBase = 36 + (int)(nrnd() % 36); noteCount = 1 + (int)(nrnd() % 3); notes(true); }
-        if (blocks % 16 == 2) notes(false);
+        if (burstBlock % 16 == 0) { noteBase = 36 + (int)(nrnd() % 36); noteCount = 1 + (int)(nrnd() % 3); notes(true); }
+        if (burstBlock % 16 == 2) notes(false);
+        ++burstBlock;
     }
     else if (synth)                               // a chord for 16 blocks, then 8 blocks of release
     {
@@ -263,10 +265,11 @@ int main(int argc, char** argv)
     phase("bursts and silence");
     bursts = true;
     if (synth) notes(false);
-    for (int c = 0; c < (npr < 8 ? npr : 8); ++c)
+    const int burstPrograms = npr < 8 ? npr : 8;  // 1280 blocks in all (3.7 s), so the spectrum can be measured
+    for (int c = 0; c < burstPrograms; ++c)
     {
         fx->dispatcher(fx, effSetProgram, 0, npr <= 8 ? c : (int)((long)c * (npr - 1) / 7), nullptr, 0.0f);
-        for (int b = 0; b < 160; ++b) block(128);
+        for (int b = 0; b < 1280 / burstPrograms; ++b) block(128);
     }
     if (synth) notes(false);
     bursts = false;

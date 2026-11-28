@@ -1,5 +1,5 @@
 // tbcount.cpp: the fast counter behind count.sh, profile.sh and lineprof.sh.
-// It reads the log of   qemu-arm -d in_asm,exec,nochain   on stdin. In that mode the emulator runs
+// It reads the log of   qemu-arm -d in_asm,exec,nochain   (with ",page" for -n) on stdin. In that mode the emulator runs
 // whole translated blocks of code and logs one line per block executed, where the older method
 // (-one-insn-per-tb) logged one line per instruction. Each block's instructions are known from the
 // listing the emulator prints when it first translates it, so the counts are the same and the log is
@@ -15,7 +15,7 @@
 //   -p <file>   keep the number of the audio block reached in this file (for status.txt)
 //   -t          count the plugin's other threads too (every "Trace <n>:" line between the markers)
 //   -n <hex>    the entry address in the program file, for a program built to load at a movable
-//               address (a position-independent executable). With "page" added to the -d list the
+//               address (a static position-independent executable). With "page" added to the -d list the
 //               emulator logs the entry address it really used; the difference between the two is
 //               added to icMark, icEnd and the mapping symbols, and taken off every address written,
 //               so the files hold file addresses either way.
@@ -197,6 +197,7 @@ int main(int argc, char** argv)
         if (line[0] == '-') closeListing();
     }
     if (fc != nullptr) std::fclose(fc);
+    if (haveEntry) { std::fprintf(stderr, "tbcount: the emulator did not log where it loaded the program (no \"entry\" line)\n"); return 3; }
     if (listed == 0 || bad) { std::fprintf(stderr, "tbcount: the log could not be counted exactly (%s)\n", listed == 0 ? "no block listings" : "a block did not fit"); return 3; }
 
     // Per instruction address. The instruction at icMark itself is left out, as in the counts.

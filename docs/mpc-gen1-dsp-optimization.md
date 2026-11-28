@@ -50,9 +50,12 @@ The order below is a recommendation; the measurements behind it are in the secti
    the output level. Weigh that figure against the time saved, one change at a time. An error
    inside a feedback path can grow, so measure a run of many seconds as well and listen to it.
    One level can hide what the ear picks out, so look at where the difference sits in the spectrum
-   and in time. A value held for N samples between updates adds a line at the sample rate divided
-   by N: a term refreshed every 4 samples, planted in a delay effect, gave a difference 85 to 90 dB
-   below the output overall with a line at 11,025 Hz standing 19 to 40 dB above the rest of it
+   and in time. A value that is added to the signal and held for N samples between updates puts a
+   line at the sample rate divided by N: a term refreshed every 4 samples, planted in a delay
+   effect, gave a difference 85 to 90 dB below the output overall with a line at 11,025 Hz
+   standing 28 to 41 dB above the difference beside it (checked). A gain or a coefficient held the
+   same way gives no line. It copies the signal to either side of that frequency: a gain held for
+   4 samples left a difference 78 dB below the output under 2 kHz and 64 dB below it above 8 kHz
    (checked). Noise added at the top of the band was 69 dB below the output overall and 54 dB
    below it above 8 kHz (checked). Onsets and decays show clicks that sustained material does not.
    The list of bit-exact changes holds when the compiler keeps float operations in source order,
@@ -968,10 +971,10 @@ are documented or inferred, and the costs in section 1 apply per voice.
   halves its cost and changes its output (inferred).
 - **A new rate changes every constant written per sample.** Filter coefficients, time constants and
   delays counted in samples, envelope and phase increments all mean something else at another
-  rate. So does the level of a noise source: the same per-sample level spreads its power over a
-  band that is now wider or narrower, and the part inside the audio band moves by 3 dB for each
-  doubling (inferred). After changing an oversampling factor or a control rate, search the stage
-  for each and derive it again.
+  rate. In an oversampled stage so does the level of a white noise source: the same per-sample
+  level spreads its power over a wider band, and the down-filter keeps 3 dB less of it for each
+  doubling of the rate (inferred). After changing an oversampling factor or a control rate, search
+  the stage for each and derive it again.
 - **A blend at the oversampled rate keeps everything after it there.** A dry/wet mix inside the 2x
   section holds the linear stages that follow at 2x as well. Moving them out needs a second down-filter
   for the other branch; count both versions before choosing (inferred).

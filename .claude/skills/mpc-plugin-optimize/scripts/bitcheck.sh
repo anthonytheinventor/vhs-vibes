@@ -5,7 +5,7 @@
 # not, measures how large the difference is. It builds render.cpp around each source as a static
 # arm32 program (the same build as count.sh), runs both under qemu-arm and compares the output files
 # byte for byte. The run visits every program, seven block sizes, random parameters, every parameter
-# at once, many settled random settings and bad input values, and plays notes into an instrument. It
+# at once, settled random settings, short bursts and bad input, and plays notes into an instrument. It
 # then does the same for arm64 when qemu-aarch64 is installed (BITCHECK_ARM64=0 leaves that out).
 #   old-plugin.cpp   the untouched copy of the source kept in step 1 (its folder holds its headers)
 #   new-plugin.cpp   the changed source
@@ -46,8 +46,9 @@ ZIG=${ZIG:-zig}
 mkdir -p "$OUT/bits"
 RESULT=0
 measure() {  # target, file a, file b, where to save the table
-  if [ -x "$OUT/bits/outdiff" ] || $ZIG c++ -O2 -std=c++17 "$HERE/outdiff.cpp" -o "$OUT/bits/outdiff"; then
-    "$OUT/bits/outdiff" "$2" "$3" "$OUT/bits/$1-old.log" | tee "$4"
+  local OD; OD="$OUT/bits/outdiff-$(cksum < "$HERE/outdiff.cpp" | cut -d' ' -f1)"   # built once per version of its source
+  if [ -x "$OD" ] || $ZIG c++ -O2 -std=c++17 "$HERE/outdiff.cpp" -o "$OD"; then
+    "$OD" "$2" "$3" "$OUT/bits/$1-old.log" | tee "$4"
   else
     echo "  could not build outdiff.cpp, so the difference was not measured"
   fi

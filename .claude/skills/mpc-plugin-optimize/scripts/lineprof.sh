@@ -85,14 +85,16 @@ THREADS=(); [ "${MPC_OPT_THREADS:-}" != all ] || THREADS=(-t)
 # A program built to load at a movable address (a position-independent executable) runs somewhere
 # other than its file addresses say. tbcount reads where from the emulator's log ("page").
 LOGS=in_asm,exec,nochain; PIE=()
-if readelf -h "$PROGRAM" 2>/dev/null | grep -q 'Type:.*DYN'; then
+command -v readelf > /dev/null || { echo "readelf is needed (binutils)"; exit 2; }
+if readelf -h "$PROGRAM" | grep -q 'Type:.*DYN'; then
+  ! readelf -l "$PROGRAM" | grep -q 'INTERP' || { echo "this program is linked against shared libraries: link the harness statically"; exit 2; }
   LOGS=$LOGS,page; PIE=(-n "$(readelf -h "$PROGRAM" | awk '/Entry point/ { print $NF }')")
 fi
 if [ "$FAST" = 1 ]; then
   qemu-arm -d "$LOGS" -D /dev/stdout "$G" "$K" "$BLOCKS" 2>/dev/null \
     | "$TB" -u "$OUT/hist_$TAG.txt" -s "$OUT/modes.txt" -p "$OUT/progress" ${THREADS[@]+"${THREADS[@]}"} ${PIE[@]+"${PIE[@]}"} "$M" "$E" $PICKS || FAST=0
 fi
-[ "$FAST" = 1 ] || [ ${#PIE[@]} -eq 0 ] || { echo "this program loads at a movable address, which only the fast counter can follow: link it at a fixed address (-no-pie), or leave MPC_OPT_SLOW unset"; exit 2; }
+[ "$FAST" = 1 ] || [ ${#PIE[@]} -eq 0 ] || { echo "this program loads at a movable address, which only the fast counter can follow, and the fast counter did not run: link the harness at a fixed address (-no-pie)"; exit 2; }
 if [ "$FAST" = 0 ]; then
   qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$G" "$K" "$BLOCKS" 2>/dev/null \
     | LC_ALL=C grep -F "Trace 0:" \
