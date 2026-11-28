@@ -14,6 +14,11 @@
 //               a first line "blocks <n>", then "<hex address> <count>" per instruction address
 //   -p <file>   keep the number of the audio block reached in this file (for status.txt)
 //   -t          count the plugin's other threads too (every "Trace <n>:" line between the markers)
+//   -n <hex>    the entry address in the program file, for a program built to load at a movable
+//               address (a position-independent executable). With "page" added to the -d list the
+//               emulator logs the entry address it really used; the difference between the two is
+//               added to icMark, icEnd and the mapping symbols, and taken off every address written,
+//               so the files hold file addresses either way.
 // Exit code 3 means the log was not in a form it can count exactly (the scripts then fall back to
 // the older method): no block listings, or a block whose bytes do not fit its instruction set.
 #include <algorithm>
@@ -35,8 +40,10 @@ struct Tb
 static std::unordered_map<uint32_t, Tb> tbs;
 static std::vector<std::pair<uint32_t, char>> modes;     // mapping symbols, sorted by address
 
+static uint32_t bias = 0;                                // where the program was loaded, less where its file says
 static bool thumbAt(uint32_t pc)
 {
+    pc -= bias;
     auto it = std::upper_bound(modes.begin(), modes.end(), std::make_pair(pc, (char)127));
     return it != modes.begin() && (it - 1)->second == 't';
 }
@@ -45,7 +52,8 @@ static int hexv(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c 
 int main(int argc, char** argv)
 {
     const char *countsPath = nullptr, *symPath = nullptr, *eachPath = nullptr, *sumPath = nullptr, *progPath = nullptr;
-    bool allThreads = false;
+    bool allThreads = false, haveEntry = false;
+    uint32_t fileEntry = 0;
     int a = 1;
     for (; a < argc && argv[a][0] == '-'; ++a)
     {
@@ -53,11 +61,12 @@ int main(int argc, char** argv)
         if (o == 't') { allThreads = true; continue; }
         if (a + 1 >= argc) return 2;
         const char* v = argv[++a];
+        if (o == 'n') { fileEntry = (uint32_t)std::strtoul(v, nullptr, 16) & ~1u; haveEntry = true; continue; }
         if (o == 'c') countsPath = v; else if (o == 's') symPath = v; else if (o == 'e') eachPath = v;
         else if (o == 'u') sumPath = v; else if (o == 'p') progPath = v; else return 2;
     }
     if (a + 1 >= argc) { std::fprintf(stderr, "tbcount [options] <icMark hex> <icEnd hex> [block ...]\n"); return 2; }
-    const uint32_t mark = (uint32_t)std::strtoul(argv[a], nullptr, 16) & ~1u, end = (uint32_t)std::strtoul(argv[a + 1], nullptr, 16) & ~1u;
+    uint32_t mark = (uint32_t)std::strtoul(argv[a], nullptr, 16) & ~1u, end = (uint32_t)std::strtoul(argv[a + 1], nullptr, 16) & ~1u;
     std::unordered_map<long, int> pick;                  // block number -> its place in the list
     std::vector<long> picks;
     for (a += 2; a < argc; ++a) { pick[std::atol(argv[a])] = (int)picks.size(); picks.push_back(std::atol(argv[a])); }
@@ -159,6 +168,13 @@ int main(int argc, char** argv)
             }
             continue;
         }
+        if (haveEntry && line[0] == 'e' && std::strncmp(line, "entry ", 6) == 0)
+        {
+            bias = ((uint32_t)std::strtoul(line + 6, nullptr, 16) & ~1u) - fileEntry;
+            mark += bias; end += bias;
+            haveEntry = false;
+            continue;
+        }
         if (std::strncmp(line, "IN:", 3) == 0) { closeListing(); listing = true; haveFirst = false; bytes.clear(); perLine.clear(); continue; }
         if (!listing) continue;
         if (line[0] == '0' && line[1] == 'x')
@@ -190,8 +206,8 @@ int main(int argc, char** argv)
         for (size_t i = 0; i < t.len.size(); ad += t.len[i], ++i)
         {
             if (pc == mark && i == 0) continue;
-            if (label >= 0) std::fprintf(f, "%ld %08x %llu\n", label, ad, (unsigned long long)n);
-            else std::fprintf(f, "%08x %llu\n", ad, (unsigned long long)n);
+            if (label >= 0) std::fprintf(f, "%ld %08x %llu\n", label, ad - bias, (unsigned long long)n);
+            else std::fprintf(f, "%08x %llu\n", ad - bias, (unsigned long long)n);
         }
     };
     if (eachPath != nullptr)

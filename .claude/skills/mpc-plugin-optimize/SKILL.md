@@ -175,6 +175,27 @@ so in the report and call every result a count, not a speedup.
    about growth. A difference that sits in a few
    samples (a high peak with a low RMS and a small differing share) is a decision that flipped, such
    as a threshold or a mode switch landing one sample apart; find it before calling it small.
+   One level cannot say what a difference sounds like, so the script prints a second table: for
+   each phase, how far the difference is below the output under 2 kHz, from 2 to 8 kHz and above
+   8 kHz, and the strongest narrow line of the difference. Read it for what the overall figure
+   hides:
+   - A line marked A TONE is a steady tone the change added or removed. A value computed once
+     every N samples and held in between puts one at the sample rate divided by N and at its
+     multiples (every 4 samples at 44.1 kHz: 11,025 Hz). Interpolate the value between updates, or
+     raise its rate, and run the check again.
+   - A band where the difference comes much closer to the output than it does overall is a hiss,
+     a whistle or a loss of highs under a signal that is mostly low. Report the figure of the
+     worst band beside the overall one.
+   - The "bursts and silence" phase plays short sounds with silence between. A difference that is
+     larger there than in the steady phases, or whose peak stands far above its RMS, is a click at
+     an onset or a changed tail. Sustained material shows neither, so never judge an output change
+     on sustained material alone.
+   A change to an internal rate (an oversampling factor, a control rate, a stage run at a lower
+   rate) also changes the meaning of every constant written per sample: filter coefficients, time
+   constants and delays counted in samples, envelope and phase increments, and the level of any
+   noise source, whose power is spread over a band that is now wider or narrower. Search the
+   changed stage for each one and derive it again from the new rate. A missed one shows in the
+   tables as a level, tuning or timing change.
    These figures size a change only while the two builds stay in step. A plugin with random or
    chaotic parts (noise, random modulation, voices that free themselves, triggers) turns one flipped
    decision into two unrelated signals, and a free-running oscillator does the same with no
@@ -226,6 +247,25 @@ so in the report and call every result a count, not a speedup.
    margin is a reason to check with the owner, not to stop early: cheap savings still on the list
    are worth taking, since several instances multiply them.
 
+**When the list is empty and the plugin is still too slow.** Small changes have a floor. Two kinds
+of larger step remain. Both go to the owner with an estimate before any code is written.
+
+- **Build settings,** tried last, once the code changes are in, each one behind the bit check and
+  timed on the device. A plugin made of several source files or libraries can gain from link-time
+  optimization, which lets the compiler inline across files; an SDK plugin is one source file and
+  gains nothing. Profile-guided optimization can gain a little more: build an instrumented harness,
+  run the scenarios users reach, and rebuild with the profile. Either one changes how the release
+  is built, and the profile run becomes a step of every release, so the owner decides.
+- **A different structure.** Size each idea from the profile first: it can save at most the share
+  of the block that the moved or skipped work takes now. Compute slow-moving values (a filter
+  design, a shape, an envelope target) at a lower rate and interpolate between them. Move work
+  that may arrive a few milliseconds late (analysis, table design) to a background thread that
+  hands its results over without a lock, with lookahead where the audio has to wait for them.
+  Skip a stage whose input and state are both silent. Lower the voice limit, or add a quality
+  setting for the 32-bit models. Most of these change the output, the latency or what the plugin
+  offers, and step 6 applies to each. A background thread's time still comes out of the same four
+  cores the MPC app uses, so report it with the rest.
+
 Report, for every scenario, the device time before and after (or say plainly that there was no
 device), the instruction counts before and after, what was changed, what was tried and reverted, the
 filled `coverage.md`, how bit-identity was proven, and which claims are measured and which are
@@ -259,8 +299,8 @@ for an output file, since a run that failed never writes it and the loop never e
 | `scripts/lineprof.sh <sdk> <plugin.cpp> [k] [blocks] [out] [block ...]` | Instructions per frame by source line, for the blocks named or every block from 200 on, and the instruction mix (loads from the stack, stores to it, each other kind). For a plugin whose cost sits in one large function. One more pass under the emulator. Needs an `addr2line` that reads 32-bit ARM programs (`llvm-addr2line`, or the one in `binutils-arm-linux-gnueabihf`). |
 | `scripts/scan.sh <sdk> <plugin.cpp> [out]` | Compiles to arm32 assembly with the SDK's flags and prints the counts of the costly patterns for the 20 largest functions. Leaves `out.s` for reading and the counts for every function in `scan_all.txt`. |
 | `scripts/coverage.sh [out ...]` | Joins the profiles and the scan in the folders named into `coverage.md` in the first: one row per function that executed, with an empty Verdict to fill in (step 3). With several scenarios, the two count columns hold the largest value over the scenarios; the per-scenario figures are in each folder's profile. |
-| `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, and NaN, infinity, huge and denormal input. It runs the old build twice first and stops with NOT REPEATABLE if the two runs differ. Prints IDENTICAL, or DIFFERENT with the phase of the first difference and a table of how large the difference is (also saved as `bits/arm32-diff.txt`). `MPC_OPT_HOLD=<seconds>` adds long held programs, to show an error that grows; `MPC_OPT_HOLD_PROGRAMS` and `MPC_OPT_HOLD_SET` choose which programs and settings. It also compares what the plugin shows and saves (value texts, units, program names, the saved state, and the sound after a state is loaded back) and says IDENTICAL or DIFFERENT for those. Exit code 0, 1, or 2 when it could not run. |
-| `scripts/outdiff.cpp` | The measuring program behind that table: per phase the output level, the RMS and peak of the difference in dB relative to full scale, how far the difference is below the output, and the share of samples that differ. |
+| `scripts/bitcheck.sh <sdk> <old.cpp> <new.cpp> [out]` | Builds `render.cpp` around the old and the new source for arm32 (and arm64 when `qemu-aarch64` is installed), runs both under the emulator and compares the output byte for byte: every program, seven block sizes, random parameters, every parameter at once, many settled random settings, short bursts with silence between, and NaN, infinity, huge and denormal input. It runs the old build twice first and stops with NOT REPEATABLE if the two runs differ. Prints IDENTICAL, or DIFFERENT with the phase of the first difference and a table of how large the difference is (also saved as `bits/arm32-diff.txt`). `MPC_OPT_HOLD=<seconds>` adds long held programs, to show an error that grows; `MPC_OPT_HOLD_PROGRAMS` and `MPC_OPT_HOLD_SET` choose which programs and settings. It also compares what the plugin shows and saves (value texts, units, program names, the saved state, and the sound after a state is loaded back) and says IDENTICAL or DIFFERENT for those. Exit code 0, 1, or 2 when it could not run. |
+| `scripts/outdiff.cpp` | The measuring program behind that table: per phase the output level, the RMS and peak of the difference in dB relative to full scale, how far the difference is below the output, and the share of samples that differ. A second table says where the difference sits: how far it is below the output in three bands, and its strongest narrow line, marked A TONE when the output has no line there. |
 | `scripts/drive.cpp` | The harness behind `count.sh` and `profile.sh`: includes the plugin's source and drives it like a host, answering the host's time request (120 BPM, playing). An events file named in `MPC_OPT_EVENTS` acts at given blocks (block 0 sets the starting state): `<block> <parameter index or name> <value 0..1>`, `<block> program <n>`, and for instruments `<block> note <pitch>`, `off <pitch>`, `chord <count>`, `chordoff <count>` and `restrike <period>` (the last chord off and on again every so many blocks). That is how to hold a mode on, place a mode switch, or keep voices sounding. `drive list` prints the parameters and marks momentary ones; the random sweep leaves those out, and any named in `MPC_OPT_SKIP`. `MPC_OPT_MARK=all` counts and times parameter writes and events with the process call, as the Open MPC bench does. Run on a device it is a timing bench: `taskset 4 ./drive 0` for steady state, `taskset 4 ./drive 4` for four random parameters per block. It prints the thread's own CPU time, which leaves out other threads on the core, the CPU time of the whole process, which adds the plugin's own other threads, and the wall-clock time (reference section 14). On arm32 it sets flush-to-zero before calling the plugin, as the 32-bit MPC host does (reference section 11); `MPC_OPT_FZ=0` leaves it off. It hands the plugin the same buffers for input and output, as the MPC host does (`MPC_OPT_INPLACE=0` for separate ones), and `MPC_OPT_SILENT=1` feeds silence. |
 | `scripts/devtime.sh <mpc-ip> <old drive> <new drive> [k] [blocks] [rounds]` | Times two `drive` programs on an MPC, alternating, from a folder under `/tmp` that it deletes afterwards, and prints each run and the mean of each build. Step 9. |
 | `scripts/render.cpp` | The fixed, seeded run behind `bitcheck.sh`. It plays chords into an instrument through every phase, leaves momentary parameters and those named in `MPC_OPT_SKIP` alone, sets flush-to-zero as `drive.cpp` does, and writes the plugin's read-outs and saved state to a text file beside the audio. Copy it and add cases when the plugin has behavior the standard run cannot reach. |
@@ -302,6 +342,11 @@ plugin built any other way, you build the harness and hand the result to the scr
   `count.sh` and `profile.sh`) and in `RENDER_OLD` and `RENDER_NEW` (for `bitcheck.sh`), and give
   `-` for the arguments those scripts then do not use. For `scan.sh`, write the assembly with the
   release's compiler and name the file in `SCAN_ASM`. Thumb builds work.
+- **An engine in another language.** The harness needs `VSTPluginMain` from the plugin and nothing
+  else, so an engine written in Rust, C or generated code links in as its static library beside the
+  wrapper's objects, built with the release's own target and optimization settings. A harness that
+  the build links as a position-independent executable works too: the fast counter reads from the
+  emulator where the program was loaded (`MPC_OPT_SLOW=1` cannot follow one).
 - **Put the plugin's data files where it looks.** A plugin that loads banks, tables or samples
   from its own folder needs them where it will look from the program the scripts run:
   `<out>/drive` for `count.sh` and `profile.sh`, `<out>/bits/render-arm32-old` and `-new` for
@@ -321,7 +366,12 @@ plugin built any other way, you build the harness and hand the result to the scr
   the work is on another thread. Count with `MPC_OPT_THREADS=all` and time with `DEV_LINE=process`
   in `devtime.sh`, and say in the report that the figures cover every thread. The emulator runs
   threads at a different pace from the device, so an engine that renders ahead of the process call
-  may count unevenly from block to block: use long runs and means there.
+  may count unevenly from block to block: use long runs and means there. The Open MPC bench times
+  the thread that calls the plugin and shows the plugin's other threads in a column of their own
+  (`threads%`), which its verdict leaves out. That time is still taken from the device, so report
+  it beside the verdict. With such threads the bench's `peak` column, the output level, can differ
+  between two runs of one build, so it cannot show that two builds sound the same; `bitcheck.sh`
+  is the proof.
 - **Count what the host block costs.** In some wrappers a parameter write does real work at once
   (formatting text, searching a table). Set `MPC_OPT_MARK=all` so the counts and times include it.
   A wrapper that reads the clock in that path can make the same block differ between two passes

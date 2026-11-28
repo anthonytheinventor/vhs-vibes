@@ -15,8 +15,8 @@
 # means anything, and the script stops with exit code 2. Find the cause, or leave the parameter out
 # with MPC_OPT_SKIP, before going on.
 # On a difference it prints the first differing byte with its phase, then a table from outdiff.cpp:
-# per phase, the level of the output, the RMS and peak of the difference in dB, how far the
-# difference is below the output, and where in the phase the first difference is. Set
+# per phase, the level of the output, the RMS and peak of the difference in dB, how far it is below
+# the output and where it starts; then, per band, where in the spectrum the difference sits. Set
 # MPC_OPT_HOLD=<seconds> to add long held programs to the run; the table then shows the difference
 # early and late in each, which is how an error that grows in a feedback path is seen. The held
 # programs must use the changed code: MPC_OPT_HOLD_PROGRAMS=<n,n,...> chooses them and

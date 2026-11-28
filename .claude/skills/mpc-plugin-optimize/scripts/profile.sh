@@ -89,11 +89,18 @@ fi
 # where ARM code and Thumb code start, from the program's mapping symbols
 { nm --special-syms "$PROGRAM" 2>/dev/null || nm "$PROGRAM"; } | awk '$3 ~ /^[$][at]/ { print $1, substr($3, 2, 1) }' > "$OUT/modes.txt"
 THREADS=(); [ "${MPC_OPT_THREADS:-}" != all ] || THREADS=(-t)
+# A program built to load at a movable address (a position-independent executable) runs somewhere
+# other than its file addresses say. tbcount reads where from the emulator's log ("page").
+LOGS=in_asm,exec,nochain; PIE=()
+if readelf -h "$PROGRAM" 2>/dev/null | grep -q 'Type:.*DYN'; then
+  LOGS=$LOGS,page; PIE=(-n "$(readelf -h "$PROGRAM" | awk '/Entry point/ { print $NF }')")
+fi
 # First: "<block> <address> <count>" for every instruction address executed in the blocks wanted.
 if [ "$FAST" = 1 ]; then
-  qemu-arm -d in_asm,exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLOCKS" 2>/dev/null \
-    | "$TB" -e "$OUT/each.tmp" -s "$OUT/modes.txt" -p "$OUT/progress" ${THREADS[@]+"${THREADS[@]}"} "$M" "$E" $PICKS "$MED" || FAST=0
+  qemu-arm -d "$LOGS" -D /dev/stdout "$OUT/drive" "$K" "$BLOCKS" 2>/dev/null \
+    | "$TB" -e "$OUT/each.tmp" -s "$OUT/modes.txt" -p "$OUT/progress" ${THREADS[@]+"${THREADS[@]}"} ${PIE[@]+"${PIE[@]}"} "$M" "$E" $PICKS "$MED" || FAST=0
 fi
+[ "$FAST" = 1 ] || [ ${#PIE[@]} -eq 0 ] || { echo "this program loads at a movable address, which only the fast counter can follow: link it at a fixed address (-no-pie), or leave MPC_OPT_SLOW unset"; exit 2; }
 if [ "$FAST" = 0 ]; then
   qemu-arm -one-insn-per-tb -d exec,nochain -D /dev/stdout "$OUT/drive" "$K" "$BLOCKS" 2>/dev/null \
     | LC_ALL=C grep -F "Trace 0:" \

@@ -64,7 +64,7 @@ static AEffect* fx;
 static FILE* out;
 static FILE* dump;
 static long frames, blocks;
-static bool bad, synth, inplace = true;
+static bool bad, synth, bursts, inplace = true;
 static bool skipParam[4096];
 static int noteBase, noteCount;
 
@@ -160,13 +160,19 @@ static void block(int n)
         const float a = 0.6f * std::sin(0.031f * (float)(frames + i)) + 0.3f * (rf() - 0.5f);
         L[i] = a;
         R[i] = 0.8f * a + 0.2f * (rf() - 0.5f);
+        if (bursts && ((frames + i) / 1323) % 4 != 0) L[i] = R[i] = 0.0f;   // 30 ms of signal, 90 ms of silence
     }
     if (bad && rnd() % 23 == 0)
     {
         static const float v[6] = { NAN, INFINITY, -INFINITY, 3e38f, -3e38f, 1e-40f };
         ((rnd() & 1) ? L : R)[rnd() % (uint32_t)n] = v[rnd() % 6];
     }
-    if (synth)                                    // a chord for 16 blocks, then 8 blocks of release
+    if (synth && bursts)                          // short notes: 2 blocks held, 14 blocks to ring out
+    {
+        if (blocks % 16 == 0) { noteBase = 36 + (int)(nrnd() % 36); noteCount = 1 + (int)(nrnd() % 3); notes(true); }
+        if (blocks % 16 == 2) notes(false);
+    }
+    else if (synth)                               // a chord for 16 blocks, then 8 blocks of release
     {
         if (blocks % 24 == 0) { noteBase = 36 + (int)(nrnd() % 24); noteCount = 1 + (int)(nrnd() % 6); notes(true); }
         if (blocks % 24 == 16) notes(false);
@@ -174,8 +180,9 @@ static void block(int n)
     hostTime.samplePos = (double)frames;
     hostTime.ppqPos = hostTime.samplePos / 44100.0 * 2.0;
     fx->processReplacing(fx, in, o, n);
-    fwrite(o[0], sizeof(float), (size_t)n, out);
-    fwrite(o[1], sizeof(float), (size_t)n, out);
+    static float both[2 * MaxB];                 // left and right in turn, so the file is one stereo stream
+    for (int i = 0; i < n; ++i) { both[2 * i] = o[0][i]; both[2 * i + 1] = o[1][i]; }
+    fwrite(both, sizeof(float), (size_t)(2 * n), out);
     frames += n;
     ++blocks;
 }
@@ -250,6 +257,19 @@ int main(int argc, char** argv)
         for (int b = 0; b < 30; ++b) block(128);
         if (c % 4 == 0) dumpState("settled setting", c);
     }
+    // Short sounds with silence between: bursts into an effect, short notes into an instrument, over
+    // up to eight programs spread through the list. Onsets, decays and the silence after them are where
+    // a click or a changed tail shows; the steady phases above cannot show either.
+    phase("bursts and silence");
+    bursts = true;
+    if (synth) notes(false);
+    for (int c = 0; c < (npr < 8 ? npr : 8); ++c)
+    {
+        fx->dispatcher(fx, effSetProgram, 0, npr <= 8 ? c : (int)((long)c * (npr - 1) / 7), nullptr, 0.0f);
+        for (int b = 0; b < 160; ++b) block(128);
+    }
+    if (synth) notes(false);
+    bursts = false;
     phase("bad input values");               // with program changes and moving parameters
     bad = true;
     for (int b = 0; b < 3000; ++b)

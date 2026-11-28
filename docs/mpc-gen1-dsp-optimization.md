@@ -49,6 +49,12 @@ The order below is a recommendation; the measurements behind it are in the secti
    input and express the RMS and the peak of the difference in dB, against full scale and against
    the output level. Weigh that figure against the time saved, one change at a time. An error
    inside a feedback path can grow, so measure a run of many seconds as well and listen to it.
+   One level can hide what the ear picks out, so look at where the difference sits in the spectrum
+   and in time. A value held for N samples between updates adds a line at the sample rate divided
+   by N: a term refreshed every 4 samples, planted in a delay effect, gave a difference 85 to 90 dB
+   below the output overall with a line at 11,025 Hz standing 19 to 40 dB above the rest of it
+   (checked). Noise added at the top of the band was 69 dB below the output overall and 54 dB
+   below it above 8 kHz (checked). Onsets and decays show clicks that sustained material does not.
    The list of bit-exact changes holds when the compiler keeps float operations in source order,
    as the SDK's flags do. Under flags that let it reorder them (`-ffast-math`,
    `-funsafe-math-optimizations`, `-fassociative-math`) any edit inside a function can change how
@@ -960,6 +966,12 @@ are documented or inferred, and the costs in section 1 apply per voice.
   per sample behaves differently at twice the rate. Rescale its time constants for the oversampled rate,
   or feed it the base-rate signal. Rescaling keeps it running twice per frame at 2x; feeding the base rate
   halves its cost and changes its output (inferred).
+- **A new rate changes every constant written per sample.** Filter coefficients, time constants and
+  delays counted in samples, envelope and phase increments all mean something else at another
+  rate. So does the level of a noise source: the same per-sample level spreads its power over a
+  band that is now wider or narrower, and the part inside the audio band moves by 3 dB for each
+  doubling (inferred). After changing an oversampling factor or a control rate, search the stage
+  for each and derive it again.
 - **A blend at the oversampled rate keeps everything after it there.** A dry/wet mix inside the 2x
   section holds the linear stages that follow at 2x as well. Moving them out needs a second down-filter
   for the other branch; count both versions before choosing (inferred).
@@ -1045,7 +1057,8 @@ through several stages (idle, audio or held chords, a sweep that sets 4 random p
 every parameter with `-p`, and the release tail), and gives a verdict from the worst stage: PASS up to
 15 % at the 99th percentile and 50 % for the worst block, WARN up to 35 % and 80 %, FAIL above
 (documented, bench source). It times each block with the thread's own CPU clock, so time taken by the
-app's threads does not count (documented, bench source).
+app's threads does not count (documented, bench source). It shows the CPU time of the plugin's own
+other threads in a separate column and leaves it out of the verdict (documented, bench source).
 
 **For a plugin headed to that catalog, its bench is the last check, and its verdict is the one that
 counts.** Their `tools/bench.sh <plugin.so> <device-ip>` builds it in Docker and runs it. The
