@@ -179,8 +179,10 @@ call every result a count, not a speedup.
      disagrees, which must be 0. For scale, the rounding noise of a 16-bit file is about 98 dB
      below a full-scale sine, and of a 24-bit one about 146 dB.
    - In the held phases compare the difference in the first and the last quarter: a figure that
-     rises means the error feeds back and grows, and the short phases understate it. The held
-     programs must use the changed code. If the table says no held phase reaches the difference,
+     rises means the error feeds back and grows, and the short phases understate it. Each held
+     phase sets every parameter to its start-up value, then the program, then `MPC_OPT_HOLD_SET`.
+     The held programs must use the changed code: hold on every switch that leads to it (a mode, a
+     quality setting), since a program may leave one off. If the table says no held phase reaches the difference,
      choose settings that do with `MPC_OPT_HOLD_PROGRAMS` and `MPC_OPT_HOLD_SET` and run again;
      until then nothing is known about growth.
    - A difference in a few samples (a high peak, a low RMS, a small differing share) is a decision

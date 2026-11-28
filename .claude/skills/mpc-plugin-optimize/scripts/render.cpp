@@ -14,7 +14,8 @@
 // The harness sets flush-to-zero on arm32, as the 32-bit MPC host does; MPC_OPT_FZ=0 leaves it off.
 // With MPC_OPT_HOLD=<seconds> in the environment the run ends with long held programs (see below).
 // MPC_OPT_HOLD_PROGRAMS=<n,n,...> chooses which programs, and MPC_OPT_HOLD_SET=<name=value,...>
-// (values 0..1) sets parameters on top of each, so the held run reaches the code under test.
+// (values 0..1) sets parameters on top of each, so the held run reaches the code under test. Each
+// held phase starts from the plugin's start-up parameter values, then the program, then those.
 // It hands the plugin the same buffers for input and output, as the MPC host does; MPC_OPT_INPLACE=0
 // gives it separate ones.
 // A plugin that is not one SDK source file: compile without SRC and link the plugin's own objects
@@ -228,6 +229,8 @@ int main(int argc, char** argv)
         if (!skipParam[i]) { skipParam[i] = true; ++skipped; }
     }
     if (const char* ip = std::getenv("MPC_OPT_INPLACE")) inplace = ip[0] != '0';
+    std::vector<float> startValue((size_t)np);    // every parameter as the plugin starts up, for the held phases
+    for (int i = 0; i < fx->numParams; ++i) startValue[(size_t)i] = fx->getParameter(fx, i);
 
     phase("programs");                       // every program, two parameters moved partway through
     for (int p = 0; p < npr; ++p)
@@ -319,6 +322,10 @@ int main(int argc, char** argv)
         char name[32];
         std::snprintf(name, sizeof name, "held program %d", held[k]);
         phase(name);
+        // Start-up values first: the random phases left every parameter somewhere, and a program
+        // does not have to set them all (a quality switch, say), which could keep the held run out
+        // of the code under test.
+        for (int i = 0; i < fx->numParams; ++i) setParam(i, startValue[(size_t)i]);
         fx->dispatcher(fx, effSetProgram, 0, held[k], nullptr, 0.0f);
         for (const std::string& s : holdSet)
         {
